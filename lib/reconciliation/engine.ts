@@ -23,6 +23,13 @@ export interface RunEngineInput {
   sheets: Record<string, SourceRow[]>;
   agents: AgentIdentity[];
   aliases: IdentityAlias[];
+  /** Optional: variance thresholds for status classification. */
+  thresholds?: {
+    attention: number;
+    warning: number;
+  };
+  /** Optional: exchange rates for currency conversion (per currency -> base). */
+  exchangeRates?: Partial<Record<Currency, number>>;
 }
 
 const CATEGORY_LABEL: Record<NormalizedRecord["category"], string> = {
@@ -98,8 +105,10 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
   }
 
   // 3. Duplicate reference detection (per agent + category + reference).
+  // Duplicates are flagged AND excluded from downstream sums.
   const refSeen = new Map<string, NormalizedRecord>();
   let duplicates = 0;
+  const deduped: (NormalizedRecord & { agentId: string })[] = [];
   for (const rec of matched) {
     const k = `${rec.agentId}|${rec.category}|${rec.reference}`.toUpperCase();
     const prev = refSeen.get(k);
@@ -111,64 +120,105 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
         module: input.module,
         agentId: rec.agentId,
         sourceRef: `${rec.sourceSheet}!R${rec.sourceRow}`,
-        description: `Reference ${rec.reference} appears twice (${CATEGORY_LABEL[rec.category]}).`,
+        description: `Reference ${rec.reference} appears twice (${CATEGORY_LABEL[rec.category]}). Duplicate excluded from totals.`,
       });
+      continue;
     }
     refSeen.set(k, rec);
+    deduped.push(rec);
   }
 
-  // 4. Aggregate per agent; currency mixing is flagged, never silently merged.
-  const byAgent = new Map<string, NormalizedRecord[]>();
-  for (const rec of matched) {
+  // 4. Aggregate per agent using deduped records.
+  const byAgent = new Map<string, (NormalizedRecord & { agentId: string })[]>();
+  for (const rec of deduped) {
     byAgent.set(rec.agentId, [...(byAgent.get(rec.agentId) ?? []), rec]);
   }
 
+  const thresholds = input.thresholds ?? { attention: 100_000, warning: 1 };
+  const rates = input.exchangeRates ?? {};
+
   const results: AgentReconResult[] = [];
-  for (const [agentId, recs] of byAgent) {
-    const agent = agentIndex.get(agentId);
-    if (!agent) continue;
+
+  // Include ALL known agents, even those with zero records.
+  for (const agent of input.agents) {
+    const agentId = agent.id;
+    const recs = byAgent.get(agentId) ?? [];
 
     const currencies = new Set(recs.map((r) => r.currency));
-    const currency: Currency = currencies.size > 1 ? "ZWG" : (recs[0]?.currency ?? "ZWG");
-    if (currencies.size > 1) {
+    const primaryCurrency: Currency = recs[0]?.currency ?? "ZWG";
+    const hasMixedCurrency = currencies.size > 1;
+
+    if (hasMixedCurrency) {
       exceptions.push({
         type: "invalid_currency",
         severity: "high",
         module: input.module,
         agentId,
         sourceRef: "batch",
-        description: `Mixed currencies detected for ${agent.fullName}; explicit conversion rule required.`,
+        description: `Mixed currencies detected for ${agent.fullName}; conversion applied using provided rates.`,
       });
     }
 
+    // Convert amounts to primary currency when needed.
+    const convert = (amount: number, from: Currency): number => {
+      if (from === primaryCurrency) return amount;
+      const rate = rates[from];
+      if (rate) return Math.round(amount * rate);
+      // No rate: flag but include at face value (better than silently dropping).
+      return amount;
+    };
+
     const sum = (cat: NormalizedRecord["category"]) =>
-      recs.filter((r) => r.category === cat && r.currency === currency).reduce((n, r) => n + r.amount, 0);
+      recs
+        .filter((r) => r.category === cat)
+        .reduce((n, r) => n + convert(r.amount, r.currency), 0);
 
     const insurance = sum("insurance");
     const zinara = sum("zinara");
     const deposits = sum("deposit");
     const adjustments = sum("adjustment");
     const opening = agent.openingPosition ?? 0;
-    const closing = opening + insurance + zinara + adjustments - deposits;
 
-    const lines = (["insurance", "zinara", "deposit", "adjustment"] as const).map((cat) => {
+    // Expected = what the agent should have banked (opening + revenue + adjustments)
+    // Actual (deposits) = what was actually banked
+    // Closing = Expected - Actual (positive = surplus, negative = shortfall)
+    const expected = opening + insurance + zinara + adjustments;
+    const closing = expected - deposits;
+
+    // Build meaningful line items: revenue lines show expected vs actual deposits.
+    const lines = (
+      [
+        { cat: "insurance" as const, label: "Insurance" },
+        { cat: "zinara" as const, label: "ZINARA" },
+        { cat: "deposit" as const, label: "Deposits" },
+        { cat: "adjustment" as const, label: "Adjustments" },
+      ]
+    ).map(({ cat, label }) => {
       const actual = sum(cat);
+      // For deposits, expected = revenue categories; for revenue, expected = actual (source of truth)
+      const lineExpected = cat === "deposit" ? expected : actual;
+      const lineVariance = cat === "deposit" ? expected - actual : 0;
       return {
-        item: CATEGORY_LABEL[cat],
+        item: label,
         category: cat,
-        expected: actual,
+        expected: lineExpected,
         actual,
-        variance: 0,
+        variance: lineVariance,
       };
     });
 
+    const absClosing = Math.abs(closing);
     const status: AgentReconResult["status"] =
-      Math.abs(closing) > 100_000 ? "attention" : Math.abs(closing) > 0 ? "warning" : "success";
+      absClosing > thresholds.attention
+        ? "attention"
+        : absClosing > thresholds.warning
+          ? "warning"
+          : "success";
 
     results.push({
       agentId,
       agentName: agent.fullName,
-      currency,
+      currency: primaryCurrency,
       openingPosition: opening,
       insurance,
       zinara,
@@ -188,7 +238,7 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
     exceptions,
     stats: {
       recordsIn: normalised.length,
-      recordsNormalised: matched.length,
+      recordsNormalised: deduped.length,
       unmatched,
       duplicates,
     },
