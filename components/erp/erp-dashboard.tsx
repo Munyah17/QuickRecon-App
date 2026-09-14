@@ -21,6 +21,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { formatMoney } from "@/lib/format";
+import { ExportButton } from "@/components/shared/export-button";
 
 export function ERPDashboard() {
   return (
@@ -153,9 +154,7 @@ function AccountingTab() {
             </table>
           </div>
           <div className="mt-3 flex justify-end">
-            <Button variant="outline" className="h-9 gap-1.5 text-[13px]" onClick={() => toast.success("Trial balance exported as XLSX")}>
-              Export Trial Balance
-            </Button>
+            <ExportButton filename={`trial-balance-${Date.now()}`} rows={transactions.length} label="Export Trial Balance" />
           </div>
         </CardContent>
       </Card>
@@ -165,52 +164,95 @@ function AccountingTab() {
 
 /* ─── HR ─── */
 function HRTab() {
-  const employees = [
-    { id: "EMP-001", name: "Munyah Griezmann", role: "Super Admin", dept: "Executive", salary: 45000, status: "active" },
-    { id: "EMP-002", name: "Tererai Chiweshe", role: "Operations Admin", dept: "Operations", salary: 28000, status: "active" },
-    { id: "EMP-003", name: "Taridzo Support", role: "Tech Support", dept: "IT", salary: 22000, status: "active" },
-    { id: "EMP-004", name: "Musa Zhou", role: "Field Agent", dept: "Field Ops", salary: 18000, status: "active" },
-    { id: "EMP-005", name: "Simbarashe Dube", role: "Assistant", dept: "Field Ops", salary: 12000, status: "active" },
-    { id: "EMP-006", name: "Tendai Moyo", role: "Field Agent", dept: "Field Ops", salary: 18000, status: "suspended" },
+  const [hrSubTab, setHrSubTab] = React.useState<"executive" | "agents">("executive");
+
+  const executiveStaff = [
+    { id: "EMP-001", name: "Munyah Griezmann", role: "CEO", dept: "Executive", salary: 65000, status: "active", phone: "+263 77 123 4567", email: "munyamuzvidziwa19@gmail.com" },
+    { id: "EMP-002", name: "Tererai Chiweshe", role: "Chief Operations Officer", dept: "Executive", salary: 48000, status: "active", phone: "+263 77 234 5678", email: "tererai@quickrecon.co.zw" },
+    { id: "EMP-003", name: "Rumbi Chiweshe", role: "Chief Financial Officer", dept: "Executive", salary: 45000, status: "active", phone: "+263 77 345 6789", email: "rumbi@quickrecon.co.zw" },
+    { id: "EMP-004", name: "Tafadzwa Ncube", role: "Chief Technology Officer", dept: "Executive", salary: 42000, status: "active", phone: "+263 77 456 7890", email: "tafadzwa@quickrecon.co.zw" },
+    { id: "EMP-005", name: "Farai Mlambo", role: "Underwriting Manager", dept: "Underwriting", salary: 35000, status: "active", phone: "+263 77 567 8901", email: "farai@quickrecon.co.zw" },
+    { id: "EMP-006", name: "Nyasha Dube", role: "Claims Manager", dept: "Claims", salary: 32000, status: "active", phone: "+263 77 678 9012", email: "nyasha@quickrecon.co.zw" },
+    { id: "EMP-007", name: "Tariro Moyo", role: "Risk Manager", dept: "Risk", salary: 30000, status: "active", phone: "+263 77 789 0123", email: "tariro@quickrecon.co.zw" },
+    { id: "EMP-008", name: "Kudzai Sibanda", role: "Risk Assessor", dept: "Risk", salary: 25000, status: "active", phone: "+263 77 890 1234", email: "kudzai@quickrecon.co.zw" },
+    { id: "EMP-009", name: "Chipo Mhondoro", role: "Accountant", dept: "Finance", salary: 28000, status: "active", phone: "+263 77 901 2345", email: "chipo@quickrecon.co.zw" },
+    { id: "EMP-010", name: "Tendai Support", role: "Tech Support", dept: "IT", salary: 22000, status: "active", phone: "+263 77 012 3456", email: "tendai@quickrecon.co.zw" },
+    { id: "EMP-011", name: "Rumbi Taruvinga", role: "Clerk", dept: "Operations", salary: 18000, status: "active", phone: "+263 77 123 4567", email: "rumbi.t@quickrecon.co.zw" },
+    { id: "EMP-012", name: "Tinashe Kamwendo", role: "Insurer", dept: "Insurance", salary: 24000, status: "on_leave", phone: "+263 77 234 5678", email: "tinashe@quickrecon.co.zw" },
   ];
+
+  const agents = [
+    { id: "AGT-001", name: "Musa Zhou", role: "Field Agent", dept: "Field Ops", salary: 18000, status: "active", phone: "+263 78 111 2222", email: "musa.zhou@quickrecon.co.zw", province: "Harare" },
+    { id: "AGT-002", name: "Tendai Moyo", role: "Field Agent", dept: "Field Ops", salary: 18000, status: "suspended", phone: "+263 78 222 3333", email: "tendai.moyo@quickrecon.co.zw", province: "Bulawayo" },
+    { id: "AGT-003", name: "Rumbi Chiweshe", role: "Field Agent", dept: "Field Ops", salary: 18000, status: "active", phone: "+263 78 333 4444", email: "rumbi.c@quickrecon.co.zw", province: "Mutare" },
+    { id: "AGT-004", name: "Nyanga Dube", role: "Field Agent", dept: "Field Ops", salary: 18000, status: "active", phone: "+263 78 444 5555", email: "nyanga.d@quickrecon.co.zw", province: "Gweru" },
+    { id: "AGT-005", name: "Farai Mlambo", role: "Field Agent", dept: "Field Ops", salary: 18000, status: "active", phone: "+263 78 555 6666", email: "farai.m@quickrecon.co.zw", province: "Masvingo" },
+    { id: "AGT-006", name: "Simbarashe Dube", role: "Assistant", dept: "Field Ops", salary: 12000, status: "active", phone: "+263 78 666 7777", email: "simba.d@quickrecon.co.zw", province: "Harare" },
+    { id: "AGT-007", name: "Patricia Chirwa", role: "Field Agent", dept: "Field Ops", salary: 18000, status: "active", phone: "+263 78 777 8888", email: "patricia.c@quickrecon.co.zw", province: "Mutare" },
+    { id: "AGT-008", name: "Blessing Ndlovu", role: "Field Agent", dept: "Field Ops", salary: 18000, status: "inactive", phone: "+263 78 888 9999", email: "blessing.n@quickrecon.co.zw", province: "Bulawayo" },
+  ];
+
+  const currentData = hrSubTab === "executive" ? executiveStaff : agents;
+  const totalSalary = currentData.reduce((s, e) => s + e.salary, 0);
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <MetricCard icon={Users} label="Total Employees" value="248" />
-        <MetricCard icon={DollarSign} label="Monthly Payroll" value={formatMoney(3840000)} />
-        <MetricCard icon={TrendingUp} label="Active Today" value="231" trend="94%" trendUp />
-        <MetricCard icon={TrendingDown} label="On Leave" value="17" />
+        <MetricCard icon={Users} label="Executive Staff" value={String(executiveStaff.length)} />
+        <MetricCard icon={Users} label="Agents" value={String(agents.length)} />
+        <MetricCard icon={DollarSign} label="Monthly Payroll" value={formatMoney(executiveStaff.reduce((s, e) => s + e.salary, 0) + agents.reduce((s, a) => s + a.salary, 0))} />
+        <MetricCard icon={TrendingUp} label="Active Today" value={String([...executiveStaff, ...agents].filter((e) => e.status === "active").length)} trend="94%" trendUp />
+      </div>
+
+      {/* Sub-tabs: Executive Staff vs Agents */}
+      <div className="inline-flex rounded-full bg-muted p-1">
+        <button
+          onClick={() => setHrSubTab("executive")}
+          className={`h-8 rounded-full px-4 text-[12.5px] font-medium transition-colors ${hrSubTab === "executive" ? "bg-card text-primary shadow-sm" : "text-muted-foreground"}`}
+        >
+          Executive Staff ({executiveStaff.length})
+        </button>
+        <button
+          onClick={() => setHrSubTab("agents")}
+          className={`h-8 rounded-full px-4 text-[12.5px] font-medium transition-colors ${hrSubTab === "agents" ? "bg-card text-primary shadow-sm" : "text-muted-foreground"}`}
+        >
+          Agents ({agents.length})
+        </button>
       </div>
 
       <Card className="gap-0 py-0 shadow-xs">
-        <CardHeader className="px-4 pt-4 sm:px-5">
-          <CardTitle className="text-[14.5px] font-semibold">Employee Directory</CardTitle>
+        <CardHeader className="flex flex-row items-center justify-between px-4 pt-4 sm:px-5">
+          <CardTitle className="text-[14.5px] font-semibold">
+            {hrSubTab === "executive" ? "Executive Staff Directory" : "Agents Directory"}
+          </CardTitle>
+          <ExportButton filename={`hr-${hrSubTab}-${Date.now()}`} rows={currentData.length} label="Export" />
         </CardHeader>
         <CardContent className="px-4 pb-4 sm:px-5">
           <div className="overflow-x-auto rounded-xl border">
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="border-b bg-muted/50 text-left text-[11.5px] font-semibold text-muted-foreground uppercase">
-                  <th className="px-3 py-2.5">Emp ID</th>
+                  <th className="px-3 py-2.5">ID</th>
                   <th className="px-3 py-2.5">Name</th>
                   <th className="px-3 py-2.5">Role</th>
                   <th className="px-3 py-2.5">Department</th>
+                  {hrSubTab === "agents" && <th className="px-3 py-2.5">Province</th>}
                   <th className="px-3 py-2.5 text-right">Salary (ZiG)</th>
                   <th className="px-3 py-2.5">Status</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {employees.map((e) => (
+                {currentData.map((e) => (
                   <tr key={e.id} className="hover:bg-surface-hover">
                     <td className="font-mono text-[12px] text-muted-foreground px-3 py-2.5">{e.id}</td>
                     <td className="px-3 py-2.5 font-medium">{e.name}</td>
                     <td className="px-3 py-2.5">{e.role}</td>
                     <td className="px-3 py-2.5">{e.dept}</td>
+                    {hrSubTab === "agents" && <td className="px-3 py-2.5">{(e as typeof agents[0]).province}</td>}
                     <td className="tnum px-3 py-2.5 text-right">{e.salary.toLocaleString()}</td>
                     <td className="px-3 py-2.5">
-                      <Badge variant="outline" className={e.status === "active" ? "border-transparent bg-success-soft text-success-foreground" : "border-transparent bg-destructive-soft text-destructive"}>
-                        {e.status}
+                      <Badge variant="outline" className={e.status === "active" ? "border-transparent bg-success-soft text-success-foreground" : e.status === "on_leave" ? "border-transparent bg-warning-soft text-warning-foreground" : "border-transparent bg-destructive-soft text-destructive"}>
+                        {e.status === "on_leave" ? "On Leave" : e.status}
                       </Badge>
                     </td>
                   </tr>
@@ -244,8 +286,9 @@ function SalesTab() {
       </div>
 
       <Card className="gap-0 py-0 shadow-xs">
-        <CardHeader className="px-4 pt-4 sm:px-5">
+        <CardHeader className="flex flex-row items-center justify-between px-4 pt-4 sm:px-5">
           <CardTitle className="text-[14.5px] font-semibold">Sales by Region</CardTitle>
+          <ExportButton filename={`sales-${Date.now()}`} rows={salesData.length} label="Export" />
         </CardHeader>
         <CardContent className="px-4 pb-4 sm:px-5">
           <div className="overflow-x-auto rounded-xl border">
@@ -354,12 +397,15 @@ function InvoicesTab() {
       <Card className="gap-0 py-0 shadow-xs">
         <CardHeader className="flex flex-row items-center justify-between px-4 pt-4 sm:px-5">
           <CardTitle className="text-[14.5px] font-semibold">Invoice List</CardTitle>
-          <Button
-            className="h-9 gap-1.5 text-[13px]"
-            onClick={() => toast.success("New invoice created", { description: "Invoice draft saved" })}
-          >
-            <FileText className="size-4" aria-hidden /> New Invoice
-          </Button>
+          <div className="flex items-center gap-2">
+            <ExportButton filename={`invoices-${Date.now()}`} rows={invoices.length} label="Export" />
+            <Button
+              className="h-9 gap-1.5 text-[13px]"
+              onClick={() => toast.success("New invoice created", { description: "Invoice draft saved" })}
+            >
+              <FileText className="size-4" aria-hidden /> New Invoice
+            </Button>
+          </div>
         </CardHeader>
         <CardContent className="px-4 pb-4 sm:px-5">
           <div className="overflow-x-auto rounded-xl border">

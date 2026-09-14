@@ -199,17 +199,17 @@ export function ImportWizard() {
 
       {/* STEP 1 — Upload + options */}
       {step === 1 && (
-        <div className="grid gap-4 lg:grid-cols-5">
-          <Card className="gap-0 py-0 shadow-xs lg:col-span-3">
+        <div className="grid gap-4 lg:grid-cols-2">
+          <Card className="gap-0 py-0 shadow-xs">
             <CardContent className="p-4 sm:p-5">
               <FileUploader
                 onFile={(f) => setFile(f)}
-                hint="Supports .xlsx, .xls, .csv files (Max 100MB)"
+                hint="Supports .xlsx, .xls, .csv files (Max 1000MB)"
               />
             </CardContent>
           </Card>
 
-          <Card className="gap-0 py-0 shadow-xs lg:col-span-2">
+          <Card className="gap-0 py-0 shadow-xs">
             <CardHeader className="px-4 pt-4 sm:px-5">
               <CardTitle className="text-[14.5px] font-semibold">Import Options</CardTitle>
             </CardHeader>

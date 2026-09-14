@@ -14,9 +14,22 @@ import {
   UserRound,
   ArrowLeftRight,
   Briefcase,
+  Calculator,
+  ShoppingCart,
+  MonitorSmartphone,
+  FileText,
+  TriangleAlert,
+  CalendarClock,
+  History,
   type LucideIcon,
 } from "lucide-react";
 import type { RoleCode } from "@/types";
+
+export interface NavChild {
+  label: string;
+  href: string;
+  icon: LucideIcon;
+}
 
 export interface NavItem {
   label: string;
@@ -25,6 +38,8 @@ export interface NavItem {
   roles: RoleCode[];
   /** Shown in the compact mobile bottom bar. */
   mobilePrimary?: boolean;
+  /** Collapsible sub-items shown in the sidebar. */
+  children?: NavChild[];
 }
 
 const COMPANY_ROLES: RoleCode[] = ["super_admin", "admin", "tech_support"];
@@ -32,16 +47,49 @@ const FIELD_ROLES: RoleCode[] = ["agent", "assistant"];
 
 export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/app/dashboard", icon: LayoutDashboard, roles: [...COMPANY_ROLES, ...FIELD_ROLES], mobilePrimary: true },
-  { label: "Agents", href: "/app/agents", icon: Users, roles: COMPANY_ROLES, mobilePrimary: true },
   { label: "Imports", href: "/app/imports", icon: Upload, roles: COMPANY_ROLES },
-  { label: "Reconciliation", href: "/app/reconciliation", icon: RefreshCcw, roles: COMPANY_ROLES, mobilePrimary: true },
-  { label: "Reports", href: "/app/reports", icon: FileBarChart, roles: [...COMPANY_ROLES, ...FIELD_ROLES], mobilePrimary: true },
+  {
+    label: "Reconciliation",
+    href: "/app/reconciliation",
+    icon: RefreshCcw,
+    roles: COMPANY_ROLES,
+    mobilePrimary: true,
+    children: [
+      { label: "Batch Review", href: "/app/reconciliation", icon: RefreshCcw },
+      { label: "Exceptions", href: "/app/reconciliation/exceptions", icon: TriangleAlert },
+    ],
+  },
+  {
+    label: "Reports",
+    href: "/app/reports",
+    icon: FileBarChart,
+    roles: [...COMPANY_ROLES, ...FIELD_ROLES],
+    mobilePrimary: true,
+    children: [
+      { label: "Send Reports", href: "/app/reports", icon: Send },
+      { label: "Schedule", href: "/app/reports?tab=schedule", icon: CalendarClock },
+      { label: "History", href: "/app/reports?tab=history", icon: History },
+    ],
+  },
   { label: "Task Management", href: "/app/submissions", icon: ClipboardList, roles: [...COMPANY_ROLES, ...FIELD_ROLES], mobilePrimary: true },
-  { label: "Communications", href: "/app/communications", icon: Send, roles: ["super_admin", "admin"] },
-  { label: "ERP", href: "/app/erp", icon: Briefcase, roles: COMPANY_ROLES },
+  { label: "Agents Management", href: "/app/agents", icon: Users, roles: COMPANY_ROLES, mobilePrimary: true },
   { label: "User Management", href: "/app/users", icon: UserCog, roles: ["super_admin", "admin", "tech_support"] },
+  { label: "Communications", href: "/app/communications", icon: Send, roles: ["super_admin", "admin"] },
+  {
+    label: "ERP",
+    href: "/app/erp",
+    icon: Briefcase,
+    roles: COMPANY_ROLES,
+    children: [
+      { label: "Accounting", href: "/app/erp?tab=accounting", icon: Calculator },
+      { label: "HR", href: "/app/erp?tab=hr", icon: Users },
+      { label: "Sales", href: "/app/erp?tab=sales", icon: ShoppingCart },
+      { label: "POS", href: "/app/erp?tab=pos", icon: MonitorSmartphone },
+      { label: "Invoices", href: "/app/erp?tab=invoices", icon: FileText },
+    ],
+  },
   { label: "My Booths", href: "/app/booths", icon: Store, roles: FIELD_ROLES },
-  { label: "Assistants", href: "/app/assistants", icon: UserRoundCheck, roles: ["agent", "super_admin", "admin"] },
+  { label: "Agents Assistants", href: "/app/assistants", icon: UserRoundCheck, roles: ["agent", "super_admin", "admin"] },
   { label: "Transactions", href: "/app/transactions", icon: ArrowLeftRight, roles: FIELD_ROLES },
   { label: "My Profile", href: "/app/profile", icon: UserRound, roles: FIELD_ROLES },
   { label: "Support", href: "/app/support", icon: LifeBuoy, roles: [...COMPANY_ROLES, ...FIELD_ROLES] },

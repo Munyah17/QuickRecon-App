@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { Building2, Boxes, Mail, RefreshCcw, FileText, ShieldCheck, History, Save } from "lucide-react";
+import { Building2, Boxes, Mail, RefreshCcw, FileText, ShieldCheck, History, Save, Coins } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { isCompanyRole } from "@/lib/nav";
 import { PageHeader } from "@/components/layout/page-header";
@@ -16,6 +16,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { CurrencySettings } from "@/components/settings/currency-settings";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -56,6 +57,7 @@ export default async function SettingsPage() {
           {[
             ["general", "General", Building2],
             ["modules", "Modules", Boxes],
+            ["currency", "Currencies", Coins],
             ["email", "Email & WhatsApp", Mail],
             ["reconciliation", "Reconciliation", RefreshCcw],
             ["templates", "Report Templates", FileText],
@@ -138,6 +140,10 @@ export default async function SettingsPage() {
               </Card>
             ))}
           </div>
+        </TabsContent>
+
+        <TabsContent value="currency" className="mt-4">
+          <CurrencySettings />
         </TabsContent>
 
         <TabsContent value="email" className="mt-4">

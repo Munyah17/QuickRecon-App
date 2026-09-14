@@ -4,10 +4,10 @@ import * as React from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { Ellipsis, Plus, UserRoundPlus } from "lucide-react";
+import { Ellipsis, Plus, UserRoundPlus, Search, Users, ShieldCheck, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -34,6 +34,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { AgentAvatar } from "@/components/shared/agent-avatar";
+import { DataTable } from "@/components/data-table/data-table";
+import { ExportButton } from "@/components/shared/export-button";
 import type { Assistant, Booth } from "@/types";
 
 const requestSchema = z.object({
@@ -65,6 +67,33 @@ export function MyAssistants({
 }) {
   const [open, setOpen] = React.useState(false);
   const [perms, setPerms] = React.useState<string[]>(["submissions"]);
+  const [search, setSearch] = React.useState("");
+  const [statusFilter, setStatusFilter] = React.useState<string>("all");
+  const [boothFilter, setBoothFilter] = React.useState<string>("all");
+
+  const filtered = React.useMemo(() => {
+    return assistants.filter((a) => {
+      const q = search.toLowerCase();
+      const matchesSearch =
+        !q ||
+        a.fullName.toLowerCase().includes(q) ||
+        a.email.toLowerCase().includes(q) ||
+        a.phone.toLowerCase().includes(q);
+      const matchesStatus = statusFilter === "all" || a.status === statusFilter;
+      const matchesBooth = boothFilter === "all" || a.boothId === boothFilter;
+      return matchesSearch && matchesStatus && matchesBooth;
+    });
+  }, [assistants, search, statusFilter, boothFilter]);
+
+  const stats = React.useMemo(() => {
+    return {
+      total: assistants.length,
+      active: assistants.filter((a) => a.status === "active").length,
+      pending: assistants.filter((a) => a.status === "pending").length,
+      suspended: assistants.filter((a) => a.status === "suspended").length,
+    };
+  }, [assistants]);
+
   const form = useForm<RequestValues>({
     resolver: zodResolver(requestSchema),
     defaultValues: { fullName: "", email: "", phone: "", boothId: "" },
@@ -75,7 +104,6 @@ export function MyAssistants({
   }
 
   async function onSubmit(values: RequestValues) {
-    // Server action would persist + notify Super Admin; approval keeps access closed.
     console.info("assistant request", { ...values, perms });
     toast.success("Assistant request submitted", {
       description: "A Super Admin will review and approve the account before it activates.",
@@ -87,6 +115,53 @@ export function MyAssistants({
 
   return (
     <div className="space-y-4">
+      {/* Stats */}
+      <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <StatCard icon={Users} label="Total Assistants" value={stats.total} />
+        <StatCard icon={ShieldCheck} tone="success" label="Active" value={stats.active} />
+        <StatCard icon={Search} tone="warning" label="Pending" value={stats.pending} />
+        <StatCard icon={AlertCircle} tone="danger" label="Suspended" value={stats.suspended} />
+      </div>
+
+      {/* Search & filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-0 flex-1">
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
+          <Input
+            placeholder="Search by name, email or phone"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="h-9 bg-card pl-9 text-[13px]"
+          />
+        </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="h-9 w-36 bg-card text-[12.5px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Status</SelectItem>
+            <SelectItem value="active">Active</SelectItem>
+            <SelectItem value="pending">Pending</SelectItem>
+            <SelectItem value="suspended">Suspended</SelectItem>
+            <SelectItem value="rejected">Rejected</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={boothFilter} onValueChange={setBoothFilter}>
+          <SelectTrigger className="h-9 w-40 bg-card text-[12.5px]">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Booths</SelectItem>
+            {booths.map((b) => (
+              <SelectItem key={b.id} value={b.id}>
+                {b.name}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <ExportButton filename={`assistants-${Date.now()}`} rows={filtered.length} label="Export" />
+      </div>
+
       {!isAdminView && (
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
@@ -164,20 +239,20 @@ export function MyAssistants({
       )}
 
       <div className="space-y-3">
-        {assistants.length === 0 && (
+        {filtered.length === 0 && (
           <Card className="py-0 shadow-xs">
             <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
               <span className="flex size-10 items-center justify-center rounded-lg bg-muted text-muted-foreground">
                 <Plus className="size-5" aria-hidden />
               </span>
-              <p className="text-[13.5px] font-semibold">No assistants yet</p>
+              <p className="text-[13.5px] font-semibold">No assistants found</p>
               <p className="text-[12px] text-muted-foreground">
-                {isAdminView ? "No assistant accounts found." : "Request an assistant to delegate booth work."}
+                {isAdminView ? "No assistant accounts match your filters." : "Request an assistant to delegate booth work."}
               </p>
             </CardContent>
           </Card>
         )}
-        {assistants.map((a) => (
+        {filtered.map((a) => (
           <Card key={a.id} className="gap-0 py-0 shadow-xs">
             <CardContent className="flex items-center gap-3 p-4">
               <AgentAvatar name={a.fullName} size="md" />
@@ -220,5 +295,37 @@ export function MyAssistants({
         ))}
       </div>
     </div>
+  );
+}
+
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+  tone,
+}: {
+  icon: React.ComponentType<{ className?: string }>;
+  label: string;
+  value: number;
+  tone?: "default" | "success" | "warning" | "danger";
+}) {
+  const toneClasses = {
+    default: "bg-primary-soft text-primary",
+    success: "bg-success-soft text-success-foreground",
+    warning: "bg-warning-soft text-warning-foreground",
+    danger: "bg-destructive-soft text-destructive",
+  };
+  return (
+    <Card className="gap-0 py-0 shadow-xs">
+      <CardContent className="flex items-center gap-3 p-4">
+        <span className={`flex size-9 shrink-0 items-center justify-center rounded-lg ${tone ? toneClasses[tone] : toneClasses.default}`}>
+          <Icon className="size-4.5" aria-hidden />
+        </span>
+        <div>
+          <p className="text-[11.5px] text-muted-foreground">{label}</p>
+          <p className="tnum text-[18px] font-bold tracking-tight">{value}</p>
+        </div>
+      </CardContent>
+    </Card>
   );
 }

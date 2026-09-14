@@ -14,7 +14,7 @@ const ACCEPT = ".xlsx,.xls,.csv";
  */
 export function FileUploader({
   onFile,
-  hint = "Supports .xlsx, .xls, .csv files (Max 100MB)",
+  hint = "Supports .xlsx, .xls, .csv files (Max 1000MB)",
   className,
 }: {
   onFile?: (file: File) => void;

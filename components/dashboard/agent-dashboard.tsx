@@ -207,7 +207,7 @@ export function AgentDashboard({
       <div className="grid gap-4 lg:grid-cols-12">
         <Card className="gap-0 py-0 shadow-xs lg:col-span-4">
           <CardHeader className="flex-row items-center justify-between px-4 pt-4 pb-2 sm:px-5">
-            <CardTitle className="text-[14.5px] font-semibold">My Booths &amp; Locations</CardTitle>
+            <CardTitle className="text-[14.5px] font-semibold">My Booths</CardTitle>
             <Store className="size-4 text-muted-foreground" aria-hidden />
           </CardHeader>
           <CardContent className="space-y-2.5 px-4 pb-4 sm:px-5">

@@ -18,6 +18,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { SMSSender } from "@/components/communications/sms-sender";
 
 export const metadata: Metadata = { title: "Communications" };
 
@@ -53,6 +54,7 @@ export default async function CommunicationsPage() {
       <Tabs defaultValue="send">
         <TabsList variant="line" className="w-full justify-start gap-5 rounded-none border-b bg-transparent p-0">
           <TabsTrigger value="send" className="rounded-none px-1 pb-2.5 text-[13px]">Send Message</TabsTrigger>
+          <TabsTrigger value="sms" className="rounded-none px-1 pb-2.5 text-[13px]">SMS</TabsTrigger>
           <TabsTrigger value="history" className="rounded-none px-1 pb-2.5 text-[13px]">Message History</TabsTrigger>
           <TabsTrigger value="templates" className="rounded-none px-1 pb-2.5 text-[13px]">Templates</TabsTrigger>
         </TabsList>
@@ -131,6 +133,10 @@ export default async function CommunicationsPage() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="sms" className="mt-4">
+          <SMSSender />
         </TabsContent>
 
         <TabsContent value="history" className="mt-4 space-y-3">

@@ -32,6 +32,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { ExportButton } from "@/components/shared/export-button";
 import type { Agent } from "@/types";
 
 const STATUS_TABS = ["all", "active", "suspended", "inactive", "pending"] as const;
@@ -216,6 +217,7 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
                 ))}
               </SelectContent>
             </Select>
+            <ExportButton filename={`agents-${Date.now()}`} rows={filtered.length} label="Export" />
           </div>
         }
         renderMobileCard={(a) => <AgentMobileCard agent={a} />}

@@ -24,8 +24,8 @@ export async function POST(request: NextRequest) {
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "No file provided" }, { status: 400 });
   }
-  if (file.size > 100 * 1024 * 1024) {
-    return NextResponse.json({ error: "File exceeds 100MB limit" }, { status: 413 });
+  if (file.size > 1000 * 1024 * 1024) {
+    return NextResponse.json({ error: "File exceeds 1000MB limit" }, { status: 413 });
   }
 
   try {

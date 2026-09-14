@@ -1,0 +1,195 @@
+"use client";
+
+import * as React from "react";
+import { DollarSign, ArrowLeftRight, RefreshCcw, Check } from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Badge } from "@/components/ui/badge";
+
+interface CurrencyConfig {
+  baseCurrency: "USD" | "ZWG";
+  defaultCurrency: "USD" | "ZWG";
+  autoExchangeRate: boolean;
+  manualRate: number;
+  lastUpdated: string;
+  services: {
+    reconciliation: "USD" | "ZWG" | "switchable";
+    imports: "USD" | "ZWG" | "switchable";
+    reports: "USD" | "ZWG" | "switchable";
+    erp: "USD" | "ZWG" | "switchable";
+    pos: "USD" | "ZWG" | "switchable";
+    invoices: "USD" | "ZWG" | "switchable";
+  };
+}
+
+export function CurrencySettings() {
+  const [config, setConfig] = React.useState<CurrencyConfig>({
+    baseCurrency: "USD",
+    defaultCurrency: "ZWG",
+    autoExchangeRate: false,
+    manualRate: 26.5,
+    lastUpdated: "2026-09-14 08:00",
+    services: {
+      reconciliation: "ZWG",
+      imports: "switchable",
+      reports: "switchable",
+      erp: "switchable",
+      pos: "USD",
+      invoices: "switchable",
+    },
+  });
+
+  const [rbzRate, setRbzRate] = React.useState<number | null>(null);
+  const [fetchingRate, setFetchingRate] = React.useState(false);
+
+  function fetchRbzRate() {
+    setFetchingRate(true);
+    setTimeout(() => {
+      setRbzRate(26.74);
+      setFetchingRate(false);
+      toast.success("RBZ rate fetched", { description: "1 USD = ZiG 26.74 (RBZ — 14 Sep 2026)" });
+    }, 1200);
+  }
+
+  function updateService(service: keyof CurrencyConfig["services"], value: "USD" | "ZWG" | "switchable") {
+    setConfig((c) => ({ ...c, services: { ...c.services, [service]: value } }));
+  }
+
+  function saveConfig() {
+    toast.success("Currency settings saved", {
+      description: `Base: ${config.baseCurrency} · Default: ${config.defaultCurrency} · Rate: 1 USD = ZiG ${config.manualRate}`,
+    });
+  }
+
+  return (
+    <div className="space-y-4">
+      {/* Base & Default Currency */}
+      <div className="grid gap-4 sm:grid-cols-2">
+        <Card className="gap-0 py-0 shadow-xs">
+          <CardHeader className="px-4 pt-4 sm:px-5">
+            <CardTitle className="flex items-center gap-2 text-[14.5px] font-semibold">
+              <DollarSign className="size-4 text-primary" aria-hidden /> Base Currency
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 px-4 pb-4 sm:px-5">
+            <div className="space-y-1.5">
+              <Label className="text-[12.5px]">Base Currency (for accounting)</Label>
+              <Select value={config.baseCurrency} onValueChange={(v) => setConfig((c) => ({ ...c, baseCurrency: v as "USD" | "ZWG" }))}>
+                <SelectTrigger className="h-9 bg-card"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="USD">USD (United States Dollar)</SelectItem>
+                  <SelectItem value="ZWG">ZiG (Zimbabwe Gold)</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[11.5px] text-muted-foreground">All internal calculations use this as the base.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[12.5px]">Default Display Currency</Label>
+              <Select value={config.defaultCurrency} onValueChange={(v) => setConfig((c) => ({ ...c, defaultCurrency: v as "USD" | "ZWG" }))}>
+                <SelectTrigger className="h-9 bg-card"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="USD">USD</SelectItem>
+                  <SelectItem value="ZWG">ZiG</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-[11.5px] text-muted-foreground">What users see by default across the app.</p>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Exchange Rate */}
+        <Card className="gap-0 py-0 shadow-xs">
+          <CardHeader className="px-4 pt-4 sm:px-5">
+            <CardTitle className="flex items-center gap-2 text-[14.5px] font-semibold">
+              <ArrowLeftRight className="size-4 text-primary" aria-hidden /> Exchange Rate
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3 px-4 pb-4 sm:px-5">
+            <div className="flex items-center justify-between">
+              <Label className="text-[12.5px]">Auto-track from RBZ</Label>
+              <Switch
+                checked={config.autoExchangeRate}
+                onCheckedChange={(c) => {
+                  setConfig((cfg) => ({ ...cfg, autoExchangeRate: c }));
+                  if (c) fetchRbzRate();
+                }}
+              />
+            </div>
+            {config.autoExchangeRate && (
+              <div className="flex items-center gap-2 rounded-lg bg-info-soft p-3 text-[12px] text-info-foreground">
+                <RefreshCcw className={`size-3.5 ${fetchingRate ? "animate-spin" : ""}`} aria-hidden />
+                {fetchingRate ? "Fetching RBZ rate..." : `Last fetched: ${config.lastUpdated}`}
+                {!fetchingRate && (
+                  <Button variant="ghost" size="sm" className="h-6 ml-auto text-[11px]" onClick={fetchRbzRate}>
+                    Refresh
+                  </Button>
+                )}
+              </div>
+            )}
+            <div className="space-y-1.5">
+              <Label className="text-[12.5px]">Manual Rate (1 USD = ? ZiG)</Label>
+              <div className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  step="0.01"
+                  value={config.manualRate}
+                  onChange={(e) => setConfig((c) => ({ ...c, manualRate: parseFloat(e.target.value) || 0 }))}
+                  disabled={config.autoExchangeRate}
+                  className="h-9 bg-card"
+                />
+                <Badge variant="outline" className="shrink-0">ZiG</Badge>
+              </div>
+              {rbzRate && (
+                <p className="text-[11.5px] text-muted-foreground">
+                  RBZ official: 1 USD = ZiG {rbzRate.toFixed(2)}
+                </p>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Per-Service Currency */}
+      <Card className="gap-0 py-0 shadow-xs">
+        <CardHeader className="px-4 pt-4 sm:px-5">
+          <CardTitle className="text-[14.5px] font-semibold">Currency by Service</CardTitle>
+          <p className="text-[12px] text-muted-foreground">Define which currency each module uses, or allow switching.</p>
+        </CardHeader>
+        <CardContent className="px-4 pb-4 sm:px-5">
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            {Object.entries(config.services).map(([service, value]) => (
+              <div key={service} className="space-y-1.5">
+                <Label className="text-[12.5px] capitalize">{service}</Label>
+                <Select value={value} onValueChange={(v) => updateService(service as keyof CurrencyConfig["services"], v as "USD" | "ZWG" | "switchable")}>
+                  <SelectTrigger className="h-9 bg-card"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="USD">USD Only</SelectItem>
+                    <SelectItem value="ZWG">ZiG Only</SelectItem>
+                    <SelectItem value="switchable">Switchable</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+
+      <div className="flex justify-end">
+        <Button className="h-9 gap-1.5 text-[13px]" onClick={saveConfig}>
+          <Check className="size-4" aria-hidden /> Save Currency Settings
+        </Button>
+      </div>
+    </div>
+  );
+}

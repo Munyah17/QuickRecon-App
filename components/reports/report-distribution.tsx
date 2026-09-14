@@ -13,6 +13,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { ExportButton } from "@/components/shared/export-button";
 import { formatDate, formatPeriod, moduleName } from "@/lib/format";
 import type { DistributionJob } from "@/types";
 
@@ -194,29 +195,39 @@ export function ReportDistribution({ history }: { history: DistributionJob[] }) 
               Clear
             </Button>
           )}
-          <Button
-            variant="outline"
-            className="h-9 gap-1.5 text-[13px] ml-auto"
-            onClick={() => toast.success("History exported", { description: `${filteredHistory.length} records exported as XLSX` })}
-          >
-            <Download className="size-4" aria-hidden /> Export History
-          </Button>
+          <ExportButton
+            filename={`distribution-history-${Date.now()}`}
+            rows={filteredHistory.length}
+            label="Export History"
+            className="ml-auto"
+          />
         </div>
         <Card className="gap-0 py-0 shadow-xs">
-          <CardContent className="divide-y p-0">
-            {filteredHistory.map((d) => (
-              <div key={d.id} className="flex flex-wrap items-center gap-3 px-4 py-3.5 sm:px-5">
-                <div className="min-w-0 flex-1">
-                  <p className="text-[13.5px] font-medium">
-                    {formatPeriod(d.period)} — {moduleName(d.module)}
-                  </p>
-                  <p className="text-[12px] text-muted-foreground">
-                    {d.recipientsCount} recipients · {d.channels.join(" + ")} · {formatDate(d.createdAt, "dd MMM yyyy HH:mm")}
-                  </p>
-                </div>
-                <StatusBadge status={d.status} />
-              </div>
-            ))}
+          <CardContent className="overflow-x-auto p-0">
+            <table className="w-full text-[13px]">
+              <thead>
+                <tr className="border-b bg-muted/50 text-left text-[11.5px] font-semibold text-muted-foreground uppercase">
+                  <th className="px-4 py-2.5">Period</th>
+                  <th className="px-4 py-2.5">Module</th>
+                  <th className="px-4 py-2.5">Recipients</th>
+                  <th className="px-4 py-2.5">Channels</th>
+                  <th className="px-4 py-2.5">Sent At</th>
+                  <th className="px-4 py-2.5">Status</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {filteredHistory.map((d) => (
+                  <tr key={d.id} className="hover:bg-surface-hover">
+                    <td className="px-4 py-3 font-medium">{formatPeriod(d.period)}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{moduleName(d.module)}</td>
+                    <td className="tnum px-4 py-3">{d.recipientsCount}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{d.channels.join(" + ").toUpperCase()}</td>
+                    <td className="px-4 py-3 text-muted-foreground">{formatDate(d.createdAt, "dd MMM yyyy HH:mm")}</td>
+                    <td className="px-4 py-3"><StatusBadge status={d.status} /></td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
             {filteredHistory.length === 0 && (
               <p className="py-10 text-center text-[13px] text-muted-foreground">
                 No distributions in this date range.

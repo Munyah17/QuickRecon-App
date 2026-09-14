@@ -13,6 +13,11 @@ import {
   CircleCheck,
   CircleX,
   Users,
+  Send,
+  FileDown,
+  Mail,
+  MessageSquare,
+  Pencil,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -35,6 +40,17 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { AgentAvatar } from "@/components/shared/agent-avatar";
 import { MoneyValue } from "@/components/shared/money-value";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { ExportButton } from "@/components/shared/export-button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Card, CardContent } from "@/components/ui/card";
 import { moduleName } from "@/lib/format";
 import { useWorkspace } from "@/components/workspace-provider";
@@ -45,9 +61,39 @@ const STATUS_FILTERS = ["all", "success", "warning", "attention"] as const;
 export function BatchReview({ rows }: { rows: Reconciliation[] }) {
   const { module } = useWorkspace();
   const [statusFilter, setStatusFilter] = React.useState<string>("all");
+  const [editData, setEditData] = React.useState<Record<string, Reconciliation>>({});
+  const [editingCell, setEditingCell] = React.useState<{ id: string; key: string } | null>(null);
+  const [editValue, setEditValue] = React.useState("");
+  const [sendAgent, setSendAgent] = React.useState<Reconciliation | null>(null);
+  const [sending, setSending] = React.useState(false);
+
+  const startEdit = (id: string, key: string, val: number) => {
+    setEditingCell({ id, key });
+    setEditValue(String(val));
+  };
+
+  const saveEdit = () => {
+    if (!editingCell) return;
+    const { id, key } = editingCell;
+    setEditData((d) => ({
+      ...d,
+      [id]: {
+        ...(d[id] ?? rows.find((r) => r.id === id)!),
+        [key]: parseFloat(editValue) || 0,
+      },
+    }));
+    setEditingCell(null);
+  };
+
+  // Merge edit overrides into rows
+  const mergedRows = React.useMemo(() =>
+    rows.map((r) => editData[r.id] ? { ...r, ...editData[r.id] } : r),
+    [rows, editData]
+  );
+
   const scoped = React.useMemo(
-    () => (module === "all" ? rows : rows.filter((r) => r.module === module)),
-    [rows, module]
+    () => (module === "all" ? mergedRows : mergedRows.filter((r) => r.module === module)),
+    [mergedRows, module]
   );
   const filtered = React.useMemo(
     () =>
@@ -100,27 +146,51 @@ export function BatchReview({ rows }: { rows: Reconciliation[] }) {
         accessorKey: "insurance",
         header: "Insurance (ZiG)",
         cell: ({ row }) => (
-          <span className="tnum block text-right">
-            {(row.original.insurance as number).toLocaleString()}
-          </span>
+          <EditableCell
+            id={row.original.id}
+            value={row.original.insurance}
+            field="insurance"
+            editing={editingCell}
+            editValue={editValue}
+            onStartEdit={startEdit}
+            onSave={saveEdit}
+            onCancel={() => setEditingCell(null)}
+            onValueChange={setEditValue}
+          />
         ),
       },
       {
         accessorKey: "zinara",
         header: "ZINARA (ZiG)",
         cell: ({ row }) => (
-          <span className="tnum block text-right">
-            {(row.original.zinara as number).toLocaleString()}
-          </span>
+          <EditableCell
+            id={row.original.id}
+            value={row.original.zinara}
+            field="zinara"
+            editing={editingCell}
+            editValue={editValue}
+            onStartEdit={startEdit}
+            onSave={saveEdit}
+            onCancel={() => setEditingCell(null)}
+            onValueChange={setEditValue}
+          />
         ),
       },
       {
         accessorKey: "deposits",
         header: "Deposits (ZiG)",
         cell: ({ row }) => (
-          <span className="tnum block text-right">
-            {(row.original.deposits as number).toLocaleString()}
-          </span>
+          <EditableCell
+            id={row.original.id}
+            value={row.original.deposits}
+            field="deposits"
+            editing={editingCell}
+            editValue={editValue}
+            onStartEdit={startEdit}
+            onSave={saveEdit}
+            onCancel={() => setEditingCell(null)}
+            onValueChange={setEditValue}
+          />
         ),
       },
       {
@@ -161,6 +231,12 @@ export function BatchReview({ rows }: { rows: Reconciliation[] }) {
               </DropdownMenuItem>
               <DropdownMenuItem className="gap-2" onSelect={() => toast.success("Agent reconciliation queued for reprocessing")}>
                 <RotateCcw className="size-4" aria-hidden /> Reprocess
+              </DropdownMenuItem>
+              <DropdownMenuItem className="gap-2" onSelect={() => toast.success("Report generated", { description: `PDF + CSV for ${row.original.agentName} (${row.original.agentId})` })}>
+                <FileDown className="size-4" aria-hidden /> Generate Report
+              </DropdownMenuItem>
+              <DropdownMenuItem className="gap-2" onSelect={() => setSendAgent(row.original)}>
+                <Send className="size-4" aria-hidden /> Send to Agent
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -216,15 +292,11 @@ export function BatchReview({ rows }: { rows: Reconciliation[] }) {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            className="h-9 gap-1.5 text-[13px]"
-            onClick={() => toast.success("Report exported", { description: `${filtered.length} reconciliation records exported as XLSX` })}
-          >
-            <Download className="size-4" aria-hidden />
-            <span className="hidden sm:inline">Download Report</span>
-            <span className="sm:hidden">Export</span>
-          </Button>
+          <ExportButton
+            filename={`reconciliation-${Date.now()}`}
+            rows={filtered.length}
+            label="Export"
+          />
           <ConfirmDialog
             trigger={
               <Button className="h-9 gap-1.5 text-[13px]">
@@ -252,6 +324,25 @@ export function BatchReview({ rows }: { rows: Reconciliation[] }) {
         initialSorting={[{ id: "status", desc: true }]}
         renderMobileCard={(r) => <ReconMobileCard r={r} />}
       />
+
+      {sendAgent && (
+        <SendToAgentDialog
+          agent={sendAgent}
+          sending={sending}
+          onClose={() => { setSendAgent(null); setSending(false); }}
+          onSend={async (channels) => {
+            setSending(true);
+            // Simulate API call for sending report
+            await new Promise((r) => setTimeout(r, 1500));
+            const channelLabels = channels.map((c) => c === "email" ? "Email" : "WhatsApp").join(" + ");
+            toast.success("Report sent to agent", {
+              description: `${sendAgent.agentName} (${sendAgent.agentId}) — PDF + CSV via ${channelLabels}`,
+            });
+            setSending(false);
+            setSendAgent(null);
+          }}
+        />
+      )}
     </div>
   );
 }
@@ -321,5 +412,125 @@ function ReconMobileCard({ r }: { r: Reconciliation }) {
         </div>
       </div>
     </Link>
+  );
+}
+
+function EditableCell({
+  id,
+  value,
+  field,
+  editing,
+  editValue,
+  onStartEdit,
+  onSave,
+  onCancel,
+  onValueChange,
+}: {
+  id: string;
+  value: number;
+  field: string;
+  editing: { id: string; key: string } | null;
+  editValue: string;
+  onStartEdit: (id: string, key: string, val: number) => void;
+  onSave: () => void;
+  onCancel: () => void;
+  onValueChange: (v: string) => void;
+}) {
+  const active = editing && editing.id === id && editing.key === field;
+  if (active) {
+    return (
+      <div className="flex items-center justify-end gap-1">
+        <Input
+          autoFocus
+          type="number"
+          value={editValue}
+          onChange={(e) => onValueChange(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") onSave();
+            if (e.key === "Escape") onCancel();
+          }}
+          onBlur={onSave}
+          className="h-7 w-28 bg-card text-right text-[13px]"
+        />
+      </div>
+    );
+  }
+  return (
+    <button
+      onClick={() => onStartEdit(id, field, value)}
+      className="group tnum block w-full text-right text-[13px] hover:text-primary"
+      title="Click to edit"
+    >
+      {value.toLocaleString()}
+      <Pencil className="ml-1.5 inline size-3 opacity-0 group-hover:opacity-50" aria-hidden />
+    </button>
+  );
+}
+
+function SendToAgentDialog({
+  agent,
+  sending,
+  onClose,
+  onSend,
+}: {
+  agent: Reconciliation;
+  sending: boolean;
+  onClose: () => void;
+  onSend: (channels: ("email" | "whatsapp")[]) => Promise<void>;
+}) {
+  const [channels, setChannels] = React.useState<("email" | "whatsapp")[]>(["email", "whatsapp"]);
+
+  const toggleChannel = (c: "email" | "whatsapp") =>
+    setChannels((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[420px]">
+        <DialogHeader>
+          <DialogTitle className="text-[15px]">Send Report to {agent.agentName}</DialogTitle>
+          <DialogDescription className="text-[12.5px]">
+            Deliver the individual reconciliation report (PDF + CSV) to {agent.agentId}.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3 py-2">
+          <div className="rounded-xl border p-3 text-[12.5px]">
+            <p className="font-medium">{agent.agentName}</p>
+            <p className="text-muted-foreground">{agent.agentId} · {moduleName(agent.module)}</p>
+            <p className="mt-1 text-muted-foreground">Period: {agent.period}</p>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-[12.5px]">Delivery Channels</Label>
+            <label className="flex items-center gap-2.5 text-[13px]">
+              <Checkbox checked={channels.includes("email")} onCheckedChange={() => toggleChannel("email")} />
+              <Mail className="size-4 text-muted-foreground" aria-hidden /> Email
+            </label>
+            <label className="flex items-center gap-2.5 text-[13px]">
+              <Checkbox checked={channels.includes("whatsapp")} onCheckedChange={() => toggleChannel("whatsapp")} />
+              <MessageSquare className="size-4 text-muted-foreground" aria-hidden /> WhatsApp
+            </label>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={sending}>
+            Cancel
+          </Button>
+          <Button
+            disabled={channels.length === 0 || sending}
+            onClick={() => onSend(channels)}
+            className="gap-1.5"
+          >
+            {sending ? (
+              <>
+                <RotateCcw className="size-4 animate-spin" aria-hidden /> Sending…
+              </>
+            ) : (
+              <>
+                <Send className="size-4" aria-hidden /> Send Report
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
