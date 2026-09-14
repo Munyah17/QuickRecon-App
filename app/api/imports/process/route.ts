@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 import { getSession } from "@/lib/auth/session";
 import { permissionsForRole } from "@/lib/auth/permissions";
 import { runReconciliationEngine } from "@/lib/reconciliation/engine";
+import { generateAgentDocuments, documentToCSV } from "@/lib/reconciliation/document";
 import { getAgents, getIdentityAliases } from "@/lib/data";
 import type { ModuleCode } from "@/types";
 import type { SourceRow } from "@/lib/reconciliation/types";
@@ -57,13 +58,51 @@ export async function POST(request: NextRequest) {
       module: moduleCode,
       period,
       sheets,
-      agents: agents.map((a) => ({ id: a.id, fullName: a.fullName })),
+      agents: agents.map((a) => ({ id: a.id, fullName: a.fullName, openingPosition: 0 })),
       aliases,
     });
 
+    const batchDocs = generateAgentDocuments(output);
+
+    // Persist staged documents to Supabase when configured.
+    const { createServiceClient } = await import("@/lib/supabase/server");
+    const sb = await createServiceClient();
+    if (sb) {
+      await sb.from("reconciliation_batches").insert({
+        id: batchDocs.batchId,
+        module: batchDocs.module,
+        period: batchDocs.period,
+        generated_at: batchDocs.generatedAt,
+        generated_by: session.user.id,
+        status: "pending_review",
+        source_batch_id: `IMP-${period.replace("-", "")}-${moduleCode === "enpassent" ? "ENP" : "ECN"}`,
+      });
+
+      await sb.from("reconciliation_documents").insert(
+        batchDocs.documents.map((d) => ({
+          batch_id: batchDocs.batchId,
+          agent_id: d.agentId,
+          agent_name: d.agentName,
+          module: d.module,
+          period: d.period,
+          currency: d.currency,
+          opening_position: d.openingPosition,
+          insurance: d.insurance,
+          zinara: d.zinara,
+          deposits: d.deposits,
+          adjustments: d.adjustments,
+          closing_position: d.closingPosition,
+          status: d.status,
+          csv_text: documentToCSV(d),
+          created_at: d.generatedAt,
+        }))
+      );
+    }
+
     return NextResponse.json({
-      batchId: `IMP-${period.replace("-", "")}-${moduleCode === "enpassent" ? "ENP" : "ECN"}`,
+      batchId: batchDocs.batchId,
       ...output,
+      documents: batchDocs.documents,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Processing failed";

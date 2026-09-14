@@ -379,7 +379,7 @@ function BoothsSection({
     <Card className="gap-0 py-0 shadow-xs">
       {!headerLess && (
         <CardHeader className="flex-row items-center justify-between px-4 pt-4 sm:px-5">
-          <CardTitle className="text-[14.5px] font-semibold">Booths / Locations</CardTitle>
+          <CardTitle className="text-[14.5px] font-semibold">Booths</CardTitle>
           {canManage && (
             <Button size="sm" className="h-8 gap-1.5 text-[12.5px]">
               <Plus className="size-3.5" aria-hidden /> Add Booth

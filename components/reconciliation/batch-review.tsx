@@ -18,6 +18,7 @@ import {
   Mail,
   MessageSquare,
   Pencil,
+  Phone,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -332,14 +333,30 @@ export function BatchReview({ rows }: { rows: Reconciliation[] }) {
           onClose={() => { setSendAgent(null); setSending(false); }}
           onSend={async (channels) => {
             setSending(true);
-            // Simulate API call for sending report
-            await new Promise((r) => setTimeout(r, 1500));
-            const channelLabels = channels.map((c) => c === "email" ? "Email" : "WhatsApp").join(" + ");
-            toast.success("Report sent to agent", {
-              description: `${sendAgent.agentName} (${sendAgent.agentId}) — PDF + CSV via ${channelLabels}`,
-            });
-            setSending(false);
-            setSendAgent(null);
+            try {
+              const res = await fetch("/api/reconciliation/send", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  batchId: sendAgent.id,
+                  agentId: sendAgent.agentId,
+                  channels,
+                }),
+              });
+              const data = await res.json();
+              if (data.success) {
+                toast.success("Report sent to agent", {
+                  description: `${sendAgent.agentName} (${sendAgent.agentId}) — ${data.delivered.join(" + ") || "queued"}`,
+                });
+              } else {
+                toast.error("Send failed", { description: data.error || data.failures?.join(", ") });
+              }
+            } catch {
+              toast.error("Send failed");
+            } finally {
+              setSending(false);
+              setSendAgent(null);
+            }
           }}
         />
       )}
@@ -476,11 +493,11 @@ function SendToAgentDialog({
   agent: Reconciliation;
   sending: boolean;
   onClose: () => void;
-  onSend: (channels: ("email" | "whatsapp")[]) => Promise<void>;
+  onSend: (channels: ("email" | "whatsapp" | "sms")[]) => Promise<void>;
 }) {
-  const [channels, setChannels] = React.useState<("email" | "whatsapp")[]>(["email", "whatsapp"]);
+  const [channels, setChannels] = React.useState<("email" | "whatsapp" | "sms")[]>(["email", "whatsapp"]);
 
-  const toggleChannel = (c: "email" | "whatsapp") =>
+  const toggleChannel = (c: "email" | "whatsapp" | "sms") =>
     setChannels((prev) => (prev.includes(c) ? prev.filter((x) => x !== c) : [...prev, c]));
 
   return (
@@ -507,6 +524,10 @@ function SendToAgentDialog({
             <label className="flex items-center gap-2.5 text-[13px]">
               <Checkbox checked={channels.includes("whatsapp")} onCheckedChange={() => toggleChannel("whatsapp")} />
               <MessageSquare className="size-4 text-muted-foreground" aria-hidden /> WhatsApp
+            </label>
+            <label className="flex items-center gap-2.5 text-[13px]">
+              <Checkbox checked={channels.includes("sms")} onCheckedChange={() => toggleChannel("sms")} />
+              <Phone className="size-4 text-muted-foreground" aria-hidden /> SMS
             </label>
           </div>
         </div>
