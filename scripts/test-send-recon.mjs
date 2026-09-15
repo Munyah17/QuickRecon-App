@@ -8,7 +8,7 @@ import { createRequire } from "module";
 import { readFileSync } from "fs";
 const require = createRequire(import.meta.url);
 const nodemailer = require("nodemailer");
-const XLSX = require("xlsx");
+const ExcelJS = require("exceljs");
 
 // --- env -------------------------------------------------------------------
 const env = Object.fromEntries(
@@ -67,43 +67,118 @@ const doc = {
 
 const BANK_CHANNELS = ["Ecocash", "STEWARD", "NBS", "Transfers", "USD", "CBZ", "NMB"];
 
-// --- workbook: Sheet1 = Summary dashboard, Sheet2 = Consolidated A + txns ----
-function buildXLSX(d) {
-  const summary = [
-    ["QuickRecon — Consolidated Revenue Report"], [],
-    ["Agent", d.agentName], ["Agent ID", d.agentId], ["Module", "Enpassent"],
-    ["Period", d.period], ["Currency", d.currency],
-    ["Generated", new Date().toISOString()],
-    ["Status", "Variance — review"], [],
-    ["Metric", `Amount (${d.currency})`],
-    ["Opening Variance", d.openingVariance], ["Insurance", d.insurance],
-    ["Premium Cover", d.premiumCover], ["Commission", d.commission],
-    ["Net Insurance", d.netInsurance], ["Zinara", d.zinara],
-    ["Total Expected", d.totalExpected], ["Total Deposits", d.deposits],
-    ["Alterations", d.adjustments], ["Closing Variance", d.closingVariance], [],
-    ["Deposit Channels", ""],
-    ...Object.entries(d.bankDeposits).filter(([, v]) => v !== 0), [],
-    ["Summary", `A variance of ${d.currency} ${d.closingVariance.toLocaleString()} was detected. Please review the detail below.`],
-    [],
-    ["DISCLAIMER", "MOCK DATA for testing only — not a real statement. Live data is pushed at launch."],
-  ];
-  const ws1 = XLSX.utils.aoa_to_sheet(summary);
-  ws1["!cols"] = [{ wch: 24 }, { wch: 60 }];
+// --- workbook: Sheet1 = styled Summary dashboard, Sheet2 = Consolidated A ---
+async function buildXLSX(d) {
+  const wb = new ExcelJS.Workbook();
+  wb.creator = "QuickRecon App";
+  const NAVY="FF0F2B4C", BLUE="FF1D4ED8", LBLUE="FFEFF6FF", GREEN="FF16A34A",
+    GREEN_BG="FFF0FDF4", AMBER="FFD97706", AMBER_BG="FFFFFBEB", RED="FFDC2626",
+    RED_BG="FFFEF2F2", GREY="FF6B7280", BORDER="FFE5E7EB";
+  const thin = { style: "thin", color: { argb: BORDER } };
+  const box = { top: thin, left: thin, bottom: thin, right: thin };
+  const statusBg = d.closingVariance === 0 ? GREEN_BG : RED_BG;
+  const statusColor = d.closingVariance === 0 ? GREEN : RED;
 
-  const detail = [
-    ["Currency","Agent Name","Opening Variance","Insurance","Premium Cover","Commission","Net Insurance","Zinara","Pds","Total Expected",...BANK_CHANNELS,"Alterations","Closing Variance"],
-    [d.currency,d.agentName,d.openingVariance,d.insurance,d.premiumCover,d.commission,d.netInsurance,d.zinara,d.pds||"",d.totalExpected,...BANK_CHANNELS.map(b=>d.bankDeposits[b]??""),d.adjustments||"",d.closingVariance],
-    [], ["Transaction Detail"],
-    ["Date","Agent","Amount","USD-ZWG Conversion","Bank/Account","Narration/Ref","Reference"],
-    ...d.transactions.map(t=>[t.date,t.agentName,t.amount,"",t.bankAccount,t.narration,t.reference]),
-  ];
-  const ws2 = XLSX.utils.aoa_to_sheet(detail);
-  ws2["!cols"] = [{wch:12},{wch:26},{wch:12},{wch:12},{wch:18},{wch:24},{wch:14}];
+  const ws = wb.addWorksheet("Summary", { views: [{ showGridLines: false }] });
+  ws.columns = [{width:3},{width:26},{width:18},{width:18},{width:18},{width:18},{width:18},{width:3}];
 
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws1, "Summary");
-  XLSX.utils.book_append_sheet(wb, ws2, "Consolidated A");
-  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" });
+  ws.mergeCells("B2:G2");
+  const t = ws.getCell("B2");
+  t.value = "QUICKRECON — CONSOLIDATED REVENUE REPORT";
+  t.font = { bold: true, size: 16, color: { argb: "FFFFFFFF" } };
+  t.alignment = { vertical: "middle", horizontal: "center" };
+  ws.getRow(2).height = 34;
+  for (const c of "BCDEFG") ws.getCell(`${c}2`).fill = { type:"pattern",pattern:"solid",fgColor:{argb:NAVY} };
+
+  ws.mergeCells("B3:G3");
+  const s = ws.getCell("B3");
+  s.value = `${d.agentName} (${d.agentId})  ·  ${d.module}  ·  Period ${d.period}  ·  ${d.currency}`;
+  s.font = { size: 11, color: { argb: GREY } };
+  s.alignment = { vertical: "middle", horizontal: "center" };
+
+  ws.mergeCells("B5:G5");
+  const b = ws.getCell("B5");
+  b.value = d.closingVariance === 0 ? "RECONCILED" : "VARIANCE — REVIEW";
+  b.font = { bold: true, size: 12, color: { argb: statusColor } };
+  b.alignment = { vertical: "middle", horizontal: "center" };
+  ws.getRow(5).height = 26;
+  for (const c of "BCDEFG") { ws.getCell(`${c}5`).fill = { type:"pattern",pattern:"solid",fgColor:{argb:statusBg} }; ws.getCell(`${c}5`).border = box; }
+
+  const kpis = [
+    ["Insurance", d.insurance, BLUE, LBLUE], ["Commission", d.commission, BLUE, LBLUE],
+    ["Net Insurance", d.netInsurance, BLUE, LBLUE], ["Zinara", d.zinara, BLUE, LBLUE],
+    ["Total Expected", d.totalExpected, NAVY, "FFF1F5F9"], ["Total Deposits", d.deposits, GREEN, GREEN_BG],
+    ["Alterations", d.adjustments, GREY, "FFF9FAFB"], ["Closing Variance", d.closingVariance, d.closingVariance===0?GREEN:RED, d.closingVariance===0?GREEN_BG:RED_BG],
+    ["Opening Variance", d.openingVariance, GREY, "FFF9FAFB"],
+  ];
+  let row = 7;
+  for (let i = 0; i < kpis.length; i += 3) {
+    const cards = kpis.slice(i, i + 3);
+    for (let j = 0; j < 3; j++) {
+      const col = 2 + j * 2, k = cards[j];
+      if (!k) continue;
+      ws.mergeCells(row, col, row, col + 1);
+      const lc = ws.getCell(row, col);
+      lc.value = k[0].toUpperCase();
+      lc.font = { size: 9, bold: true, color: { argb: GREY } };
+      lc.alignment = { horizontal: "center", vertical: "middle" };
+      lc.fill = { type:"pattern",pattern:"solid",fgColor:{argb:k[3]} };
+      lc.border = box; ws.getCell(row, col + 1).border = box;
+      ws.mergeCells(row + 1, col, row + 1, col + 1);
+      const vc = ws.getCell(row + 1, col);
+      vc.value = k[1]; vc.numFmt = "#,##0.00";
+      vc.font = { size: 15, bold: true, color: { argb: k[2] } };
+      vc.alignment = { horizontal: "center", vertical: "middle" };
+      vc.fill = { type:"pattern",pattern:"solid",fgColor:{argb:k[3]} };
+      vc.border = box; ws.getCell(row + 1, col + 1).border = box;
+    }
+    ws.getRow(row).height = 18; ws.getRow(row + 1).height = 30;
+    row += 3;
+  }
+
+  const chans = Object.entries(d.bankDeposits).filter(([,v]) => v !== 0);
+  if (chans.length) {
+    row += 1;
+    ws.mergeCells(row, 2, row, 7);
+    const h = ws.getCell(row, 2);
+    h.value = "DEPOSIT CHANNELS"; h.font = { size: 10, bold: true, color: { argb: NAVY } };
+    row += 1;
+    const max = Math.max(...chans.map(([,v]) => v), 1);
+    for (const [name, value] of chans) {
+      const nc = ws.getCell(row, 2); nc.value = name;
+      nc.font = { size: 10, color: { argb: "FF374151" } }; nc.border = box;
+      const span = Math.max(1, Math.round((value / max) * 5));
+      for (let c = 3; c < 3 + span; c++)
+        ws.getCell(row, c).fill = { type:"pattern",pattern:"solid",fgColor:{argb:BLUE} };
+      const vc = ws.getCell(row, 7); vc.value = value; vc.numFmt = "#,##0.00";
+      vc.font = { size: 10, bold: true, color: { argb: NAVY } };
+      vc.alignment = { horizontal: "right" }; vc.border = box;
+      ws.getRow(row).height = 18; row += 1;
+    }
+  }
+  row += 2;
+  ws.mergeCells(row, 2, row, 7);
+  const n = ws.getCell(row, 2);
+  n.value = "MOCK DATA for testing only — not a real statement. Live data is pushed at launch.";
+  n.font = { size: 9, italic: true, color: { argb: AMBER } };
+  n.alignment = { horizontal: "left", wrapText: true };
+  ws.getRow(row).height = 28;
+
+  const ws2 = wb.addWorksheet("Consolidated A");
+  ws2.addRow(["Currency","Agent Name","Opening Variance","Insurance","Premium Cover","Commission","Net Insurance","Zinara","Pds","Total Expected",...BANK_CHANNELS,"Alterations","Closing Variance"]);
+  ws2.addRow([d.currency,d.agentName,d.openingVariance,d.insurance,d.premiumCover,d.commission,d.netInsurance,d.zinara,d.pds||"",d.totalExpected,...BANK_CHANNELS.map(ch=>d.bankDeposits[ch]??""),d.adjustments||"",d.closingVariance]);
+  ws2.getRow(1).eachCell(c=>{c.font={bold:true,size:10,color:{argb:"FFFFFFFF"}};c.fill={type:"pattern",pattern:"solid",fgColor:{argb:NAVY}};c.border=box;});
+  ws2.getRow(2).eachCell(c=>{c.border=box;if(typeof c.value==="number")c.numFmt="#,##0.00";});
+  ws2.columns.forEach((c,i)=>c.width=i===1?24:14);
+  ws2.addRow([]);
+  ws2.addRow(["Transaction Detail"]).getCell(1).font={bold:true,size:11,color:{argb:NAVY}};
+  const th = ws2.addRow(["Date","Agent","Amount","USD-ZWG Conversion","Bank/Account","Narration/Ref","Reference"]);
+  th.eachCell(c=>{c.font={bold:true,size:9,color:{argb:"FF374151"}};c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFF3F4F6"}};c.border=box;});
+  for (const tx of d.transactions) {
+    const r = ws2.addRow([tx.date,tx.agentName,tx.amount,"",tx.bankAccount,tx.narration,tx.reference]);
+    r.eachCell(c=>c.border=box);
+  }
+  return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
 // --- branded HTML ------------------------------------------------------------
@@ -164,7 +239,7 @@ function emailHTML(d) {
 }
 
 // --- send --------------------------------------------------------------------
-const xlsx = buildXLSX(doc);
+const xlsx = await buildXLSX(doc);
 const tx = nodemailer.createTransport({
   host: env.SMTP_HOST, port: Number(env.SMTP_PORT ?? 465),
   secure: env.SMTP_SECURE === "true",

@@ -144,86 +144,223 @@ export function documentToCSV(doc: AgentReconDocument): string {
 }
 
 /**
- * Produces the client-specified XLSX workbook. Worksheet 1 = "Summary"
- * dashboard (KPIs + channel breakdown); worksheet 2 = "Consolidated A"
- * (the real 2-row report) followed by the transaction detail below it,
- * matching the layout of the delivered sample files.
+ * Produces the client-specified XLSX workbook via ExcelJS.
+ * Worksheet 1 "Summary" — styled dashboard: navy title band, agent info,
+ * colour-coded KPI cards, deposit-channel bar chart drawn with cell fills,
+ * and a status banner. Worksheet 2 "Consolidated A" — the real 2-row
+ * report plus transaction detail, matching the delivered sample layout.
  */
 export async function documentToXLSX(doc: AgentReconDocument): Promise<Buffer> {
-  const XLSX = await import("xlsx");
+  const ExcelJS = await import("exceljs");
+  const wb = new ExcelJS.default.Workbook();
+  wb.creator = "QuickRecon App";
+  wb.created = new Date();
 
+  const NAVY = "FF0F2B4C";
+  const BLUE = "FF1D4ED8";
+  const LBLUE = "FFEFF6FF";
+  const GREEN = "FF16A34A";
+  const GREEN_BG = "FFF0FDF4";
+  const AMBER = "FFD97706";
+  const AMBER_BG = "FFFFFBEB";
+  const RED = "FFDC2626";
+  const RED_BG = "FFFEF2F2";
+  const GREY = "FF6B7280";
+  const BORDER = "FFE5E7EB";
+
+  const thin = { style: "thin" as const, color: { argb: BORDER } };
+  const box = { top: thin, left: thin, bottom: thin, right: thin };
+
+  const statusColor = doc.status === "success" ? GREEN : doc.status === "warning" ? AMBER : RED;
+  const statusBg = doc.status === "success" ? GREEN_BG : doc.status === "warning" ? AMBER_BG : RED_BG;
   const statusLabel =
-    doc.status === "success" ? "Reconciled" : doc.status === "warning" ? "Variance — review" : "Attention required";
+    doc.status === "success" ? "RECONCILED" : doc.status === "warning" ? "VARIANCE — REVIEW" : "ATTENTION REQUIRED";
 
-  // Sheet 1 — summary dashboard
-  const summaryRows: (string | number)[][] = [
-    ["QuickRecon — Consolidated Revenue Report"],
-    [],
-    ["Agent", doc.agentName],
-    ["Agent ID", doc.agentId],
-    ["Module", doc.module],
-    ["Period", doc.period],
-    ["Currency", doc.currency],
-    ["Generated", doc.generatedAt],
-    ["Status", statusLabel],
-    [],
-    ["Metric", `Amount (${doc.currency})`],
-    ["Opening Variance", doc.openingVariance],
-    ["Insurance", doc.insurance],
-    ["Premium Cover", doc.premiumCover],
-    ["Commission", doc.commission],
-    ["Net Insurance", doc.netInsurance],
-    ["Zinara", doc.zinara],
-    ["Pds", doc.pds],
-    ["Total Expected", doc.totalExpected],
-    ["Total Deposits", doc.deposits],
-    ["Alterations", doc.adjustments],
-    ["Closing Variance", doc.closingVariance],
-    [],
-    ["Deposit Channels", ""],
-    ...BANK_CHANNELS.filter((b) => (doc.bankDeposits[b] ?? 0) !== 0).map((b) => [
-      b,
-      doc.bankDeposits[b] ?? 0,
-    ]),
-    [],
-    ["Summary", doc.summaryText],
+  // ------------------------------------------------------------------
+  // Sheet 1 — Summary dashboard
+  // ------------------------------------------------------------------
+  const ws = wb.addWorksheet("Summary", {
+    views: [{ showGridLines: false }],
+  });
+  ws.columns = [
+    { width: 3 }, { width: 26 }, { width: 18 }, { width: 18 },
+    { width: 18 }, { width: 18 }, { width: 18 }, { width: 3 },
   ];
-  const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
-  wsSummary["!cols"] = [{ wch: 24 }, { wch: 42 }];
 
-  // Sheet 2 — Consolidated A (2-row real format) + transaction detail
-  const bankCols = BANK_CHANNELS.map((b) => doc.bankDeposits[b] ?? "");
-  const detailRows: (string | number)[][] = [
-    [
-      "Currency", "Agent Name", "Opening Variance", "Insurance", "Premium Cover",
-      "Commission", "Net Insurance", "Zinara", "Pds", "Total Expected",
-      ...BANK_CHANNELS, "Alterations", "Closing Variance",
-    ],
-    [
-      doc.currency, doc.agentName, doc.openingVariance, doc.insurance,
-      doc.premiumCover, doc.commission, doc.netInsurance, doc.zinara,
-      doc.pds === 0 ? "" : doc.pds, doc.totalExpected, ...bankCols,
-      doc.adjustments === 0 ? "" : doc.adjustments, doc.closingVariance,
-    ],
-    [],
-    ["Transaction Detail"],
-    ["Date", "Agent", "Amount", "USD Amount", "USD-ZWG Conversion", "Bank/Account", "Narration/Ref", "Reference"],
-    ...doc.transactions.map((t) => [
+  // Title band
+  ws.mergeCells("B2:G2");
+  const title = ws.getCell("B2");
+  title.value = "QUICKRECON — CONSOLIDATED REVENUE REPORT";
+  title.font = { bold: true, size: 16, color: { argb: "FFFFFFFF" } };
+  title.alignment = { vertical: "middle", horizontal: "center" };
+  ws.getRow(2).height = 34;
+  for (const c of ["B", "C", "D", "E", "F", "G"]) {
+    ws.getCell(`${c}2`).fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
+  }
+
+  ws.mergeCells("B3:G3");
+  const sub = ws.getCell("B3");
+  sub.value = `${doc.agentName} (${doc.agentId})  ·  ${doc.module}  ·  Period ${doc.period}  ·  ${doc.currency}`;
+  sub.font = { size: 11, color: { argb: GREY } };
+  sub.alignment = { vertical: "middle", horizontal: "center" };
+  ws.getRow(3).height = 22;
+
+  // Status banner
+  ws.mergeCells("B5:G5");
+  const banner = ws.getCell("B5");
+  banner.value = statusLabel;
+  banner.font = { bold: true, size: 12, color: { argb: statusColor } };
+  banner.alignment = { vertical: "middle", horizontal: "center" };
+  ws.getRow(5).height = 26;
+  for (const c of ["B", "C", "D", "E", "F", "G"]) {
+    ws.getCell(`${c}5`).fill = { type: "pattern", pattern: "solid", fgColor: { argb: statusBg } };
+    ws.getCell(`${c}5`).border = box;
+  }
+
+  // KPI cards — 3 per row, label over value
+  const kpis: { label: string; value: number; color: string; bg: string }[] = [
+    { label: "Insurance", value: doc.insurance, color: BLUE, bg: LBLUE },
+    { label: "Commission", value: doc.commission, color: BLUE, bg: LBLUE },
+    { label: "Net Insurance", value: doc.netInsurance, color: BLUE, bg: LBLUE },
+    { label: "Zinara", value: doc.zinara, color: BLUE, bg: LBLUE },
+    { label: "Total Expected", value: doc.totalExpected, color: NAVY, bg: "FFF1F5F9" },
+    { label: "Total Deposits", value: doc.deposits, color: GREEN, bg: GREEN_BG },
+    { label: "Alterations", value: doc.adjustments, color: GREY, bg: "FFF9FAFB" },
+    {
+      label: "Closing Variance",
+      value: doc.closingVariance,
+      color: doc.closingVariance === 0 ? GREEN : RED,
+      bg: doc.closingVariance === 0 ? GREEN_BG : RED_BG,
+    },
+    { label: "Opening Variance", value: doc.openingVariance, color: GREY, bg: "FFF9FAFB" },
+  ];
+
+  let row = 7;
+  for (let i = 0; i < kpis.length; i += 3) {
+    const cards = kpis.slice(i, i + 3);
+    // label row
+    for (let j = 0; j < 3; j++) {
+      const col = 2 + j * 2; // B, D, F
+      const k = cards[j];
+      if (!k) continue;
+      ws.mergeCells(row, col, row, col + 1);
+      const lc = ws.getCell(row, col);
+      lc.value = k.label.toUpperCase();
+      lc.font = { size: 9, bold: true, color: { argb: GREY } };
+      lc.alignment = { horizontal: "center", vertical: "middle" };
+      lc.fill = { type: "pattern", pattern: "solid", fgColor: { argb: k.bg } };
+      ws.getCell(row, col).border = box;
+      ws.getCell(row, col + 1).border = box;
+      // value row
+      ws.mergeCells(row + 1, col, row + 1, col + 1);
+      const vc = ws.getCell(row + 1, col);
+      vc.value = k.value;
+      vc.numFmt = "#,##0.00";
+      vc.font = { size: 15, bold: true, color: { argb: k.color } };
+      vc.alignment = { horizontal: "center", vertical: "middle" };
+      vc.fill = { type: "pattern", pattern: "solid", fgColor: { argb: k.bg } };
+      ws.getCell(row + 1, col).border = box;
+      ws.getCell(row + 1, col + 1).border = box;
+    }
+    ws.getRow(row).height = 18;
+    ws.getRow(row + 1).height = 30;
+    row += 3;
+  }
+
+  // Deposit channels — bar chart drawn with cell fills
+  const channelEntries = BANK_CHANNELS
+    .map((b) => ({ name: b, value: doc.bankDeposits[b] ?? 0 }))
+    .filter((c) => c.value !== 0);
+  if (channelEntries.length > 0) {
+    row += 1;
+    ws.mergeCells(row, 2, row, 7);
+    const h = ws.getCell(row, 2);
+    h.value = "DEPOSIT CHANNELS";
+    h.font = { size: 10, bold: true, color: { argb: NAVY } };
+    h.alignment = { horizontal: "left", vertical: "middle" };
+    ws.getRow(row).height = 20;
+    row += 1;
+
+    const max = Math.max(...channelEntries.map((c) => c.value), 1);
+    for (const ch of channelEntries) {
+      const name = ws.getCell(row, 2);
+      name.value = ch.name;
+      name.font = { size: 10, color: { argb: "FF374151" } };
+      name.border = box;
+      // bar spans C–G, filled proportional to share of max
+      const span = Math.max(1, Math.round((ch.value / max) * 5));
+      for (let c = 3; c <= 3 + span - 1; c++) {
+        ws.getCell(row, c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: BLUE } };
+      }
+      const val = ws.getCell(row, 7);
+      val.value = ch.value;
+      val.numFmt = "#,##0.00";
+      val.font = { size: 10, bold: true, color: { argb: NAVY } };
+      val.alignment = { horizontal: "right" };
+      val.border = box;
+      ws.getRow(row).height = 18;
+      row += 1;
+    }
+  }
+
+  // Footer note
+  row += 2;
+  ws.mergeCells(row, 2, row, 7);
+  const note = ws.getCell(row, 2);
+  note.value = `${doc.summaryText}  Generated ${doc.generatedAt} — confidential, intended for ${doc.agentName} only.`;
+  note.font = { size: 9, italic: true, color: { argb: GREY } };
+  note.alignment = { horizontal: "left", wrapText: true };
+  ws.getRow(row).height = 28;
+
+  // ------------------------------------------------------------------
+  // Sheet 2 — Consolidated A (real 2-row format) + transaction detail
+  // ------------------------------------------------------------------
+  const ws2 = wb.addWorksheet("Consolidated A");
+  const headerRow = [
+    "Currency", "Agent Name", "Opening Variance", "Insurance", "Premium Cover",
+    "Commission", "Net Insurance", "Zinara", "Pds", "Total Expected",
+    ...BANK_CHANNELS, "Alterations", "Closing Variance",
+  ];
+  const bankVals = BANK_CHANNELS.map((b) => doc.bankDeposits[b] ?? "");
+  const dataRow = [
+    doc.currency, doc.agentName, doc.openingVariance, doc.insurance,
+    doc.premiumCover, doc.commission, doc.netInsurance, doc.zinara,
+    doc.pds === 0 ? "" : doc.pds, doc.totalExpected, ...bankVals,
+    doc.adjustments === 0 ? "" : doc.adjustments, doc.closingVariance,
+  ];
+  ws2.addRow(headerRow);
+  ws2.addRow(dataRow);
+  ws2.getRow(1).eachCell((c) => {
+    c.font = { bold: true, size: 10, color: { argb: "FFFFFFFF" } };
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
+    c.border = box;
+  });
+  ws2.getRow(2).eachCell((c) => {
+    c.border = box;
+    if (typeof c.value === "number") c.numFmt = "#,##0.00";
+  });
+  ws2.columns.forEach((c, i) => (c.width = i === 1 ? 24 : 14));
+
+  // Transaction detail
+  ws2.addRow([]);
+  ws2.addRow(["Transaction Detail"]).getCell(1).font = { bold: true, size: 11, color: { argb: NAVY } };
+  const txHeader = ["Date", "Agent", "Amount", "USD Amount", "USD-ZWG Conversion", "Bank/Account", "Narration/Ref", "Reference"];
+  const txh = ws2.addRow(txHeader);
+  txh.eachCell((c) => {
+    c.font = { bold: true, size: 9, color: { argb: "FF374151" } };
+    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F4F6" } };
+    c.border = box;
+  });
+  for (const t of doc.transactions) {
+    const r = ws2.addRow([
       t.date ?? "", t.agentName, t.amount,
       t.usdAmount ?? "", t.usdConversionRate ?? "",
       t.bankAccount ?? "", t.narration ?? "", t.reference,
-    ]),
-  ];
-  const wsDetail = XLSX.utils.aoa_to_sheet(detailRows);
-  wsDetail["!cols"] = [
-    { wch: 12 }, { wch: 26 }, { wch: 14 }, { wch: 12 }, { wch: 12 },
-    { wch: 16 }, { wch: 24 }, { wch: 14 },
-  ];
+    ]);
+    r.eachCell((c) => (c.border = box));
+  }
 
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
-  XLSX.utils.book_append_sheet(wb, wsDetail, "Consolidated A");
-  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
+  return Buffer.from(await wb.xlsx.writeBuffer());
 }
 
 /**

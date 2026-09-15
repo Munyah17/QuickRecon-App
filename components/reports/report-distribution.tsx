@@ -55,8 +55,10 @@ export function ReportDistribution({
   }, [agents, agentQuery]);
 
   const targetRecons = React.useMemo(() => {
-    if (recipients === "all") return recons;
-    return recons.filter((r) => selectedAgents.has(r.agentId));
+    const source = recipients === "all" ? recons : recons.filter((r) => selectedAgents.has(r.agentId));
+    // One document per agent — never send duplicates.
+    const seen = new Set<string>();
+    return source.filter((r) => !seen.has(r.agentId) && seen.add(r.agentId));
   }, [recipients, recons, selectedAgents]);
 
   async function sendNow() {

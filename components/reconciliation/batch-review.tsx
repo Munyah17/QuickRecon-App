@@ -191,7 +191,14 @@ export function BatchReview({ rows }: { rows: Reconciliation[] }) {
   const [distributing, setDistributing] = React.useState(false);
 
   async function distributeAll() {
-    const targets = scoped.filter((r) => r.status === "success" || r.status === "warning");
+    // One document per agent — never send duplicates.
+    const seenAgents = new Set<string>();
+    const targets = scoped.filter(
+      (r) =>
+        (r.status === "success" || r.status === "warning") &&
+        !seenAgents.has(r.agentId) &&
+        seenAgents.add(r.agentId)
+    );
     if (targets.length === 0) {
       toast.error("Nothing to send", { description: "No successful reconciliations in scope." });
       return;

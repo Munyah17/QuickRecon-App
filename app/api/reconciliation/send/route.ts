@@ -29,6 +29,30 @@ export async function POST(request: NextRequest) {
     }
 
     const sb = await createServiceClient();
+
+    // Idempotency guard — refuse a second send to the same agent within 5 min.
+    if (sb) {
+      const cutoff = new Date(Date.now() - 5 * 60 * 1000).toISOString();
+      const { data: recent } = await sb
+        .from("reconciliation_deliveries")
+        .select("id")
+        .eq("batch_id", batchId)
+        .eq("agent_id", agentId)
+        .eq("status", "sent")
+        .gte("delivered_at", cutoff)
+        .limit(1);
+      if (recent?.length) {
+        return NextResponse.json({
+          success: true,
+          delivered: [],
+          failures: [],
+          skipped: "duplicate",
+          agentId,
+          batchId,
+        });
+      }
+    }
+
     let doc: AgentReconDocument | null = null;
     let agentEmail: string | undefined;
     let agentPhone: string | undefined;
