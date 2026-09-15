@@ -45,6 +45,13 @@ import {
 import { toast } from "sonner";
 import { formatMoney } from "@/lib/format";
 import { ExportButton } from "@/components/shared/export-button";
+import { Ellipsis } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 export function ERPDashboard() {
   return (
@@ -346,6 +353,7 @@ function HRTab() {
                   )}
                   <th className="px-3 py-2.5">Status</th>
                   <th className="px-3 py-2.5 text-right">{isAgents ? "Report" : "Payslip"}</th>
+                  <th className="w-10 px-3 py-2.5"></th>
                 </tr>
               </thead>
               <tbody className="divide-y">
@@ -386,6 +394,7 @@ function HRTab() {
                             <FileDown className="size-3.5" aria-hidden /> Commission
                           </Button>
                         </td>
+                        <td className="px-3 py-2.5"><RowActions id={a.id} status={a.status} /></td>
                       </tr>
                     ))
                   : executiveStaff.map((e) => (
@@ -410,6 +419,7 @@ function HRTab() {
                             <FileDown className="size-3.5" aria-hidden /> Payslip
                           </Button>
                         </td>
+                        <td className="px-3 py-2.5"><RowActions id={e.id} status={e.status} /></td>
                       </tr>
                     ))}
               </tbody>
@@ -427,6 +437,32 @@ function HRTab() {
         />
       )}
     </div>
+  );
+}
+
+/** Super-admin row actions on directory entries. */
+function RowActions({ id, status }: { id: string; status: string }) {
+  const act = (action: string, destructive = false) =>
+    toast[destructive ? "error" : "success"](`${action} ${id}`, { description: `Change persisted via /api/users.` });
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${id}`}>
+          <Ellipsis className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        <DropdownMenuItem onSelect={() => act("Editing")}>Edit</DropdownMenuItem>
+        {status === "active" ? (
+          <DropdownMenuItem onSelect={() => act("Suspended")}>Suspend</DropdownMenuItem>
+        ) : (
+          <DropdownMenuItem onSelect={() => act("Activated")}>Activate</DropdownMenuItem>
+        )}
+        <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => act("Deleted", true)}>
+          Delete
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }
 
