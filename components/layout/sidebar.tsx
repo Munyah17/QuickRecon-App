@@ -81,13 +81,14 @@ export function SidebarNav({
         </p>
       )}
 
-      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto border-t border-sidebar-border px-3 py-3" aria-label="Primary">
-        {main.map((item) => (
-          <CollapsibleNavItem key={item.href} item={item} pathname={pathname} searchParams={searchParams} onNavigate={onNavigate} />
-        ))}
-      </nav>
+      <div className="min-h-0 flex-1 overflow-y-auto border-t border-sidebar-border">
+        <nav className="space-y-1 px-3 py-3" aria-label="Primary">
+          {main.map((item) => (
+            <CollapsibleNavItem key={item.href} item={item} pathname={pathname} searchParams={searchParams} onNavigate={onNavigate} />
+          ))}
+        </nav>
 
-      <div className="space-y-1 border-t border-sidebar-border px-3 py-3">
+        <div className="space-y-1 border-t border-sidebar-border px-3 py-3">
         {support ? (
           <Link
             href={support.href}
@@ -151,6 +152,7 @@ export function SidebarNav({
           </div>
         </Link>
         <p className="px-2 pt-1 text-[10.5px] text-[#54749c]">QuickRecon App v1.0.1</p>
+        </div>
       </div>
     </div>
   );
