@@ -79,8 +79,8 @@ export function AIAssistant() {
           <div className="flex items-center gap-2.5 border-b bg-primary px-4 py-3 text-primary-foreground">
             <Sparkles className="size-5" aria-hidden />
             <div className="flex-1">
-              <p className="text-[14px] font-bold">QuickRecon AI</p>
-              <p className="text-[11px] text-primary-foreground/70">Your reconciliation assistant</p>
+              <p className="text-[14px] font-bold">Kareem</p>
+              <p className="text-[11px] text-primary-foreground/70">Your virtual friend &amp; assistant</p>
             </div>
           </div>
 
@@ -89,7 +89,7 @@ export function AIAssistant() {
             {messages.length === 0 && (
               <div className="space-y-3">
                 <div className="rounded-xl bg-muted p-3 text-[13px] leading-5">
-                  Hi! I&apos;m your QuickRecon AI assistant. I can help with reconciliation, imports, reports, task management, and more. How can I help you today?
+                  Hi, I am Kareem your virtual friend and assistant. How may I help you? Inshallah.
                 </div>
                 <div className="space-y-1.5">
                   <p className="text-[11px] font-medium text-muted-foreground">Suggested questions:</p>
