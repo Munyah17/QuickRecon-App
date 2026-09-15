@@ -102,11 +102,12 @@ function buildDocumentForAgent(
 }
 
 /**
- * Serialises one agent document to CSV text matching the real Enpassent
- * "Consolidated A" column structure. Private to that agent.
+ * Serialises one agent document to CSV matching the real Enpassent
+ * "Consolidated A" report — exactly 2 rows: header + figures, bank columns
+ * before Alterations/Closing Variance. Private to that agent.
  */
 export function documentToCSV(doc: AgentReconDocument): string {
-  const bankCols = BANK_CHANNELS.map((b) => doc.bankDeposits[b] ?? 0);
+  const bankCols = BANK_CHANNELS.map((b) => doc.bankDeposits[b] ?? "");
   const headerRow = [
     "Currency",
     "Agent Name",
@@ -131,38 +132,98 @@ export function documentToCSV(doc: AgentReconDocument): string {
     String(doc.commission),
     String(doc.netInsurance),
     String(doc.zinara),
-    String(doc.pds),
+    doc.pds === 0 ? "" : String(doc.pds),
     String(doc.totalExpected),
     ...bankCols.map(String),
-    String(doc.adjustments),
+    doc.adjustments === 0 ? "" : String(doc.adjustments),
     String(doc.closingVariance),
   ];
+  return [headerRow, dataRow]
+    .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
+    .join("\n");
+}
 
-  const rows: string[][] = [
-    ["QuickRecon Consolidated Revenue Report"],
+/**
+ * Produces the client-specified XLSX workbook. Worksheet 1 = "Summary"
+ * dashboard (KPIs + channel breakdown); worksheet 2 = "Consolidated A"
+ * (the real 2-row report) followed by the transaction detail below it,
+ * matching the layout of the delivered sample files.
+ */
+export async function documentToXLSX(doc: AgentReconDocument): Promise<Buffer> {
+  const XLSX = await import("xlsx");
+
+  const statusLabel =
+    doc.status === "success" ? "Reconciled" : doc.status === "warning" ? "Variance — review" : "Attention required";
+
+  // Sheet 1 — summary dashboard
+  const summaryRows: (string | number)[][] = [
+    ["QuickRecon — Consolidated Revenue Report"],
+    [],
     ["Agent", doc.agentName],
     ["Agent ID", doc.agentId],
     ["Module", doc.module],
     ["Period", doc.period],
+    ["Currency", doc.currency],
     ["Generated", doc.generatedAt],
+    ["Status", statusLabel],
     [],
-    headerRow.map(String),
-    dataRow.map(String),
+    ["Metric", `Amount (${doc.currency})`],
+    ["Opening Variance", doc.openingVariance],
+    ["Insurance", doc.insurance],
+    ["Premium Cover", doc.premiumCover],
+    ["Commission", doc.commission],
+    ["Net Insurance", doc.netInsurance],
+    ["Zinara", doc.zinara],
+    ["Pds", doc.pds],
+    ["Total Expected", doc.totalExpected],
+    ["Total Deposits", doc.deposits],
+    ["Alterations", doc.adjustments],
+    ["Closing Variance", doc.closingVariance],
+    [],
+    ["Deposit Channels", ""],
+    ...BANK_CHANNELS.filter((b) => (doc.bankDeposits[b] ?? 0) !== 0).map((b) => [
+      b,
+      doc.bankDeposits[b] ?? 0,
+    ]),
+    [],
+    ["Summary", doc.summaryText],
+  ];
+  const wsSummary = XLSX.utils.aoa_to_sheet(summaryRows);
+  wsSummary["!cols"] = [{ wch: 24 }, { wch: 42 }];
+
+  // Sheet 2 — Consolidated A (2-row real format) + transaction detail
+  const bankCols = BANK_CHANNELS.map((b) => doc.bankDeposits[b] ?? "");
+  const detailRows: (string | number)[][] = [
+    [
+      "Currency", "Agent Name", "Opening Variance", "Insurance", "Premium Cover",
+      "Commission", "Net Insurance", "Zinara", "Pds", "Total Expected",
+      ...BANK_CHANNELS, "Alterations", "Closing Variance",
+    ],
+    [
+      doc.currency, doc.agentName, doc.openingVariance, doc.insurance,
+      doc.premiumCover, doc.commission, doc.netInsurance, doc.zinara,
+      doc.pds === 0 ? "" : doc.pds, doc.totalExpected, ...bankCols,
+      doc.adjustments === 0 ? "" : doc.adjustments, doc.closingVariance,
+    ],
     [],
     ["Transaction Detail"],
     ["Date", "Agent", "Amount", "USD Amount", "USD-ZWG Conversion", "Bank/Account", "Narration/Ref", "Reference"],
     ...doc.transactions.map((t) => [
-      t.date ?? "",
-      t.agentName,
-      String(t.amount),
-      t.usdAmount != null ? String(t.usdAmount) : "",
-      t.usdConversionRate != null ? String(t.usdConversionRate) : "",
-      t.bankAccount ?? "",
-      t.narration ?? "",
-      t.reference,
+      t.date ?? "", t.agentName, t.amount,
+      t.usdAmount ?? "", t.usdConversionRate ?? "",
+      t.bankAccount ?? "", t.narration ?? "", t.reference,
     ]),
   ];
-  return rows.map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(",")).join("\n");
+  const wsDetail = XLSX.utils.aoa_to_sheet(detailRows);
+  wsDetail["!cols"] = [
+    { wch: 12 }, { wch: 26 }, { wch: 14 }, { wch: 12 }, { wch: 12 },
+    { wch: 16 }, { wch: 24 }, { wch: 14 },
+  ];
+
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, wsSummary, "Summary");
+  XLSX.utils.book_append_sheet(wb, wsDetail, "Consolidated A");
+  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }
 
 /**
@@ -197,7 +258,7 @@ export function documentToHTML(doc: AgentReconDocument): string {
     .join("");
   return `
     <div style="font-family:Arial,sans-serif;font-size:13px;color:#333;">
-      <h2>Consolidated Revenue Report — ${doc.period}</h2>
+      <h2 style="margin-top:0;color:#0f2b4c;">Consolidated Revenue Report — ${doc.period}</h2>
       <p><strong>Agent:</strong> ${doc.agentName} (${doc.agentId}) &nbsp; <strong>Currency:</strong> ${doc.currency}</p>
       <p>${doc.summaryText}</p>
       <table style="border-collapse:collapse;width:100%;max-width:900px;margin-top:12px;">

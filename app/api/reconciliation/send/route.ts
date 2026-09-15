@@ -4,11 +4,12 @@ import { isCompanyRole } from "@/lib/nav";
 import { createServiceClient } from "@/lib/supabase/server";
 import {
   documentToCSV,
+  documentToXLSX,
   documentToHTML,
   documentToSMS,
   type AgentReconDocument,
 } from "@/lib/reconciliation/document";
-import { sendEmail } from "@/lib/email/send";
+import { sendEmail, brandedEmail } from "@/lib/email/send";
 import { getWhatsAppProvider } from "@/lib/whatsapp/provider";
 
 export const runtime = "nodejs";
@@ -114,19 +115,24 @@ export async function POST(request: NextRequest) {
 
     const summary = documentToSMS(doc);
     const csv = documentToCSV(doc);
-    const html = documentToHTML(doc);
+    const html = brandedEmail(documentToHTML(doc), doc.agentName);
     const subject = `QuickRecon Reconciliation — ${doc.period}`;
 
     const delivered: string[] = [];
     const failures: string[] = [];
 
     if (channels.includes("email") && agentEmail) {
+      const xlsx = await documentToXLSX(doc);
       const result = await sendEmail({
         to: agentEmail,
         subject,
         text: summary,
         html,
         attachments: [
+          {
+            filename: `reconciliation-${doc.agentId}-${doc.period}.xlsx`,
+            content: xlsx,
+          },
           {
             filename: `reconciliation-${doc.agentId}-${doc.period}.csv`,
             content: Buffer.from(csv, "utf-8"),
