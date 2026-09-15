@@ -5,6 +5,7 @@ import { FileSpreadsheet } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { getAgents, getImportBatches } from "@/lib/data";
 import { PageHeader } from "@/components/layout/page-header";
+import { isCompanyRole } from "@/lib/nav";
 import { ImportWizard } from "@/components/imports/import-wizard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -15,6 +16,7 @@ export const metadata: Metadata = { title: "Imports" };
 export default async function ImportsPage() {
   const session = await getSession();
   if (!session) redirect("/login");
+  if (!isCompanyRole(session.user.role)) redirect("/app/dashboard");
 
   const [batches, agents] = await Promise.all([getImportBatches(), getAgents()]);
 

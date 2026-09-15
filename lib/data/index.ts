@@ -420,11 +420,21 @@ export async function getPendingApprovals() {
   return MOCK_PENDING_APPROVALS;
 }
 
-export async function getNotifications() {
+/** Kinds a field user may see — internal ops events stay company-only. */
+const FIELD_ACTIVITY_KINDS = new Set(["report", "submission", "assistant"]);
+const FIELD_NOTIFICATION_KINDS = new Set(["report", "assistant", "profile", "submission"]);
+
+export async function getNotifications(fieldUser = false) {
+  if (fieldUser) {
+    return MOCK_NOTIFICATIONS.filter((n) => FIELD_NOTIFICATION_KINDS.has(n.kind));
+  }
   return MOCK_NOTIFICATIONS;
 }
 
-export async function getActivities() {
+export async function getActivities(fieldUser = false) {
+  if (fieldUser) {
+    return MOCK_ACTIVITIES.filter((a) => FIELD_ACTIVITY_KINDS.has(a.kind));
+  }
   return MOCK_ACTIVITIES;
 }
 

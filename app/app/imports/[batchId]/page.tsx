@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, RotateCcw, Trash2 } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
+import { isCompanyRole } from "@/lib/nav";
 import { getExceptions, getImportBatch } from "@/lib/data";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -18,6 +19,7 @@ export default async function ImportBatchPage({
 }) {
   const session = await getSession();
   if (!session) redirect("/login");
+  if (!isCompanyRole(session.user.role)) redirect("/app/dashboard");
 
   const { batchId } = await params;
   const batch = await getImportBatch(batchId);

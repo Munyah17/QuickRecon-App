@@ -66,7 +66,7 @@ export function AIAssistant() {
       {/* Floating button */}
       <button
         onClick={() => setOpen((o) => !o)}
-        className="fixed right-4 bottom-20 z-50 flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 lg:bottom-6"
+        className="fixed right-4 bottom-36 z-50 flex size-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-lg transition-transform hover:scale-105 lg:bottom-24"
         aria-label="AI Assistant"
       >
         {open ? <X className="size-5" /> : <Bot className="size-5" />}
@@ -74,7 +74,7 @@ export function AIAssistant() {
 
       {/* Chat panel */}
       {open && (
-        <div className="fixed right-4 bottom-36 z-50 flex h-[480px] w-[calc(100vw-2rem)] max-w-[400px] flex-col overflow-hidden rounded-2xl border bg-card shadow-2xl lg:bottom-24">
+        <div className="fixed right-4 bottom-52 z-50 flex h-[min(480px,calc(100dvh-16rem))] w-[calc(100vw-2rem)] max-w-[400px] flex-col overflow-hidden rounded-2xl border bg-card shadow-2xl lg:bottom-40">
           {/* Header */}
           <div className="flex items-center gap-2.5 border-b bg-primary px-4 py-3 text-primary-foreground">
             <Sparkles className="size-5" aria-hidden />

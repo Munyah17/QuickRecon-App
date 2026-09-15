@@ -216,8 +216,8 @@ export function ImportWizard({
           </Card>
 
           <Card className="gap-0 py-0 shadow-xs">
-            <CardHeader className="px-4 pt-4 sm:px-5">
-              <CardTitle className="text-[14.5px] font-semibold">Import Options</CardTitle>
+            <CardHeader className="border-b px-4 pt-4 pb-3 sm:px-5">
+              <CardTitle className="text-[16px] font-bold">Import Options</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 px-4 pb-4 sm:px-5">
               <div className="grid grid-cols-2 gap-3">

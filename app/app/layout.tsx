@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
 import { getNotifications } from "@/lib/data";
+import { isCompanyRole } from "@/lib/nav";
 import { AppShell } from "@/components/layout/app-shell";
 import { AIAssistant } from "@/components/shared/ai-assistant";
 import type { ModuleCode } from "@/types";
@@ -21,7 +22,7 @@ export default async function AppLayout({
       ? ALL_MODULES // resolved per-agent module access once backend is live
       : ALL_MODULES;
 
-  const notifications = await getNotifications();
+  const notifications = await getNotifications(!isCompanyRole(session.user.role));
 
   return (
     <AppShell

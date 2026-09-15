@@ -17,9 +17,10 @@ export default async function DashboardPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const activities = await getActivities();
+  const company = isCompanyRole(session.user.role);
+  const activities = await getActivities(!company);
 
-  if (isCompanyRole(session.user.role)) {
+  if (company) {
     await getAgents(); // warm data access (shows inactive agents, etc. when live)
     return (
       <AdminDashboard

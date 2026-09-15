@@ -34,7 +34,7 @@ export default async function AgentProfilePage({
     getBooths(agent.id),
     getAssistants(agent.id),
     getReconciliations({ agentId: agent.id }),
-    getActivities(),
+    getActivities(!isCompanyRole(session.user.role)),
   ]);
 
   return (

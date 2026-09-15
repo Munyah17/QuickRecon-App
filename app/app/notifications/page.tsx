@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Bell } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { getNotifications } from "@/lib/data";
+import { isCompanyRole } from "@/lib/nav";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,7 +14,7 @@ export const metadata: Metadata = { title: "Notifications" };
 export default async function NotificationsPage() {
   const session = await getSession();
   if (!session) redirect("/login");
-  const notifications = await getNotifications();
+  const notifications = await getNotifications(!isCompanyRole(session.user.role));
 
   const unread = notifications.filter((n) => !n.read).length;
 
