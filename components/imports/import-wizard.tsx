@@ -219,59 +219,66 @@ export function ImportWizard({
             <CardHeader className="px-4 pt-4 sm:px-5">
               <CardTitle className="text-[14.5px] font-semibold">Import Options</CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3.5 px-4 pb-4 sm:px-5">
-              <div className="space-y-1.5">
-                <Label>Reporting Period</Label>
-                <Select value={period} onValueChange={setPeriod}>
-                  <SelectTrigger className="h-9 bg-card">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {monthOptions().map((p) => (
-                      <SelectItem key={p} value={p}>
-                        {formatPeriod(p)}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+            <CardContent className="space-y-3 px-4 pb-4 sm:px-5">
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Reporting Period</Label>
+                  <Select value={period} onValueChange={setPeriod}>
+                    <SelectTrigger className="h-9 bg-card">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {monthOptions().map((p) => (
+                        <SelectItem key={p} value={p}>
+                          {formatPeriod(p)}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Run Validation</Label>
+                  <label className="flex h-9 items-center gap-2 rounded-md border bg-card px-3 text-[12.5px]">
+                    <Checkbox
+                      checked={runValidation}
+                      onCheckedChange={(c) => setRunValidation(c === true)}
+                    />
+                    Validate data
+                  </label>
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label>Reconciliation Scope</Label>
-                <Select value={agentScope} onValueChange={setAgentScope}>
-                  <SelectTrigger className="h-9 bg-card">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All agents — whole group</SelectItem>
-                    {agents.map((a) => (
-                      <SelectItem key={a.id} value={a.id}>
-                        {a.fullName} ({a.id})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <p className="text-[11px] text-muted-foreground">
-                  Pick one agent to produce that agent&apos;s consolidated document only.
-                </p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label>Reconciliation Scope</Label>
+                  <Select value={agentScope} onValueChange={setAgentScope}>
+                    <SelectTrigger className="h-9 bg-card">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All agents</SelectItem>
+                      {agents.map((a) => (
+                        <SelectItem key={a.id} value={a.id}>
+                          {a.fullName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1.5">
+                  <Label>Worksheets</Label>
+                  <Select defaultValue="all" disabled={!inspected}>
+                    <SelectTrigger className="h-9 bg-card">
+                      <SelectValue placeholder="All (recommended)" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">All worksheets</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
-              <div className="space-y-1.5">
-                <Label>Select Worksheets</Label>
-                <Select defaultValue="all" disabled={!inspected}>
-                  <SelectTrigger className="h-9 bg-card">
-                    <SelectValue placeholder="All worksheets (recommended)" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="all">All worksheets (recommended)</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <label className="flex items-center gap-2.5 text-[13px]">
-                <Checkbox
-                  checked={runValidation}
-                  onCheckedChange={(c) => setRunValidation(c === true)}
-                />
-                Run data validation
-              </label>
+              <p className="text-[11px] text-muted-foreground">
+                Pick one agent in scope to produce that agent&apos;s consolidated document only.
+              </p>
               <div className="flex gap-2.5 rounded-lg bg-info-soft p-3 text-[12px] leading-5 text-info-foreground">
                 <Info className="mt-0.5 size-4 shrink-0" aria-hidden />
                 <p>

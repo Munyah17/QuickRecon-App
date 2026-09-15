@@ -224,6 +224,48 @@ export async function getReconciliationLines(id: string) {
   return MOCK_RECON_LINES[id] ?? MOCK_RECON_LINES["RCN-2608-001"];
 }
 
+/** Generated per-agent reconciliation documents for a batch. */
+export async function getReconciliationDocuments(batchId?: string) {
+  const supabase = await db();
+  if (supabase) {
+    let q = supabase
+      .from("reconciliation_documents")
+      .select("*")
+      .order("created_at", { ascending: false });
+    if (batchId) q = q.eq("batch_id", batchId);
+    const { data } = await q;
+    if (data?.length) {
+      return data.map((d: any) => ({
+        id: d.id,
+        batchId: d.batch_id,
+        agentId: d.agent_id,
+        agentName: d.agent_name,
+        module: d.module,
+        period: d.period,
+        currency: d.currency,
+        openingVariance: Number(d.opening_variance),
+        insurance: Number(d.insurance),
+        zinara: Number(d.zinara),
+        totalExpected: Number(d.total_expected),
+        deposits: Number(d.deposits),
+        adjustments: Number(d.adjustments),
+        closingVariance: Number(d.closing_variance),
+        closingPosition: Number(d.closing_position),
+        status: d.status,
+        createdAt: d.created_at,
+      }));
+    }
+  }
+  return [] as {
+    id: string; batchId: string; agentId: string; agentName: string;
+    module: string; period: string; currency: "USD" | "ZWG";
+    openingVariance: number; insurance: number; zinara: number;
+    totalExpected: number; deposits: number; adjustments: number;
+    closingVariance: number; closingPosition: number;
+    status: string; createdAt: string;
+  }[];
+}
+
 export async function getExceptions(batchId?: string) {
   return batchId
     ? MOCK_EXCEPTIONS.filter((e) => e.batchId === batchId)

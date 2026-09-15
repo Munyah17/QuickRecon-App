@@ -64,7 +64,7 @@ function InfoRow({
       <span className="w-24 shrink-0 text-[12px] text-muted-foreground sm:w-28">
         {label}
       </span>
-      <span className={`min-w-0 flex-1 truncate text-[13px] font-medium ${mono ? "font-mono text-[12px]" : ""}`}>
+      <span className={`min-w-0 flex-1 break-all text-[13px] font-medium ${mono ? "font-mono text-[12px]" : ""}`}>
         {value}
       </span>
     </div>

@@ -26,14 +26,14 @@ export function AgentAvatar({
   className?: string;
 }) {
   const sizeClass = {
-    xs: "size-6 text-[10px]",
-    sm: "size-8 text-xs",
-    md: "size-9 text-[13px]",
-    lg: "size-12 text-base",
+    xs: "size-7 text-[11px]",
+    sm: "size-9 text-xs",
+    md: "size-10 text-[13px]",
+    lg: "size-14 text-base",
   }[size];
   return (
-    <Avatar className={cn(sizeClass, className)}>
-      <AvatarFallback className={cn("font-semibold", paletteFor(name))}>
+    <Avatar className={cn("aspect-square shrink-0 rounded-full", sizeClass, className)}>
+      <AvatarFallback className={cn("flex items-center justify-center rounded-full font-semibold", paletteFor(name))}>
         {initials(name)}
       </AvatarFallback>
     </Avatar>

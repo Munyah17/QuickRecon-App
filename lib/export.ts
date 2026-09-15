@@ -1,23 +1,10 @@
 "use client";
 
-import * as XLSX from "xlsx";
-import pdfMake from "pdfmake/build/pdfmake";
-import pdfFonts from "pdfmake/build/vfs_fonts";
-import {
-  AlignmentType,
-  Document,
-  Packer,
-  Paragraph,
-  Table as DocxTable,
-  TableCell as DocxCell,
-  TableRow as DocxRow,
-  TextRun,
-  WidthType,
-} from "docx";
-
-// vfs_fonts shape differs between pdfmake builds — handle both.
-const fonts = pdfFonts as unknown as { vfs?: Record<string, string>; pdfMake?: { vfs: Record<string, string> } };
-(pdfMake as unknown as { vfs: Record<string, string> }).vfs = fonts.pdfMake?.vfs ?? fonts.vfs ?? {};
+/**
+ * Real client-side exports. Heavy libraries (xlsx/pdfmake/docx ≈ 1MB+)
+ * are lazy-loaded only when an export is actually requested so they
+ * never slow down page loads.
+ */
 
 export interface ExportData {
   /** Column headers, in order. */
@@ -49,14 +36,31 @@ function exportCsv(data: ExportData, filename: string) {
   download(new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" }), `${filename}.csv`);
 }
 
-function exportExcel(data: ExportData, filename: string) {
+async function exportExcel(data: ExportData, filename: string) {
+  const XLSX = await import("xlsx");
   const ws = XLSX.utils.aoa_to_sheet([data.columns, ...data.rows]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Export");
   XLSX.writeFile(wb, `${filename}.xlsx`);
 }
 
-function exportPdf(data: ExportData, filename: string, title?: string) {
+async function getPdfMake() {
+  const [pdfMakeMod, pdfFonts] = await Promise.all([
+    import("pdfmake/build/pdfmake"),
+    import("pdfmake/build/vfs_fonts"),
+  ]);
+  const pdfMake = pdfMakeMod.default;
+  const fonts = pdfFonts as unknown as {
+    vfs?: Record<string, string>;
+    pdfMake?: { vfs: Record<string, string> };
+  };
+  (pdfMake as unknown as { vfs: Record<string, string> }).vfs =
+    fonts.pdfMake?.vfs ?? fonts.vfs ?? {};
+  return pdfMake;
+}
+
+async function exportPdf(data: ExportData, filename: string, title?: string) {
+  const pdfMake = await getPdfMake();
   pdfMake.createPdf({
     pageSize: "A4",
     pageOrientation: data.columns.length > 6 ? "landscape" : "portrait",
@@ -82,6 +86,11 @@ function exportPdf(data: ExportData, filename: string, title?: string) {
 }
 
 async function exportDocx(data: ExportData, filename: string, title?: string) {
+  const {
+    AlignmentType, Document, Packer, Paragraph,
+    Table: DocxTable, TableCell: DocxCell, TableRow: DocxRow,
+    TextRun, WidthType,
+  } = await import("docx");
   const doc = new Document({
     sections: [
       {
@@ -138,13 +147,16 @@ export async function exportData(
       exportCsv(data, filename);
       break;
     case "excel":
-      exportExcel(data, filename);
+      await exportExcel(data, filename);
       break;
     case "pdf":
-      exportPdf(data, filename, title);
+      await exportPdf(data, filename, title);
       break;
     case "docx":
       await exportDocx(data, filename, title);
       break;
   }
 }
+
+/** Shared pdfMake accessor for other generators (payslips, receipts). */
+export { getPdfMake };

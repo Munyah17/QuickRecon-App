@@ -19,7 +19,8 @@ import {
   RefreshCcw,
   LoaderCircle,
 } from "lucide-react";
-import { downloadPayslip } from "@/lib/erp/payslip";
+import { downloadPayslip, type Deduction } from "@/lib/erp/payslip";
+import { downloadCommissionStatement } from "@/lib/erp/commission-statement";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -185,10 +186,33 @@ function AccountingTab() {
 }
 
 /* ─── HR ─── */
+interface StaffRow {
+  id: string; name: string; role: string; dept: string; salary: number;
+  status: string; phone: string; email: string;
+  loan?: { label: string; amount: number; balance: number };
+}
+interface AgentRow {
+  id: string; name: string; role: "Agent" | "Assistant"; commission: number;
+  bonus: number; status: string; phone: string; email: string; province: string;
+  floatAssigned: number; floatBalance: number; sales: number;
+}
+
 function HRTab() {
   const [hrSubTab, setHrSubTab] = React.useState<"executive" | "agents">("executive");
+  const [payTarget, setPayTarget] = React.useState<StaffRow | null>(null);
 
-  const executiveStaff = [
+  // Deduction toggles — Super Admin controls which apply.
+  const [deductions, setDeductions] = React.useState<Deduction[]>([
+    { label: "PAYE", amount: 0.185, statutory: true }, // % of gross (Zimbabwe)
+    { label: "NSSA", amount: 0.045, statutory: true },
+    { label: "AIDS Levy", amount: 0.03, statutory: true },
+  ]);
+  const [dedEnabled, setDedEnabled] = React.useState<Record<string, boolean>>({
+    PAYE: true, NSSA: true, "AIDS Levy": true,
+  });
+  const [customDed, setCustomDed] = React.useState<Deduction[]>([]);
+
+  const executiveStaff: StaffRow[] = [
     { id: "EMP-001", name: "Munyah Griezmann", role: "CEO", dept: "Executive", salary: 65000, status: "active", phone: "+263 77 123 4567", email: "munyamuzvidziwa19@gmail.com" },
     { id: "EMP-002", name: "Tererai Chiweshe", role: "Chief Operations Officer", dept: "Executive", salary: 48000, status: "active", phone: "+263 77 234 5678", email: "tererai@quickrecon.co.zw" },
     { id: "EMP-003", name: "Rumbi Chiweshe", role: "Chief Financial Officer", dept: "Executive", salary: 45000, status: "active", phone: "+263 77 345 6789", email: "rumbi@quickrecon.co.zw" },
@@ -198,25 +222,36 @@ function HRTab() {
     { id: "EMP-007", name: "Tariro Moyo", role: "Risk Manager", dept: "Risk", salary: 30000, status: "active", phone: "+263 77 789 0123", email: "tariro@quickrecon.co.zw" },
     { id: "EMP-008", name: "Kudzai Sibanda", role: "Risk Assessor", dept: "Risk", salary: 25000, status: "active", phone: "+263 77 890 1234", email: "kudzai@quickrecon.co.zw" },
     { id: "EMP-009", name: "Chipo Mhondoro", role: "Accountant", dept: "Finance", salary: 28000, status: "active", phone: "+263 77 901 2345", email: "chipo@quickrecon.co.zw" },
-    { id: "EMP-010", name: "Tendai Support", role: "Tech Support", dept: "IT", salary: 22000, status: "active", phone: "+263 77 012 3456", email: "tendai@quickrecon.co.zw" },
+    { id: "EMP-010", name: "Tendai Support", role: "Tech Support", dept: "IT", salary: 22000, status: "active", phone: "+263 77 012 3456", email: "tendai@quickrecon.co.zw", loan: { label: "Staff loan", amount: 1200, balance: 8400 } },
     { id: "EMP-011", name: "Rumbi Taruvinga", role: "Clerk", dept: "Operations", salary: 18000, status: "active", phone: "+263 77 123 4567", email: "rumbi.t@quickrecon.co.zw" },
     { id: "EMP-012", name: "Tinashe Kamwendo", role: "Insurer", dept: "Insurance", salary: 24000, status: "on_leave", phone: "+263 77 234 5678", email: "tinashe@quickrecon.co.zw" },
   ];
 
-  // Agents are independent contractors — commission + bonus, no salary.
-  const agents = [
-    { id: "AGT-001", name: "Musa Zhou", role: "Field Agent", dept: "Field Ops", commission: 42800, bonus: 5000, status: "active", phone: "+263 78 111 2222", email: "musa.zhou@quickrecon.co.zw", province: "Harare" },
-    { id: "AGT-002", name: "Tendai Moyo", role: "Field Agent", dept: "Field Ops", commission: 39200, bonus: 0, status: "suspended", phone: "+263 78 222 3333", email: "tendai.moyo@quickrecon.co.zw", province: "Bulawayo" },
-    { id: "AGT-003", name: "Rumbi Chiweshe", role: "Field Agent", dept: "Field Ops", commission: 30400, bonus: 3200, status: "active", phone: "+263 78 333 4444", email: "rumbi.c@quickrecon.co.zw", province: "Mutare" },
-    { id: "AGT-004", name: "Nyanga Dube", role: "Field Agent", dept: "Field Ops", commission: 21600, bonus: 1500, status: "active", phone: "+263 78 444 5555", email: "nyanga.d@quickrecon.co.zw", province: "Gweru" },
-    { id: "AGT-005", name: "Farai Mlambo", role: "Field Agent", dept: "Field Ops", commission: 16400, bonus: 2000, status: "active", phone: "+263 78 555 6666", email: "farai.m@quickrecon.co.zw", province: "Masvingo" },
-    { id: "AGT-006", name: "Simbarashe Dube", role: "Assistant", dept: "Field Ops", commission: 9600, bonus: 0, status: "active", phone: "+263 78 666 7777", email: "simba.d@quickrecon.co.zw", province: "Harare" },
-    { id: "AGT-007", name: "Patricia Chirwa", role: "Field Agent", dept: "Field Ops", commission: 35600, bonus: 4500, status: "active", phone: "+263 78 777 8888", email: "patricia.c@quickrecon.co.zw", province: "Mutare" },
-    { id: "AGT-008", name: "Blessing Ndlovu", role: "Field Agent", dept: "Field Ops", commission: 0, bonus: 0, status: "inactive", phone: "+263 78 888 9999", email: "blessing.n@quickrecon.co.zw", province: "Bulawayo" },
+  // Agents are independent contractors — commission + bonus, no salary,
+  // no department. They manage float, sales and clients.
+  const agents: AgentRow[] = [
+    { id: "AGT-001", name: "Musa Zhou", role: "Agent", commission: 42800, bonus: 5000, status: "active", phone: "+263 78 111 2222", email: "musa.zhou@quickrecon.co.zw", province: "Harare", floatAssigned: 50000, floatBalance: 8200, sales: 142 },
+    { id: "AGT-002", name: "Tendai Moyo", role: "Agent", commission: 39200, bonus: 0, status: "suspended", phone: "+263 78 222 3333", email: "tendai.moyo@quickrecon.co.zw", province: "Bulawayo", floatAssigned: 40000, floatBalance: 12000, sales: 98 },
+    { id: "AGT-003", name: "Rumbi Chiweshe", role: "Agent", commission: 30400, bonus: 3200, status: "active", phone: "+263 78 333 4444", email: "rumbi.c@quickrecon.co.zw", province: "Mutare", floatAssigned: 35000, floatBalance: 4300, sales: 76 },
+    { id: "AGT-004", name: "Nyanga Dube", role: "Agent", commission: 21600, bonus: 1500, status: "active", phone: "+263 78 444 5555", email: "nyanga.d@quickrecon.co.zw", province: "Gweru", floatAssigned: 30000, floatBalance: 2100, sales: 54 },
+    { id: "AGT-005", name: "Farai Mlambo", role: "Agent", commission: 16400, bonus: 2000, status: "active", phone: "+263 78 555 6666", email: "farai.m@quickrecon.co.zw", province: "Masvingo", floatAssigned: 25000, floatBalance: 9800, sales: 41 },
+    { id: "AGT-006", name: "Simbarashe Dube", role: "Assistant", commission: 9600, bonus: 0, status: "active", phone: "+263 78 666 7777", email: "simba.d@quickrecon.co.zw", province: "Harare", floatAssigned: 15000, floatBalance: 3200, sales: 28 },
+    { id: "AGT-007", name: "Patricia Chirwa", role: "Agent", commission: 35600, bonus: 4500, status: "active", phone: "+263 78 777 8888", email: "patricia.c@quickrecon.co.zw", province: "Mutare", floatAssigned: 45000, floatBalance: 6100, sales: 88 },
+    { id: "AGT-008", name: "Blessing Ndlovu", role: "Agent", commission: 0, bonus: 0, status: "inactive", phone: "+263 78 888 9999", email: "blessing.n@quickrecon.co.zw", province: "Bulawayo", floatAssigned: 0, floatBalance: 0, sales: 0 },
   ];
 
   const isAgents = hrSubTab === "agents";
-  const currentData = isAgents ? agents : executiveStaff;
+
+  /** Build the active deduction list for a staff member's payslip. */
+  function deductionsFor(e: StaffRow): Deduction[] {
+    const deds: Deduction[] = deductions
+      .filter((d) => dedEnabled[d.label] !== false)
+      .map((d) => ({ label: d.label, amount: Math.round(e.salary * d.amount), statutory: d.statutory }));
+    for (const c of customDed) {
+      if (dedEnabled[c.label] !== false) deds.push({ label: c.label, amount: c.amount });
+    }
+    return deds;
+  }
 
   return (
     <div className="space-y-4">
@@ -243,14 +278,49 @@ function HRTab() {
         </button>
       </div>
 
+      {/* Deduction config (staff only) */}
+      {!isAgents && (
+        <Card className="gap-0 py-0 shadow-xs">
+          <CardHeader className="px-4 pt-4 sm:px-5">
+            <CardTitle className="text-[14.5px] font-semibold">Payroll Deductions</CardTitle>
+            <CardAction>
+              <AddDeductionDialog onAdd={(d) => setCustomDed((p) => [...p, d])} />
+            </CardAction>
+          </CardHeader>
+          <CardContent className="px-4 pb-4 sm:px-5">
+            <div className="flex flex-wrap gap-2">
+              {[...deductions, ...customDed].map((d) => (
+                <label
+                  key={d.label}
+                  className="flex items-center gap-2 rounded-lg border px-3 py-2 text-[12.5px]"
+                >
+                  <input
+                    type="checkbox"
+                    checked={dedEnabled[d.label] !== false}
+                    onChange={(e) => setDedEnabled((p) => ({ ...p, [d.label]: e.target.checked }))}
+                    className="accent-primary"
+                  />
+                  <span className="font-medium">{d.label}</span>
+                  {d.statutory && <span className="text-[10.5px] text-muted-foreground">statutory</span>}
+                  <span className="tnum text-muted-foreground">
+                    {d.amount < 1 ? `${(d.amount * 100).toFixed(1)}%` : formatMoney(d.amount)}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <p className="mt-2 text-[11.5px] text-muted-foreground">
+              Percentage deductions apply to gross salary. Custom deductions apply per payslip.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
       <Card className="gap-0 py-0 shadow-xs">
-        <CardHeader className="px-4 pt-4 sm:px-5">
+        <CardHeader className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4 sm:px-5">
           <CardTitle className="text-[14.5px] font-semibold">
             {hrSubTab === "executive" ? "Executive Staff Directory" : "Agents Directory"}
           </CardTitle>
-          <CardAction>
-            <ExportButton filename={`hr-${hrSubTab}`} rows={currentData.length} label="Export" />
-          </CardAction>
+          <ExportButton filename={`hr-${hrSubTab}`} rows={isAgents ? agents.length : executiveStaff.length} label="Export" />
         </CardHeader>
         <CardContent className="px-4 pb-4 sm:px-5">
           <div className="overflow-x-auto rounded-xl border">
@@ -260,30 +330,33 @@ function HRTab() {
                   <th className="px-3 py-2.5">ID</th>
                   <th className="px-3 py-2.5">Name</th>
                   <th className="px-3 py-2.5">Role</th>
-                  <th className="px-3 py-2.5">Department</th>
-                  {isAgents && <th className="px-3 py-2.5">Province</th>}
                   {isAgents ? (
                     <>
+                      <th className="px-3 py-2.5">Province</th>
+                      <th className="px-3 py-2.5 text-right">Float</th>
                       <th className="px-3 py-2.5 text-right">Commission</th>
                       <th className="px-3 py-2.5 text-right">Bonus</th>
                       <th className="px-3 py-2.5 text-right">Total Payout</th>
                     </>
                   ) : (
-                    <th className="px-3 py-2.5 text-right">Salary (ZiG)</th>
+                    <>
+                      <th className="px-3 py-2.5">Department</th>
+                      <th className="px-3 py-2.5 text-right">Salary (ZiG)</th>
+                    </>
                   )}
                   <th className="px-3 py-2.5">Status</th>
-                  {isAgents && <th className="px-3 py-2.5 text-right">Payslip</th>}
+                  <th className="px-3 py-2.5 text-right">{isAgents ? "Report" : "Payslip"}</th>
                 </tr>
               </thead>
               <tbody className="divide-y">
                 {isAgents
-                  ? (currentData as typeof agents).map((a) => (
+                  ? agents.map((a) => (
                       <tr key={a.id} className="hover:bg-surface-hover">
                         <td className="font-mono text-[12px] text-muted-foreground px-3 py-2.5">{a.id}</td>
                         <td className="px-3 py-2.5 font-medium">{a.name}</td>
                         <td className="px-3 py-2.5">{a.role}</td>
-                        <td className="px-3 py-2.5">{a.dept}</td>
                         <td className="px-3 py-2.5">{a.province}</td>
+                        <td className="tnum px-3 py-2.5 text-right">{a.floatBalance.toLocaleString()}</td>
                         <td className="tnum px-3 py-2.5 text-right">{a.commission.toLocaleString()}</td>
                         <td className="tnum px-3 py-2.5 text-right">{a.bonus.toLocaleString()}</td>
                         <td className="tnum px-3 py-2.5 text-right font-semibold">{(a.commission + a.bonus).toLocaleString()}</td>
@@ -298,7 +371,7 @@ function HRTab() {
                             size="sm"
                             className="h-8 gap-1 text-[12px]"
                             onClick={() =>
-                              downloadPayslip({
+                              downloadCommissionStatement({
                                 agentId: a.id,
                                 agentName: a.name,
                                 province: a.province,
@@ -306,15 +379,16 @@ function HRTab() {
                                 currency: "ZWG",
                                 commission: a.commission,
                                 bonus: a.bonus,
+                                floatBalance: a.floatBalance,
                               })
                             }
                           >
-                            <FileDown className="size-3.5" aria-hidden /> Payslip
+                            <FileDown className="size-3.5" aria-hidden /> Commission
                           </Button>
                         </td>
                       </tr>
                     ))
-                  : (currentData as typeof executiveStaff).map((e) => (
+                  : executiveStaff.map((e) => (
                       <tr key={e.id} className="hover:bg-surface-hover">
                         <td className="font-mono text-[12px] text-muted-foreground px-3 py-2.5">{e.id}</td>
                         <td className="px-3 py-2.5 font-medium">{e.name}</td>
@@ -326,6 +400,16 @@ function HRTab() {
                             {e.status === "on_leave" ? "On Leave" : e.status}
                           </Badge>
                         </td>
+                        <td className="px-3 py-2.5 text-right">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-1 text-[12px]"
+                            onClick={() => setPayTarget(e)}
+                          >
+                            <FileDown className="size-3.5" aria-hidden /> Payslip
+                          </Button>
+                        </td>
                       </tr>
                     ))}
               </tbody>
@@ -333,7 +417,137 @@ function HRTab() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Payslip preview dialog — shows real deductions before download */}
+      {payTarget && (
+        <PayslipDialog
+          staff={payTarget}
+          deductions={deductionsFor(payTarget)}
+          onClose={() => setPayTarget(null)}
+        />
+      )}
     </div>
+  );
+}
+
+function AddDeductionDialog({ onAdd }: { onAdd: (d: Deduction) => void }) {
+  const [open, setOpen] = React.useState(false);
+  const [label, setLabel] = React.useState("");
+  const [amount, setAmount] = React.useState("");
+  const [isPct, setIsPct] = React.useState(false);
+
+  return (
+    <>
+      <Button variant="outline" size="sm" className="h-8 gap-1 text-[12px]" onClick={() => setOpen(true)}>
+        + Add deduction
+      </Button>
+      <Dialog open={open} onOpenChange={setOpen}>
+        <DialogContent className="sm:max-w-[380px]">
+          <DialogHeader>
+            <DialogTitle>Custom deduction</DialogTitle>
+            <DialogDescription>Add a deduction that can be toggled per payslip.</DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <div className="space-y-1.5">
+              <Label>Label</Label>
+              <Input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="e.g. Funeral fund" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>{isPct ? "Percentage of gross" : "Fixed amount (ZiG)"}</Label>
+              <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder={isPct ? "e.g. 2" : "e.g. 500"} />
+            </div>
+            <label className="flex items-center gap-2 text-[12.5px]">
+              <input type="checkbox" checked={isPct} onChange={(e) => setIsPct(e.target.checked)} className="accent-primary" />
+              Deduct as % of gross salary
+            </label>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
+            <Button
+              disabled={!label.trim() || !amount}
+              onClick={() => {
+                const v = parseFloat(amount) || 0;
+                onAdd({ label: label.trim(), amount: isPct ? v / 100 : v });
+                setOpen(false);
+                setLabel(""); setAmount("");
+                toast.success(`Deduction "${label}" added`);
+              }}
+            >
+              Add
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
+function PayslipDialog({
+  staff,
+  deductions,
+  onClose,
+}: {
+  staff: StaffRow;
+  deductions: Deduction[];
+  onClose: () => void;
+}) {
+  const loanAmount = staff.loan?.amount ?? 0;
+  const dedTotal = deductions.reduce((s, d) => s + d.amount, 0) + loanAmount;
+  const net = staff.salary - dedTotal;
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[440px]">
+        <DialogHeader>
+          <DialogTitle>Payslip — {staff.name}</DialogTitle>
+          <DialogDescription>September 2026 · {staff.id} · {staff.role}</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2 py-2 text-[13px]">
+          <div className="flex justify-between"><span className="text-muted-foreground">Basic salary</span><span className="tnum font-medium">{formatMoney(staff.salary)}</span></div>
+          <div className="border-t pt-2">
+            <p className="mb-1 text-[11px] font-semibold text-muted-foreground uppercase">Deductions</p>
+            {deductions.map((d) => (
+              <div key={d.label} className="flex justify-between py-0.5">
+                <span>{d.label}{d.statutory && <span className="ml-1 text-[10.5px] text-muted-foreground">(statutory)</span>}</span>
+                <span className="tnum text-destructive">({formatMoney(d.amount)})</span>
+              </div>
+            ))}
+            {staff.loan && (
+              <div className="flex justify-between py-0.5">
+                <span>{staff.loan.label}</span>
+                <span className="tnum text-destructive">({formatMoney(staff.loan.amount)})</span>
+              </div>
+            )}
+          </div>
+          <div className="flex justify-between border-t pt-2 text-[14px] font-bold">
+            <span>Net pay</span>
+            <span className="tnum">{formatMoney(net)}</span>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Close</Button>
+          <Button
+            className="gap-1.5"
+            onClick={() => {
+              void downloadPayslip({
+                employeeId: staff.id,
+                employeeName: staff.name,
+                role: staff.role,
+                department: staff.dept,
+                period: "September 2026",
+                currency: "ZWG",
+                basicSalary: staff.salary,
+                deductions,
+                loanRepayment: staff.loan,
+              });
+              onClose();
+            }}
+          >
+            <FileDown className="size-4" aria-hidden /> Download PDF
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -398,6 +612,9 @@ function SalesTab() {
 function POSTab() {
   const [connectOpen, setConnectOpen] = React.useState(false);
   const [receiptTerminal, setReceiptTerminal] = React.useState<typeof terminals[0] | null>(null);
+  const [remitTerminal, setRemitTerminal] = React.useState<typeof terminals[0] | null>(null);
+  const [gateway, setGateway] = React.useState("paynow");
+  const [bankAccount, setBankAccount] = React.useState("CBZ ****4521 (Enpassent Ops)");
 
   const terminals = [
     { id: "POS-001", location: "Harare CBD", agent: "Musa Zhou", transactions: 342, revenue: 68400, status: "online" },
@@ -414,6 +631,66 @@ function POSTab() {
         <MetricCard icon={DollarSign} label="Today's Revenue" value={formatMoney(143200)} trend="14.7%" trendUp />
         <MetricCard icon={TrendingDown} label="Offline Terminals" value="1" />
       </div>
+
+      {/* Payment gateway + company account — where remitted float lands */}
+      <Card className="gap-0 py-0 shadow-xs">
+        <CardHeader className="px-4 pt-4 sm:px-5">
+          <CardTitle className="text-[14.5px] font-semibold">Payment Gateway</CardTitle>
+        </CardHeader>
+        <CardContent className="px-4 pb-4 sm:px-5">
+          <div className="grid gap-3 sm:grid-cols-2">
+            <div className="space-y-1.5">
+              <Label>Gateway provider</Label>
+              <Select value={gateway} onValueChange={setGateway}>
+                <SelectTrigger className="h-9 bg-card">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="paynow">Paynow (Zimbabwe)</SelectItem>
+                  <SelectItem value="ecocash">EcoCash Merchant</SelectItem>
+                  <SelectItem value="onemoney">OneMoney</SelectItem>
+                  <SelectItem value="innbucks">InnBucks</SelectItem>
+                  <SelectItem value="zimswitch">ZimSwitch</SelectItem>
+                  <SelectItem value="stripe">Stripe (international)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Settlement account (float lands here)</Label>
+              <Select value={bankAccount} onValueChange={setBankAccount}>
+                <SelectTrigger className="h-9 bg-card">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="CBZ ****4521 (Enpassent Ops)">CBZ ****4521 (Enpassent Ops)</SelectItem>
+                  <SelectItem value="Stanbic ****8830 (Enpassent Float)">Stanbic ****8830 (Enpassent Float)</SelectItem>
+                  <SelectItem value="CABS ****2217 (Enpassent Reserves)">CABS ****2217 (Enpassent Reserves)</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <p className="mt-2 text-[11.5px] text-muted-foreground">
+            Agents swipe on portable terminals to remit float — funds settle to this account via the selected gateway. Super Admin can change providers in Settings.
+          </p>
+          <div className="mt-3 flex gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 text-[12px]"
+              onClick={async () => {
+                await fetch("/api/settings", {
+                  method: "PUT",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ key: "pos_gateway", value: { provider: gateway, settlementAccount: bankAccount } }),
+                });
+                toast.success("Gateway saved", { description: `${gateway} → ${bankAccount}` });
+              }}
+            >
+              Save gateway config
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-[13.5px] font-semibold">Connected Devices</p>
@@ -453,15 +730,23 @@ function POSTab() {
                   disabled={t.status !== "online"}
                   onClick={() => setReceiptTerminal(t)}
                 >
-                  <Printer className="size-3.5" aria-hidden /> Print Receipt
+                  <Printer className="size-3.5" aria-hidden /> Receipt
+                </Button>
+                <Button
+                  size="sm"
+                  className="h-8 flex-1 gap-1 text-[12px]"
+                  disabled={t.status !== "online"}
+                  onClick={() => setRemitTerminal(t)}
+                >
+                  <Banknote className="size-3.5" aria-hidden /> Remit Float
                 </Button>
                 <Button
                   variant="ghost"
                   size="sm"
-                  className="h-8 flex-1 gap-1 text-[12px]"
+                  className="h-8 gap-1 text-[12px]"
                   onClick={() => toast.success(`${t.id} synced`, { description: "Latest transactions pulled from device." })}
                 >
-                  <RefreshCcw className="size-3.5" aria-hidden /> Sync
+                  <RefreshCcw className="size-3.5" aria-hidden />
                 </Button>
               </div>
             </CardContent>
@@ -469,19 +754,34 @@ function POSTab() {
         ))}
       </div>
 
-      <ConnectPOSDialog open={connectOpen} onOpenChange={setConnectOpen} />
+      <ConnectPOSDialog open={connectOpen} onOpenChange={setConnectOpen} gateway={gateway} settlement={bankAccount} />
       {receiptTerminal && (
         <ReceiptDialog terminal={receiptTerminal} onClose={() => setReceiptTerminal(null)} />
+      )}
+      {remitTerminal && (
+        <RemitFloatDialog terminal={remitTerminal} gateway={gateway} settlement={bankAccount} onClose={() => setRemitTerminal(null)} />
       )}
     </div>
   );
 }
 
-/* POS device connection + receipt printing */
-function ConnectPOSDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+/* POS device connection — portable terminal + gateway config */
+function ConnectPOSDialog({
+  open,
+  onOpenChange,
+  gateway,
+  settlement,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  gateway: string;
+  settlement: string;
+}) {
   const [terminalId, setTerminalId] = React.useState("");
   const [connectionType, setConnectionType] = React.useState("network");
+  const [deviceKind, setDeviceKind] = React.useState("android");
   const [printerModel, setPrinterModel] = React.useState("");
+  const [location, setLocation] = React.useState("");
   const [connecting, setConnecting] = React.useState(false);
 
   async function connect() {
@@ -491,20 +791,23 @@ function ConnectPOSDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
     }
     setConnecting(true);
     try {
-      // Persist the paired device so it survives reloads.
       await fetch("/api/settings", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           key: "pos_devices",
-          value: { id: terminalId.trim(), connectionType, printerModel, pairedAt: new Date().toISOString() },
+          value: {
+            id: terminalId.trim(), deviceKind, connectionType, printerModel,
+            location, gateway, settlementAccount: settlement,
+            pairedAt: new Date().toISOString(),
+          },
         }),
       });
       toast.success(`Device ${terminalId} connected`, {
-        description: `${connectionType === "network" ? "Network" : "Bluetooth"} pairing successful${printerModel ? ` · printer ${printerModel}` : ""}.`,
+        description: `${connectionType} · ${deviceKind} terminal${printerModel ? ` · printer ${printerModel}` : ""}`,
       });
       onOpenChange(false);
-      setTerminalId(""); setPrinterModel("");
+      setTerminalId(""); setPrinterModel(""); setLocation("");
     } catch {
       toast.error("Pairing failed", { description: "Check the terminal ID and try again." });
     } finally {
@@ -514,31 +817,56 @@ function ConnectPOSDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[420px]">
+      <DialogContent className="sm:max-w-[460px]">
         <DialogHeader>
           <DialogTitle className="text-[15px]">Connect POS Device</DialogTitle>
           <DialogDescription className="text-[12.5px]">
-            Pair a card terminal or receipt printer. Network devices pair by terminal ID; Bluetooth devices pair nearby.
+            Pair a portable POS terminal. Supports Android terminals, web-based POS apps and dedicated hardware.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3.5 py-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="pos-id">Terminal ID <span className="text-destructive">*</span></Label>
-            <Input id="pos-id" placeholder="e.g. POS-005" value={terminalId} onChange={(e) => setTerminalId(e.target.value)} />
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="pos-id">Terminal ID <span className="text-destructive">*</span></Label>
+              <Input id="pos-id" placeholder="e.g. POS-005" value={terminalId} onChange={(e) => setTerminalId(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="pos-loc">Location</Label>
+              <Input id="pos-loc" placeholder="e.g. Harare CBD" value={location} onChange={(e) => setLocation(e.target.value)} />
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Device type</Label>
+              <Select value={deviceKind} onValueChange={setDeviceKind}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="android">Android terminal</SelectItem>
+                  <SelectItem value="web">Web / browser POS</SelectItem>
+                  <SelectItem value="hardware">Hardware terminal</SelectItem>
+                  <SelectItem value="mobile">Mobile app</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Connection</Label>
+              <Select value={connectionType} onValueChange={setConnectionType}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="network">Network / Wi-Fi</SelectItem>
+                  <SelectItem value="bluetooth">Bluetooth</SelectItem>
+                  <SelectItem value="usb">USB tethered</SelectItem>
+                  <SelectItem value="4g">4G / LTE</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
           </div>
           <div className="space-y-1.5">
-            <Label>Connection</Label>
-            <Select value={connectionType} onValueChange={setConnectionType}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="network">Network / Wi-Fi</SelectItem>
-                <SelectItem value="bluetooth">Bluetooth</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="pos-printer">Receipt Printer (optional)</Label>
+            <Label htmlFor="pos-printer">Receipt printer (optional)</Label>
             <Input id="pos-printer" placeholder="e.g. Epson TM-T20III" value={printerModel} onChange={(e) => setPrinterModel(e.target.value)} />
+          </div>
+          <div className="rounded-lg bg-muted px-3 py-2 text-[11.5px] text-muted-foreground">
+            Gateway: <strong className="text-foreground">{gateway}</strong> · Settles to {settlement}
           </div>
         </div>
         <DialogFooter>
@@ -547,6 +875,91 @@ function ConnectPOSDialog({ open, onOpenChange }: { open: boolean; onOpenChange:
             {connecting ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : <MonitorSmartphone className="size-4" aria-hidden />}
             {connecting ? "Pairing…" : "Connect"}
           </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+/* Agent float remittance — swipe on terminal → funds to company account */
+function RemitFloatDialog({
+  terminal,
+  gateway,
+  settlement,
+  onClose,
+}: {
+  terminal: { id: string; location: string; agent: string; transactions: number; revenue: number };
+  gateway: string;
+  settlement: string;
+  onClose: () => void;
+}) {
+  const [amount, setAmount] = React.useState("");
+  const [processing, setProcessing] = React.useState(false);
+  const [done, setDone] = React.useState(false);
+
+  async function remit() {
+    const v = parseFloat(amount);
+    if (!v || v <= 0) {
+      toast.error("Enter a valid amount");
+      return;
+    }
+    setProcessing(true);
+    try {
+      await fetch("/api/submissions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type: "float_remittance",
+          title: `Float remittance — ${terminal.id}`,
+          description: `${terminal.agent} remitted ${formatMoney(v)} via ${gateway} → ${settlement}`,
+          amount: v,
+        }),
+      });
+      setDone(true);
+      toast.success("Remittance recorded", { description: `${formatMoney(v)} → ${settlement}` });
+    } catch {
+      toast.error("Remittance failed");
+    } finally {
+      setProcessing(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[400px]">
+        <DialogHeader>
+          <DialogTitle>Remit Float — {terminal.id}</DialogTitle>
+          <DialogDescription>
+            Agent swipes on the terminal; funds settle to the company account via {gateway}.
+          </DialogDescription>
+        </DialogHeader>
+        {!done ? (
+          <div className="space-y-3.5 py-2">
+            <div className="rounded-lg border p-3 text-[12.5px]">
+              <p className="font-medium">{terminal.agent}</p>
+              <p className="text-muted-foreground">{terminal.location}</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Amount to remit (ZiG)</Label>
+              <Input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
+            </div>
+            <div className="rounded-lg bg-muted px-3 py-2 text-[11.5px] text-muted-foreground">
+              Settles to: <strong className="text-foreground">{settlement}</strong>
+            </div>
+          </div>
+        ) : (
+          <div className="py-4 text-center">
+            <p className="text-[15px] font-semibold text-success">Remittance recorded</p>
+            <p className="mt-1 text-[12px] text-muted-foreground">{formatMoney(parseFloat(amount) || 0)} → {settlement}</p>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>{done ? "Close" : "Cancel"}</Button>
+          {!done && (
+            <Button onClick={remit} disabled={processing}>
+              {processing ? "Processing…" : "Remit now"}
+            </Button>
+          )}
         </DialogFooter>
       </DialogContent>
     </Dialog>
@@ -644,9 +1057,9 @@ function InvoicesTab() {
       </div>
 
       <Card className="gap-0 py-0 shadow-xs">
-        <CardHeader className="px-4 pt-4 sm:px-5">
+        <CardHeader className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4 sm:px-5">
           <CardTitle className="text-[14.5px] font-semibold">Invoice List</CardTitle>
-          <CardAction className="flex flex-wrap items-center justify-end gap-2">
+          <div className="flex items-center gap-2">
             <ExportButton filename="invoices-export" rows={invoices.length} label="Export" />
             <Button
               className="h-9 gap-1.5 text-[13px]"
@@ -654,7 +1067,7 @@ function InvoicesTab() {
             >
               <FileText className="size-4" aria-hidden /> New Invoice
             </Button>
-          </CardAction>
+          </div>
         </CardHeader>
         <CardContent className="px-4 pb-4 sm:px-5">
           <div className="overflow-x-auto rounded-xl border">

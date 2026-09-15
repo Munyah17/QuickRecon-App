@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
-import { getDistributions, getReconciliations, getReports } from "@/lib/data";
+import { getAgents, getDistributions, getReconciliations, getReports } from "@/lib/data";
 import { isCompanyRole } from "@/lib/nav";
 import { PageHeader } from "@/components/layout/page-header";
 import { MyReports } from "@/components/reports/my-reports";
@@ -14,14 +14,18 @@ export default async function ReportsPage() {
   if (!session) redirect("/login");
 
   if (isCompanyRole(session.user.role)) {
-    const history = await getDistributions();
+    const [history, agents, recons] = await Promise.all([
+      getDistributions(),
+      getAgents(),
+      getReconciliations(),
+    ]);
     return (
       <div className="space-y-4">
         <PageHeader
           title="Generate & Send Reports"
           description="Create and distribute reconciled reports to agents"
         />
-        <ReportDistribution history={history} />
+        <ReportDistribution history={history} agents={agents} recons={recons} />
       </div>
     );
   }

@@ -1,40 +1,80 @@
 "use client";
 
-import pdfMake from "pdfmake/build/pdfmake";
-import pdfFonts from "pdfmake/build/vfs_fonts";
 import type { TableCell } from "pdfmake/interfaces";
 import { formatMoney } from "@/lib/format";
+import { getPdfMake } from "@/lib/export";
 import type { Currency } from "@/types";
 
-// vfs_fonts shape differs between pdfmake builds — handle both.
-const fonts = pdfFonts as unknown as { vfs?: Record<string, string>; pdfMake?: { vfs: Record<string, string> } };
-(pdfMake as unknown as { vfs: Record<string, string> }).vfs = fonts.pdfMake?.vfs ?? fonts.vfs ?? {};
+export interface Deduction {
+  label: string;
+  amount: number;
+  /** Statutory deductions flagged for payslip wording. */
+  statutory?: boolean;
+}
 
 export interface PayslipData {
-  agentId: string;
-  agentName: string;
-  province?: string;
+  employeeId: string;
+  employeeName: string;
+  role?: string;
+  department?: string;
   period: string;
   currency: Currency;
-  commission: number;
-  bonus: number;
-  adjustments?: { label: string; amount: number }[];
+  basicSalary: number;
+  allowances?: { label: string; amount: number }[];
+  deductions?: Deduction[];
+  loanRepayment?: { label: string; amount: number; balance?: number };
 }
 
 /**
- * Generates and downloads a commission/bonus payslip PDF.
- * Agents are not employees — this is a payout statement, not a salary slip.
+ * Generates and downloads a real payroll payslip PDF for staff.
+ * Supports statutory deductions (PAYE, NSSA, AIDS Levy), custom
+ * deductions and loan repayments. Agents use commission statements
+ * instead — see lib/erp/commission-statement.ts.
  */
-export function downloadPayslip(d: PayslipData) {
-  const adjustments = d.adjustments ?? [];
-  const adjTotal = adjustments.reduce((s, a) => s + a.amount, 0);
-  const gross = d.commission + d.bonus + adjTotal;
+export async function downloadPayslip(d: PayslipData) {
+  const pdfMake = await getPdfMake();
+  const allowances = d.allowances ?? [];
+  const deductions = d.deductions ?? [];
+  const gross = d.basicSalary + allowances.reduce((s, a) => s + a.amount, 0);
+  const dedTotal = deductions.reduce((s, x) => s + x.amount, 0) + (d.loanRepayment?.amount ?? 0);
+  const net = gross - dedTotal;
+
+  const body: TableCell[][] = [
+    [
+      { text: "Earnings", style: "th" },
+      { text: "Amount", style: "th", alignment: "right" },
+    ],
+    [{ text: "Basic salary", style: "td" }, { text: formatMoney(d.basicSalary, d.currency), style: "td", alignment: "right" }],
+    ...allowances.map((a): TableCell[] => [
+      { text: a.label, style: "td" },
+      { text: formatMoney(a.amount, d.currency), style: "td", alignment: "right" },
+    ]),
+    [{ text: "GROSS PAY", style: "sub" }, { text: formatMoney(gross, d.currency), style: "sub", alignment: "right" }],
+    [
+      { text: "Deductions", style: "th" },
+      { text: "", style: "th" },
+    ],
+    ...deductions.map((x): TableCell[] => [
+      { text: x.label + (x.statutory ? " (statutory)" : ""), style: "td" },
+      { text: `(${formatMoney(x.amount, d.currency)})`, style: "td", alignment: "right" },
+    ]),
+    ...(d.loanRepayment
+      ? [[
+          { text: `${d.loanRepayment.label} (loan repayment)`, style: "td" },
+          { text: `(${formatMoney(d.loanRepayment.amount, d.currency)})`, style: "td", alignment: "right" as const },
+        ] as TableCell[]]
+      : []),
+    [
+      { text: "NET PAY", style: "totalLabel" },
+      { text: formatMoney(net, d.currency), style: "totalLabel", alignment: "right" },
+    ],
+  ];
 
   pdfMake.createPdf({
     pageSize: "A4",
     pageMargins: [48, 48, 48, 56],
     footer: (page: number, pages: number) => ({
-      text: `QuickRecon App — agent payout statement · Page ${page} of ${pages}`,
+      text: `QuickRecon App — staff payslip · Page ${page} of ${pages}`,
       alignment: "center",
       fontSize: 8,
       color: "#6b7280",
@@ -51,7 +91,7 @@ export function downloadPayslip(d: PayslipData) {
           },
           {
             stack: [
-              { text: "COMMISSION PAYOUT STATEMENT", fontSize: 12, bold: true, alignment: "right", color: "#2563eb" },
+              { text: "PAYSLIP", fontSize: 12, bold: true, alignment: "right", color: "#2563eb" },
               { text: `Period: ${d.period}`, fontSize: 9, alignment: "right", color: "#6b7280", margin: [0, 2, 0, 0] },
             ],
           },
@@ -63,15 +103,15 @@ export function downloadPayslip(d: PayslipData) {
         columns: [
           {
             stack: [
-              { text: "AGENT", fontSize: 8, color: "#6b7280", bold: true },
-              { text: d.agentName, fontSize: 12, bold: true, margin: [0, 2, 0, 0] },
-              { text: d.agentId, fontSize: 9, color: "#6b7280", margin: [0, 1, 0, 0] },
-              ...(d.province ? [{ text: d.province, fontSize: 9, color: "#6b7280" }] : []),
+              { text: "EMPLOYEE", fontSize: 8, color: "#6b7280", bold: true },
+              { text: d.employeeName, fontSize: 12, bold: true, margin: [0, 2, 0, 0] },
+              { text: d.employeeId, fontSize: 9, color: "#6b7280", margin: [0, 1, 0, 0] },
+              ...(d.role ? [{ text: d.role, fontSize: 9, color: "#6b7280" }] : []),
             ],
           },
           {
             stack: [
-              { text: "PAYOUT CURRENCY", fontSize: 8, color: "#6b7280", bold: true, alignment: "right" },
+              { text: "CURRENCY", fontSize: 8, color: "#6b7280", bold: true, alignment: "right" },
               { text: d.currency === "ZWG" ? "ZiG (Zimbabwe Gold)" : "USD", fontSize: 10, alignment: "right", margin: [0, 2, 0, 0] },
             ],
           },
@@ -79,25 +119,7 @@ export function downloadPayslip(d: PayslipData) {
       },
       {
         margin: [0, 18, 0, 0],
-        table: {
-          widths: ["*", "auto"],
-          body: ([
-            [
-              { text: "Item", style: "th" },
-              { text: "Amount", style: "th", alignment: "right" as const },
-            ],
-            [{ text: "Commission (insurance & module sales)", style: "td" }, { text: formatMoney(d.commission, d.currency), style: "td", alignment: "right" as const }],
-            [{ text: "Performance bonus", style: "td" }, { text: formatMoney(d.bonus, d.currency), style: "td", alignment: "right" as const }],
-            ...adjustments.map((a) => [
-              { text: a.label, style: "td" },
-              { text: formatMoney(a.amount, d.currency), style: "td", alignment: "right" as const },
-            ]),
-            [
-              { text: "TOTAL PAYOUT", style: "totalLabel" },
-              { text: formatMoney(gross, d.currency), style: "totalLabel", alignment: "right" as const },
-            ],
-          ]) as TableCell[][],
-        },
+        table: { widths: ["*", "auto"], body },
         layout: {
           hLineWidth: () => 0.5,
           vLineWidth: () => 0,
@@ -106,17 +128,26 @@ export function downloadPayslip(d: PayslipData) {
           paddingBottom: () => 8,
         },
       },
+      ...(d.loanRepayment?.balance !== undefined
+        ? [{
+            text: `Loan balance after this payment: ${formatMoney(d.loanRepayment.balance, d.currency)}`,
+            fontSize: 8,
+            color: "#6b7280",
+            margin: [0, 10, 0, 0] as [number, number, number, number],
+          }]
+        : []),
       {
-        text: "Agents are independent contractors — this statement reflects commissions and bonuses for the period, not a salary. Queries: support@quickrecon.co.zw",
+        text: "Statutory deductions (PAYE, NSSA, AIDS Levy) are remitted to the respective authorities. Queries: hr@quickrecon.co.zw",
         fontSize: 8,
         color: "#9ca3af",
-        margin: [0, 24, 0, 0],
+        margin: [0, 24, 0, 0] as [number, number, number, number],
       },
     ],
     styles: {
       th: { fontSize: 9, bold: true, color: "#374151", fillColor: "#f3f4f6" },
       td: { fontSize: 10, color: "#111827" },
+      sub: { fontSize: 10, bold: true, color: "#111827", fillColor: "#f9fafb" },
       totalLabel: { fontSize: 11, bold: true, color: "#0f2b4c", fillColor: "#eff6ff" },
     },
-  }).download(`payslip-${d.agentId}-${d.period}.pdf`);
+  }).download(`payslip-${d.employeeId}-${d.period.replace(/\s+/g, "-")}.pdf`);
 }

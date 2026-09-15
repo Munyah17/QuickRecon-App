@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { Download, Eye, Mail, MessageSquare, Send } from "lucide-react";
+import { Mail, MessageSquare, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -15,7 +15,7 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ExportButton } from "@/components/shared/export-button";
 import { formatDate, formatPeriod, moduleName } from "@/lib/format";
-import type { DistributionJob } from "@/types";
+import type { Agent, DistributionJob, Reconciliation } from "@/types";
 
 const DEFAULT_MESSAGE = `Dear Agent,
 
@@ -28,13 +28,63 @@ Enpassent Team`;
  * Super Admin "Generate & Send Reports" — recipients, formats, channels,
  * message, send/preview, schedule, history. (PC mockup screen 7)
  */
-export function ReportDistribution({ history }: { history: DistributionJob[] }) {
+export function ReportDistribution({
+  history,
+  agents = [],
+  recons = [],
+}: {
+  history: DistributionJob[];
+  agents?: Agent[];
+  recons?: Reconciliation[];
+}) {
   const [recipients, setRecipients] = React.useState("all");
   const [formats, setFormats] = React.useState<string[]>(["xlsx", "pdf"]);
   const [channels, setChannels] = React.useState<string[]>(["email", "whatsapp"]);
   const [message, setMessage] = React.useState(DEFAULT_MESSAGE);
   const [dateFrom, setDateFrom] = React.useState("");
   const [dateTo, setDateTo] = React.useState("");
+  const [agentQuery, setAgentQuery] = React.useState("");
+  const [selectedAgents, setSelectedAgents] = React.useState<Set<string>>(new Set());
+  const [sending, setSending] = React.useState(false);
+
+  const agentResults = React.useMemo(() => {
+    const q = agentQuery.toLowerCase();
+    return agents.filter(
+      (a) => a.fullName.toLowerCase().includes(q) || a.id.toLowerCase().includes(q)
+    );
+  }, [agents, agentQuery]);
+
+  const targetRecons = React.useMemo(() => {
+    if (recipients === "all") return recons;
+    return recons.filter((r) => selectedAgents.has(r.agentId));
+  }, [recipients, recons, selectedAgents]);
+
+  async function sendNow() {
+    if (targetRecons.length === 0) {
+      toast.error("No reconciliations to send", { description: "Selected agents have no published reconciliation." });
+      return;
+    }
+    setSending(true);
+    let ok = 0;
+    let failed = 0;
+    for (const r of targetRecons) {
+      try {
+        const res = await fetch("/api/reconciliation/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ batchId: r.id, agentId: r.agentId, channels }),
+        });
+        const data = await res.json();
+        if (data.success) ok++; else failed++;
+      } catch {
+        failed++;
+      }
+    }
+    setSending(false);
+    toast.success(`Sent ${ok} report${ok === 1 ? "" : "s"}`, {
+      description: failed ? `${failed} failed — check delivery history.` : `Each agent received only their own document via ${channels.join(" + ")}.`,
+    });
+  }
 
   const toggle = (list: string[], set: (v: string[]) => void, id: string, on: boolean) =>
     set(on ? [...list, id] : list.filter((x) => x !== id));
@@ -62,7 +112,7 @@ export function ReportDistribution({ history }: { history: DistributionJob[] }) 
           <StepCard n={1} title="Select Recipients">
             <RadioGroup value={recipients} onValueChange={setRecipients} className="space-y-2.5">
               {[
-                ["all", "All Agents (236)"],
+                ["all", `All Agents (${agents.length})`],
                 ["selected", "Selected Agents"],
                 ["single", "Single Agent"],
               ].map(([v, label]) => (
@@ -72,6 +122,66 @@ export function ReportDistribution({ history }: { history: DistributionJob[] }) 
                 </div>
               ))}
             </RadioGroup>
+
+            {recipients !== "all" && (
+              <div className="mt-3 space-y-2">
+                <Input
+                  value={agentQuery}
+                  onChange={(e) => setAgentQuery(e.target.value)}
+                  placeholder="Search agent by name or ID…"
+                  className="h-9 bg-card text-[13px]"
+                />
+                <div className="flex items-center justify-between">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setSelectedAgents(new Set(agentResults.map((a) => a.id)))
+                    }
+                    className="text-[12px] font-semibold text-primary hover:underline"
+                  >
+                    Select all ({agentResults.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedAgents(new Set())}
+                    className="text-[12px] text-muted-foreground hover:underline"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <div className="max-h-48 space-y-1 overflow-y-auto rounded-xl border p-2">
+                  {(recipients === "single" ? agentResults.slice(0, 8) : agentResults).map((a) => {
+                    const on = selectedAgents.has(a.id);
+                    return (
+                      <button
+                        key={a.id}
+                        type="button"
+                        onClick={() =>
+                          setSelectedAgents((prev) => {
+                            if (recipients === "single") return new Set([a.id]);
+                            const next = new Set(prev);
+                            if (on) next.delete(a.id); else next.add(a.id);
+                            return next;
+                          })
+                        }
+                        className={`flex w-full items-center justify-between rounded-lg px-2.5 py-2 text-left text-[12.5px] transition-colors ${
+                          on ? "bg-primary-soft text-primary" : "hover:bg-surface-hover"
+                        }`}
+                      >
+                        <span className="font-medium">{a.fullName}</span>
+                        <span className="font-mono text-[11px] text-muted-foreground">{a.id}</span>
+                      </button>
+                    );
+                  })}
+                  {agentResults.length === 0 && (
+                    <p className="py-4 text-center text-[12px] text-muted-foreground">No agents match.</p>
+                  )}
+                </div>
+                <p className="text-[11.5px] text-muted-foreground">
+                  {selectedAgents.size} selected
+                </p>
+              </div>
+            )}
           </StepCard>
 
           <StepCard n={2} title="Report Format">
@@ -107,7 +217,7 @@ export function ReportDistribution({ history }: { history: DistributionJob[] }) 
               <MessageSquare className="size-4 text-muted-foreground" aria-hidden /> WhatsApp
             </label>
             <p className="mt-2 rounded-lg bg-muted px-3 py-2 text-[11.5px] text-muted-foreground">
-              229 agents have a valid email · 214 have WhatsApp on record · 7 have no deliverable channel.
+              {agents.filter((a) => a.email).length} agents have email · {agents.filter((a) => a.phone).length} have phone/WhatsApp on record.
             </p>
           </StepCard>
 
@@ -128,29 +238,23 @@ export function ReportDistribution({ history }: { history: DistributionJob[] }) 
         <div className="mt-4 flex flex-wrap items-center gap-2">
           <ConfirmDialog
             trigger={
-              <Button className="h-9 gap-1.5 text-[13px]" disabled={formats.length === 0 || channels.length === 0}>
-                <Send className="size-4" aria-hidden /> Send Now
+              <Button className="h-9 gap-1.5 text-[13px]" disabled={formats.length === 0 || channels.length === 0 || sending}>
+                <Send className="size-4" aria-hidden /> {sending ? "Sending…" : "Send Now"}
               </Button>
             }
             title="Queue distribution?"
-            description={`Reports will be generated and delivered to ${recipients === "all" ? "236 agents" : "the selected agents"} via ${channels.join(" + ")}. Delivery history is tracked per recipient.`}
+            description={`${targetRecons.length} agent reconciliation document${targetRecons.length === 1 ? "" : "s"} will be generated and delivered via ${channels.join(" + ")}. Each agent receives only their own document.`}
             confirmLabel="Send Now"
-            onConfirm={() =>
-              toast.success("Distribution queued", {
-                description: "Generating reports and queueing deliveries…",
-              })
-            }
+            onConfirm={sendNow}
           />
-          <Button variant="outline" className="h-9 gap-1.5 text-[13px]">
-            <Eye className="size-4" aria-hidden /> Preview (5 agents)
-          </Button>
-          <Button
-            variant="outline"
-            className="h-9 gap-1.5 text-[13px]"
-            onClick={() => toast.success("Report exported", { description: `Exported as ${formats[0]?.toUpperCase() ?? "XLSX"}` })}
-          >
-            <Download className="size-4" aria-hidden /> Export
-          </Button>
+          <ExportButton
+            filename={`recon-reports-${recipients}`}
+            label="Export"
+            data={{
+              columns: ["Agent", "ID", "Period", "Insurance", "ZINARA", "Deposits", "Closing", "Status"],
+              rows: targetRecons.map((r) => [r.agentName, r.agentId, r.period, r.insurance, r.zinara, r.deposits, r.closingPosition, r.status]),
+            }}
+          />
         </div>
       </TabsContent>
 

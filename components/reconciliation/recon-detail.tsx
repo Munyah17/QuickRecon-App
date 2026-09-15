@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { exportData } from "@/lib/export";
 import { formatMoney, formatPeriod, moduleName } from "@/lib/format";
 import type { Reconciliation, ReconciliationLine, Txn } from "@/types";
 
@@ -72,6 +73,35 @@ export function ReconDetail({
   const [item, setItem] = React.useState<string>("");
   const [note, setNote] = React.useState("");
 
+  /** One-row consolidated export for this agent only. */
+  function agentRow() {
+    return {
+      columns: [
+        "Agent", "Agent ID", "Module", "Period", "Currency", "Opening",
+        "Insurance", "ZINARA", "Deposits", "Adjustments", "Closing", "Status", "Version",
+      ],
+      rows: [[
+        recon.agentName, recon.agentId, moduleName(recon.module), recon.period, recon.currency,
+        recon.openingPosition, recon.insurance, recon.zinara, recon.deposits,
+        recon.adjustments, recon.closingPosition, recon.status, recon.version,
+      ]],
+    };
+  }
+
+  function downloadFull(format: "csv" | "excel" | "pdf") {
+    const fname = `reconciliation-${recon.agentId}-${recon.period}`;
+    void exportData(
+      format,
+      {
+        columns: ["Item", "Expected", "Actual", "Variance", "Status"],
+        rows: lines.map((l) => [l.item, l.expected, l.actual, l.variance, l.status]),
+      },
+      fname,
+      `Reconciliation — ${recon.agentName} (${formatPeriod(recon.period)})`
+    );
+    toast.success("Download started", { description: `${fname}.${format === "excel" ? "xlsx" : format}` });
+  }
+
   function submitDiscrepancy() {
     toast.success("Discrepancy submitted", {
       description: "The reconciliation team will review it with your attached evidence.",
@@ -103,8 +133,16 @@ export function ReconDetail({
         </div>
         <div className="flex items-center gap-2">
           <StatusBadge status={recon.status} />
-          <Button variant="outline" size="sm" className="h-9 gap-1.5 text-[12.5px]">
-            <Download className="size-4" aria-hidden /> View Full Report
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 gap-1.5 text-[12.5px]"
+            onClick={() => {
+              void exportData("pdf", agentRow(), `reconciliation-${recon.agentId}-${recon.period}`, `Reconciliation — ${recon.agentName}`);
+              toast.success("Report downloaded");
+            }}
+          >
+            <Download className="size-4" aria-hidden /> Download Report
           </Button>
           <Dialog open={discrepancyOpen} onOpenChange={setDiscrepancyOpen}>
             <DialogTrigger asChild>
@@ -176,7 +214,53 @@ export function ReconDetail({
         </TabsList>
 
         <TabsContent value="summary" className="mt-4">
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-3">
+          {/* Consolidated single-row view — the agent's whole recon as one row */}
+          <Card className="gap-0 py-0 shadow-xs">
+            <CardContent className="p-0">
+              <div className="overflow-x-auto">
+                <table className="w-full min-w-[860px] text-[12.5px]">
+                  <thead>
+                    <tr className="border-b bg-muted/50 text-left text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                      <th className="px-3 py-2">Agent</th>
+                      <th className="px-3 py-2">Module</th>
+                      <th className="px-3 py-2">Period</th>
+                      <th className="px-3 py-2 text-right">Opening</th>
+                      <th className="px-3 py-2 text-right">Insurance</th>
+                      <th className="px-3 py-2 text-right">ZINARA</th>
+                      <th className="px-3 py-2 text-right">Deposits</th>
+                      <th className="px-3 py-2 text-right">Adjustments</th>
+                      <th className="px-3 py-2 text-right">Closing</th>
+                      <th className="px-3 py-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr className="hover:bg-surface-hover">
+                      <td className="px-3 py-3 font-medium">{recon.agentName} <span className="font-mono text-[11px] text-muted-foreground">({recon.agentId})</span></td>
+                      <td className="px-3 py-3 text-muted-foreground">{moduleName(recon.module)}</td>
+                      <td className="px-3 py-3">{formatPeriod(recon.period)}</td>
+                      <td className="tnum px-3 py-3 text-right">{recon.openingPosition.toLocaleString()}</td>
+                      <td className="tnum px-3 py-3 text-right">{recon.insurance.toLocaleString()}</td>
+                      <td className="tnum px-3 py-3 text-right">{recon.zinara.toLocaleString()}</td>
+                      <td className="tnum px-3 py-3 text-right">{recon.deposits.toLocaleString()}</td>
+                      <td className="tnum px-3 py-3 text-right">{recon.adjustments.toLocaleString()}</td>
+                      <td className="tnum px-3 py-3 text-right font-bold">{formatMoney(recon.closingPosition, recon.currency)}</td>
+                      <td className="px-3 py-3"><StatusBadge status={recon.status} /></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2.5">
+                <p className="text-[11.5px] text-muted-foreground">This row is the agent&apos;s consolidated document — export it directly.</p>
+                <div className="flex gap-1.5">
+                  <Button variant="outline" size="sm" className="h-7.5 gap-1 text-[11.5px]" onClick={() => { void exportData("csv", agentRow(), `recon-${recon.agentId}`); }}>CSV</Button>
+                  <Button variant="outline" size="sm" className="h-7.5 gap-1 text-[11.5px]" onClick={() => { void exportData("excel", agentRow(), `recon-${recon.agentId}`); }}>Excel</Button>
+                  <Button variant="outline" size="sm" className="h-7.5 gap-1 text-[11.5px]" onClick={() => { void exportData("pdf", agentRow(), `recon-${recon.agentId}`, `Reconciliation — ${recon.agentName}`); }}>PDF</Button>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3">
             <SummaryTile label="Opening Position" amount={recon.openingPosition} currency={recon.currency} />
             <SummaryTile label="Total Insurance" amount={recon.insurance} currency={recon.currency} />
             <SummaryTile label="Total ZINARA" amount={recon.zinara} currency={recon.currency} />
@@ -267,11 +351,7 @@ export function ReconDetail({
                   <button
                     key={d.label}
                     type="button"
-                    onClick={() =>
-                      toast.success("Download started", {
-                        description: `${d.label} report — ${formatPeriod(recon.period)}`,
-                      })
-                    }
+                    onClick={() => downloadFull(d.label === "PDF" ? "pdf" : d.label === "Excel" ? "excel" : "csv")}
                     className="flex items-center gap-3 rounded-xl border p-3.5 text-left transition-colors hover:bg-surface-hover"
                   >
                     <span className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${d.tone}`}>

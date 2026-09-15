@@ -61,18 +61,42 @@ import type { Reconciliation } from "@/types";
 
 const STATUS_FILTERS = ["all", "success", "warning", "attention"] as const;
 
-/** Page-header actions for the batch review (mockup: Download Report + Approve & Publish). */
-export function BatchActions() {
+/** Page-header actions — Approve & Publish hits the real API. */
+export function BatchActions({ rows }: { rows: Reconciliation[] }) {
   const [approving, setApproving] = React.useState(false);
+
+  async function approve() {
+    setApproving(true);
+    try {
+      const res = await fetch("/api/reconciliation/approve", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Publish failed");
+      toast.success("Batch published", {
+        description: `${data.published ?? rows.length} agent reconciliations published — each agent sees only their own document.`,
+      });
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not publish batch");
+    } finally {
+      setApproving(false);
+    }
+  }
+
   return (
     <div className="flex items-center gap-2">
-      <Button
-        variant="outline"
-        className="h-9 gap-1.5 text-[13px]"
-        onClick={() => toast.success("Batch report downloaded", { description: "Full reconciliation summary exported." })}
-      >
-        <Download className="size-4" aria-hidden /> Download Report
-      </Button>
+      <ExportButton
+        filename="reconciliation-batch"
+        rows={rows.length}
+        label="Download Report"
+        title={`QuickRecon — Batch Reconciliation (${rows[0]?.period ?? ""})`}
+        data={{
+          columns: ["Agent", "Agent ID", "Module", "Insurance", "ZINARA", "Deposits", "Adjustments", "Closing Position", "Status"],
+          rows: rows.map((r) => [r.agentName, r.agentId, moduleName(r.module), r.insurance, r.zinara, r.deposits, r.adjustments, r.closingPosition, r.status]),
+        }}
+      />
       <ConfirmDialog
         trigger={
           <Button className="h-9 gap-1.5 text-[13px]" disabled={approving}>
@@ -80,17 +104,9 @@ export function BatchActions() {
           </Button>
         }
         title="Approve & publish batch?"
-        description="Publishing makes these reconciliations visible to each agent. Published figures are immutable — corrections require a new version."
+        description="Publishing makes each agent's consolidated document visible to that agent only. Published figures are immutable — corrections require a new version."
         confirmLabel="Approve & Publish"
-        onConfirm={() => {
-          setApproving(true);
-          setTimeout(() => {
-            setApproving(false);
-            toast.success("Batch approved and published", {
-              description: "Agents can now view their reconciliation reports.",
-            });
-          }, 900);
-        }}
+        onConfirm={approve}
       />
     </div>
   );

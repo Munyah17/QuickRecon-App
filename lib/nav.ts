@@ -58,8 +58,11 @@ export const NAV_ITEMS: NavItem[] = [
     roles: COMPANY_ROLES,
     mobilePrimary: true,
     children: [
-      { label: "Batch Review", href: "/app/reconciliation", icon: RefreshCcw },
-      { label: "Exceptions", href: "/app/reconciliation/exceptions", icon: TriangleAlert },
+      { label: "Summary", href: "/app/reconciliation", icon: RefreshCcw },
+      { label: "Breakdowns", href: "/app/reconciliation?tab=breakdowns", icon: FileBarChart },
+      { label: "Transactions", href: "/app/reconciliation?tab=transactions", icon: ArrowLeftRight },
+      { label: "Documents", href: "/app/reconciliation?tab=documents", icon: FileText },
+      { label: "Alarm", href: "/app/reconciliation/exceptions", icon: TriangleAlert },
     ],
   },
   {
@@ -76,7 +79,7 @@ export const NAV_ITEMS: NavItem[] = [
     ],
   },
   { label: "Submissions", href: "/app/submissions", icon: ClipboardList, roles: [...COMPANY_ROLES, ...FIELD_ROLES], mobilePrimary: true },
-  { label: "Agents", href: "/app/agents", icon: Users, roles: COMPANY_ROLES, mobilePrimary: true },
+  { label: "Agents Management", href: "/app/agents", icon: Users, roles: COMPANY_ROLES, mobilePrimary: true },
   { label: "Staff Management", href: "/app/users", icon: UserCog, roles: ["super_admin", "admin", "tech_support"] },
   { label: "Communications", href: "/app/communications", icon: Send, roles: ["super_admin", "admin"] },
   {
@@ -112,12 +115,12 @@ export const AGENT_MOBILE_PRIMARY = [
 /** Sidebar ordering per audience, matching the mockups exactly. */
 const COMPANY_ORDER = [
   "/app/dashboard",
-  "/app/agents",
   "/app/imports",
   "/app/reconciliation",
   "/app/reports",
-  "/app/communications",
+  "/app/agents",
   "/app/users",
+  "/app/communications",
   "/app/submissions",
   "/app/erp",
   "/app/support",

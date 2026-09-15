@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import { LifeBuoy, Headset, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { navForRole, isCompanyRole, type NavItem } from "@/lib/nav";
@@ -16,12 +16,20 @@ function isActive(pathname: string, href: string): boolean {
   return pathname.startsWith(cleanHref);
 }
 
-function isChildActive(pathname: string, href: string): boolean {
-  const cleanHref = href.split("?")[0];
-  if (cleanHref === "/app/reconciliation") return pathname === "/app/reconciliation";
-  if (cleanHref === "/app/reports") return pathname === "/app/reports";
-  if (cleanHref === "/app/erp") return pathname === "/app/erp";
-  return pathname.startsWith(cleanHref);
+/** Tab-aware active check: only the child whose path AND query match. */
+function isChildActive(pathname: string, searchParams: URLSearchParams | null, href: string): boolean {
+  const [cleanHref, query] = href.split("?");
+  if (pathname !== cleanHref) {
+    // Nested route of a dedicated child path (e.g. /exceptions/detail).
+    return pathname.startsWith(cleanHref + "/");
+  }
+  if (query) {
+    const params = new URLSearchParams(query);
+    return [...params].every(([k, v]) => searchParams?.get(k) === v);
+  }
+  // Plain link — active unless a sibling ?tab= link is selected. Dedicated
+  // sub-paths (e.g. /app/reconciliation/exceptions) are exact matches anyway.
+  return !searchParams?.get("tab");
 }
 
 /**
@@ -46,6 +54,7 @@ export function SidebarNav({
   onNavigate?: () => void;
 }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const company = isCompanyRole(user.role);
   const items = navForRole(user.role);
   const support = items.find((i) => i.label === "Support");
@@ -72,9 +81,9 @@ export function SidebarNav({
         </p>
       )}
 
-      <nav className="flex-1 space-y-1 overflow-y-auto border-t border-sidebar-border px-3 py-3" aria-label="Primary">
+      <nav className="min-h-0 flex-1 space-y-1 overflow-y-auto border-t border-sidebar-border px-3 py-3" aria-label="Primary">
         {main.map((item) => (
-          <CollapsibleNavItem key={item.href} item={item} pathname={pathname} onNavigate={onNavigate} />
+          <CollapsibleNavItem key={item.href} item={item} pathname={pathname} searchParams={searchParams} onNavigate={onNavigate} />
         ))}
       </nav>
 
@@ -141,7 +150,7 @@ export function SidebarNav({
             <p className="truncate text-[11.5px] text-[#7f99b8]">{user.roleLabel}</p>
           </div>
         </Link>
-        <p className="px-2 pt-1 text-[10.5px] text-[#54749c]">QuickRecon App v1.0.0</p>
+        <p className="px-2 pt-1 text-[10.5px] text-[#54749c]">QuickRecon App v1.0.1</p>
       </div>
     </div>
   );
@@ -150,15 +159,17 @@ export function SidebarNav({
 function CollapsibleNavItem({
   item,
   pathname,
+  searchParams,
   onNavigate,
 }: {
   item: NavItem;
   pathname: string;
+  searchParams: URLSearchParams | null;
   onNavigate?: () => void;
 }) {
   const hasChildren = item.children && item.children.length > 0;
   const active = isActive(pathname, item.href);
-  const childActive = hasChildren && item.children!.some((c) => isChildActive(pathname, c.href));
+  const childActive = hasChildren && item.children!.some((c) => isChildActive(pathname, searchParams, c.href));
 
   // Auto-expand if a child is active
   const [expanded, setExpanded] = React.useState(childActive);
@@ -208,7 +219,7 @@ function CollapsibleNavItem({
       {expanded && (
         <div className="mt-0.5 space-y-0.5 pl-5">
           {item.children!.map((child) => {
-            const childActiveItem = isChildActive(pathname, child.href);
+            const childActiveItem = isChildActive(pathname, searchParams, child.href);
             return (
               <Link
                 key={child.href}

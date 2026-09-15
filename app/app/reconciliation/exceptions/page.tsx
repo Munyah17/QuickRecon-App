@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { formatDate, moduleName } from "@/lib/format";
 
-export const metadata: Metadata = { title: "Exception Centre" };
+export const metadata: Metadata = { title: "Alarm" };
 
 const SEVERITY_STYLE: Record<string, string> = {
   critical: "bg-destructive-soft text-destructive",
@@ -38,7 +38,7 @@ export default async function ExceptionsPage() {
       </Link>
 
       <PageHeader
-        title="Exception Centre"
+        title="Alarm"
         description="Unmatched identities, variances and schema problems. Nothing is discarded silently — every problematic row lands here."
       />
 
@@ -76,7 +76,7 @@ export default async function ExceptionsPage() {
                         <CheckCircle2 className="size-3.5" aria-hidden /> Resolve
                       </Button>
                     }
-                    title="Resolve exception?"
+                    title="Resolve alarm?"
                     description="Mark as resolved after correcting the mapping or variance. The resolution is audit-logged."
                     confirmLabel="Resolve"
                   />
@@ -89,7 +89,7 @@ export default async function ExceptionsPage() {
                         Ignore with reason…
                       </Button>
                     }
-                    title="Ignore exception?"
+                    title="Ignore alarm?"
                     description="Ignoring always requires a written reason and is permanent in the audit trail."
                     confirmLabel="Ignore"
                     destructive
