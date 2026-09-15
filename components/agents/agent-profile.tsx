@@ -20,7 +20,7 @@ import {
   X,
   Store,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -245,12 +245,14 @@ export function AgentProfile({
             {/* Assistants */}
             <TabsContent value="assistants" className="mt-4">
               <Card className="gap-0 py-0 shadow-xs">
-                <CardHeader className="flex-row items-center justify-between px-4 pt-4 sm:px-5">
+                <CardHeader className="px-4 pt-4 sm:px-5">
                   <CardTitle className="text-[14.5px] font-semibold">Assistants</CardTitle>
                   {canManage && (
-                    <Button size="sm" className="h-8 gap-1.5 text-[12.5px]">
-                      <Plus className="size-3.5" aria-hidden /> Add Assistant
-                    </Button>
+                    <CardAction>
+                      <Button size="sm" className="h-8 gap-1.5 text-[12.5px]">
+                        <Plus className="size-3.5" aria-hidden /> Add Assistant
+                      </Button>
+                    </CardAction>
                   )}
                 </CardHeader>
                 <CardContent className="space-y-2.5 px-4 pb-4 sm:px-5">
@@ -378,12 +380,14 @@ function BoothsSection({
   return (
     <Card className="gap-0 py-0 shadow-xs">
       {!headerLess && (
-        <CardHeader className="flex-row items-center justify-between px-4 pt-4 sm:px-5">
+        <CardHeader className="px-4 pt-4 sm:px-5">
           <CardTitle className="text-[14.5px] font-semibold">Booths</CardTitle>
           {canManage && (
-            <Button size="sm" className="h-8 gap-1.5 text-[12.5px]">
-              <Plus className="size-3.5" aria-hidden /> Add Booth
-            </Button>
+            <CardAction>
+              <Button size="sm" className="h-8 gap-1.5 text-[12.5px]">
+                <Plus className="size-3.5" aria-hidden /> Add Booth
+              </Button>
+            </CardAction>
           )}
         </CardHeader>
       )}

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
-import { ArrowLeft, Download, FileWarning, Paperclip } from "lucide-react";
+import { ArrowLeft, Download, FileWarning, FileText, FileSpreadsheet, FileDown, Paperclip } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -25,7 +25,6 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusBadge } from "@/components/shared/status-badge";
-import { MoneyValue } from "@/components/shared/money-value";
 import { formatMoney, formatPeriod, moduleName } from "@/lib/format";
 import type { Reconciliation, ReconciliationLine, Txn } from "@/types";
 
@@ -173,6 +172,7 @@ export function ReconDetail({
           <TabsTrigger value="summary" className="rounded-none px-1 pb-2.5 text-[13px]">Summary</TabsTrigger>
           <TabsTrigger value="breakdown" className="rounded-none px-1 pb-2.5 text-[13px]">Breakdown</TabsTrigger>
           <TabsTrigger value="transactions" className="rounded-none px-1 pb-2.5 text-[13px]">Transactions</TabsTrigger>
+          <TabsTrigger value="documents" className="rounded-none px-1 pb-2.5 text-[13px]">Documents</TabsTrigger>
         </TabsList>
 
         <TabsContent value="summary" className="mt-4">
@@ -249,6 +249,56 @@ export function ReconDetail({
               </CardContent>
             </Card>
           ))}
+        </TabsContent>
+
+        <TabsContent value="documents" className="mt-4">
+          <Card className="gap-0 py-0 shadow-xs">
+            <CardContent className="p-4 sm:p-5">
+              <p className="text-[14px] font-semibold">Download Report</p>
+              <p className="mt-0.5 text-[12px] text-muted-foreground">
+                {formatPeriod(recon.period)} · {moduleName(recon.module)} · v{recon.version}
+              </p>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                {[
+                  { label: "PDF", sub: "Consolidated report", icon: FileText, tone: "bg-destructive-soft text-destructive" },
+                  { label: "Excel", sub: "Full workbook export", icon: FileSpreadsheet, tone: "bg-success-soft text-success-foreground" },
+                  { label: "CSV", sub: "Raw line items", icon: FileDown, tone: "bg-primary-soft text-primary" },
+                ].map((d) => (
+                  <button
+                    key={d.label}
+                    type="button"
+                    onClick={() =>
+                      toast.success("Download started", {
+                        description: `${d.label} report — ${formatPeriod(recon.period)}`,
+                      })
+                    }
+                    className="flex items-center gap-3 rounded-xl border p-3.5 text-left transition-colors hover:bg-surface-hover"
+                  >
+                    <span className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${d.tone}`}>
+                      <d.icon className="size-5" aria-hidden />
+                    </span>
+                    <span>
+                      <span className="block text-[13.5px] font-semibold">{d.label}</span>
+                      <span className="block text-[11.5px] text-muted-foreground">{d.sub}</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+              <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dashed p-3.5">
+                <p className="text-[12.5px] text-muted-foreground">
+                  Need to report an issue? If you find any discrepancies, submit a report for review.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8.5 gap-1.5 text-[12.5px] text-destructive"
+                  onClick={() => setDiscrepancyOpen(true)}
+                >
+                  <FileWarning className="size-4" aria-hidden /> Report Discrepancy
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
         </TabsContent>
       </Tabs>
     </div>

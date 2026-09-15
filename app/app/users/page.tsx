@@ -6,7 +6,7 @@ import { isCompanyRole } from "@/lib/nav";
 import { PageHeader } from "@/components/layout/page-header";
 import { UserManagement, AddUserDialog } from "@/components/users/user-management";
 
-export const metadata: Metadata = { title: "User Management" };
+export const metadata: Metadata = { title: "Staff Management" };
 
 export default async function UsersPage() {
   const session = await getSession();
@@ -21,8 +21,8 @@ export default async function UsersPage() {
   return (
     <div className="space-y-4">
       <PageHeader
-        title="User Management"
-        description="Manage system users, roles and permissions"
+        title="Staff Management"
+        description="Manage staff accounts, roles and permissions"
         actions={<AddUserDialog />}
       />
       <UserManagement users={users} pendingApprovals={pendingApprovals} />

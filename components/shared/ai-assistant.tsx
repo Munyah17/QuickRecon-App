@@ -48,7 +48,7 @@ export function AIAssistant() {
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Failed to get response");
       setMessages((prev) => [...prev, { role: "assistant", content: data.content }]);
-    } catch (e) {
+    } catch {
       setMessages((prev) => [
         ...prev,
         {
@@ -89,7 +89,7 @@ export function AIAssistant() {
             {messages.length === 0 && (
               <div className="space-y-3">
                 <div className="rounded-xl bg-muted p-3 text-[13px] leading-5">
-                  Hi! I'm your QuickRecon AI assistant. I can help with reconciliation, imports, reports, task management, and more. How can I help you today?
+                  Hi! I&apos;m your QuickRecon AI assistant. I can help with reconciliation, imports, reports, task management, and more. How can I help you today?
                 </div>
                 <div className="space-y-1.5">
                   <p className="text-[11px] font-medium text-muted-foreground">Suggested questions:</p>

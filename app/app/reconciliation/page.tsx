@@ -6,7 +6,7 @@ import { getSession } from "@/lib/auth/session";
 import { getReconciliations } from "@/lib/data";
 import { isCompanyRole } from "@/lib/nav";
 import { PageHeader } from "@/components/layout/page-header";
-import { BatchReview } from "@/components/reconciliation/batch-review";
+import { BatchActions, BatchReview } from "@/components/reconciliation/batch-review";
 
 export const metadata: Metadata = { title: "Reconciliation" };
 
@@ -23,13 +23,16 @@ export default async function ReconciliationPage() {
         title="Batch Reconciliation Results"
         description="Review and approve reconciliation before publishing"
         actions={
-          <Link
-            href="/app/reconciliation/exceptions"
-            className="inline-flex h-9 items-center gap-1.5 rounded-lg border bg-card px-3 text-[13px] font-medium hover:bg-surface-hover"
-          >
-            <TriangleAlert className="size-4 text-warning" aria-hidden />
-            Exception Centre
-          </Link>
+          <>
+            <Link
+              href="/app/reconciliation/exceptions"
+              className="inline-flex h-9 items-center gap-1.5 rounded-lg border bg-card px-3 text-[13px] font-medium hover:bg-surface-hover"
+            >
+              <TriangleAlert className="size-4 text-warning" aria-hidden />
+              Exception Centre
+            </Link>
+            <BatchActions />
+          </>
         }
       />
       <BatchReview rows={rows} />

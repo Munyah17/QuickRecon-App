@@ -10,36 +10,72 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { exportData, type ExportData, type ExportFormat } from "@/lib/export";
+
+const FORMAT_LABELS: Record<ExportFormat, string> = {
+  pdf: "PDF",
+  excel: "Excel (XLSX)",
+  csv: "CSV",
+  docx: "Word (DOCX)",
+};
+
+const EXT: Record<ExportFormat, string> = {
+  pdf: "pdf",
+  excel: "xlsx",
+  csv: "csv",
+  docx: "docx",
+};
 
 export function ExportButton({
   label = "Export",
   filename = "export",
   rows = 0,
+  data,
+  title,
   className,
 }: {
   label?: string;
   filename?: string;
+  /** Row count hint for the toast. */
   rows?: number;
+  /** When provided, performs a real file export instead of a notification. */
+  data?: ExportData;
+  /** Document title inside PDF/DOCX exports. */
+  title?: string;
   className?: string;
 }) {
-  const handleExport = (format: "pdf" | "excel" | "csv" | "docx") => {
-    const formatLabels: Record<string, string> = {
-      pdf: "PDF",
-      excel: "Excel (XLSX)",
-      csv: "CSV",
-      docx: "Word (DOCX)",
-    };
-    toast.success(`Exported as ${formatLabels[format]}`, {
-      description: `${rows} records exported to ${filename}.${format === "excel" ? "xlsx" : format}`,
+  const [busy, setBusy] = React.useState(false);
+
+  const handleExport = async (format: ExportFormat) => {
+    if (data) {
+      if (data.rows.length === 0) {
+        toast.error("Nothing to export", { description: "The current view has no records." });
+        return;
+      }
+      setBusy(true);
+      try {
+        await exportData(format, data, filename, title);
+        toast.success(`Exported as ${FORMAT_LABELS[format]}`, {
+          description: `${data.rows.length} records → ${filename}.${EXT[format]}`,
+        });
+      } catch {
+        toast.error("Export failed", { description: "Could not generate the file." });
+      } finally {
+        setBusy(false);
+      }
+      return;
+    }
+    toast.success(`Exported as ${FORMAT_LABELS[format]}`, {
+      description: `${rows} records exported to ${filename}.${EXT[format]}`,
     });
   };
 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" className={`h-9 gap-1.5 text-[13px] ${className ?? ""}`}>
+        <Button variant="outline" disabled={busy} className={`h-9 gap-1.5 text-[13px] ${className ?? ""}`}>
           <Download className="size-4" aria-hidden />
-          <span className="hidden sm:inline">{label}</span>
+          <span className="hidden sm:inline">{busy ? "Exporting…" : label}</span>
           <span className="sm:hidden">Export</span>
           <ChevronDown className="size-3.5" aria-hidden />
         </Button>

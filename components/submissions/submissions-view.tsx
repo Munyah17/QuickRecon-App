@@ -14,6 +14,7 @@ import {
   Clock,
   UserPlus,
   Send,
+  ShieldCheck,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -37,13 +38,14 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { StatusBadge } from "@/components/shared/status-badge";
-import { AgentAvatar } from "@/components/shared/agent-avatar";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { formatDate } from "@/lib/format";
 import type { Submission, SubmissionType } from "@/types";
 
 const TYPE_META: Record<SubmissionType, { label: string; icon: React.ComponentType<{ className?: string }>; tone: string }> = {
   monthly_field_report: { label: "Report", icon: FileText, tone: "bg-primary-soft text-primary" },
+  icecash_registration: { label: "IceCash", icon: ShieldCheck, tone: "bg-primary-soft text-primary" },
+  zinara_registration: { label: "ZINARA", icon: Landmark, tone: "bg-info-soft text-info-foreground" },
   proof_of_payment: { label: "POP", icon: Landmark, tone: "bg-info-soft text-info-foreground" },
   customer_query: { label: "Query", icon: ClipboardList, tone: "bg-success-soft text-success-foreground" },
   expense_document: { label: "Expense", icon: FileText, tone: "bg-warning-soft text-warning-foreground" },
@@ -53,6 +55,8 @@ const TYPE_META: Record<SubmissionType, { label: string; icon: React.ComponentTy
 };
 
 const TYPE_OPTIONS: [SubmissionType, string][] = [
+  ["icecash_registration", "IceCash — Insurance Registration"],
+  ["zinara_registration", "IceCash — ZINARA Vehicle License"],
   ["monthly_field_report", "Monthly Field Report"],
   ["proof_of_payment", "Proof of Payment"],
   ["customer_query", "Customer Query"],
@@ -63,6 +67,17 @@ const TYPE_OPTIONS: [SubmissionType, string][] = [
 ];
 
 const TABS = ["all", "pending", "under_review", "completed"] as const;
+
+function StatTile({ label, value }: { label: string; value: number }) {
+  return (
+    <Card className="gap-0 py-0 shadow-xs">
+      <CardContent className="p-4">
+        <p className="text-[12px] font-medium text-muted-foreground">{label}</p>
+        <p className="tnum mt-1 text-[22px] font-bold tracking-tight">{value}</p>
+      </CardContent>
+    </Card>
+  );
+}
 
 export function SubmissionsView({
   submissions,
@@ -83,8 +98,27 @@ export function SubmissionsView({
     [submissions, tab]
   );
 
+  const counts = React.useMemo(
+    () => ({
+      total: submissions.length,
+      pending: submissions.filter((s) => s.status === "pending").length,
+      underReview: submissions.filter((s) => s.status === "under_review").length,
+      completed: submissions.filter((s) => s.status === "completed").length,
+    }),
+    [submissions]
+  );
+
   return (
     <div className="space-y-4">
+      {!isCompanyUser && (
+        <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+          <StatTile label="Total Submissions" value={counts.total} />
+          <StatTile label="Pending" value={counts.pending} />
+          <StatTile label="Under Review" value={counts.underReview} />
+          <StatTile label="Completed" value={counts.completed} />
+        </div>
+      )}
+
       <div className="flex flex-wrap items-center gap-2">
         {isCompanyUser && (
           <Button className="h-10 gap-2 text-[13.5px]" onClick={() => setAssignOpen(true)}>
@@ -123,7 +157,78 @@ export function SubmissionsView({
         })}
       </div>
 
-      <div className="space-y-3">
+      {/* Desktop: table (mockup PC — My Submissions) */}
+      <div className="hidden overflow-hidden rounded-xl border bg-card lg:block">
+        <table className="w-full text-[13px]">
+          <thead>
+            <tr className="border-b bg-muted/50 text-left text-[11.5px] font-semibold tracking-wide text-muted-foreground uppercase">
+              <th className="w-10 px-4 py-2.5">#</th>
+              <th className="px-4 py-2.5">Submission Type</th>
+              <th className="px-4 py-2.5">Title</th>
+              {isCompanyUser && <th className="px-4 py-2.5">Agent</th>}
+              <th className="px-4 py-2.5">Status</th>
+              <th className="px-4 py-2.5">Submitted On</th>
+              <th className="px-4 py-2.5 text-right">Actions</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y">
+            {filtered.map((s, i) => {
+              const meta = TYPE_META[s.type];
+              return (
+                <tr key={s.id} className="hover:bg-surface-hover">
+                  <td className="px-4 py-3 text-muted-foreground">{i + 1}</td>
+                  <td className="px-4 py-3">{TYPE_OPTIONS.find(([v]) => v === s.type)?.[1] ?? meta.label}</td>
+                  <td className="px-4 py-3 font-medium">{s.title}</td>
+                  {isCompanyUser && <td className="px-4 py-3 text-muted-foreground">{s.agentName}</td>}
+                  <td className="px-4 py-3"><StatusBadge status={s.status} /></td>
+                  <td className="px-4 py-3 text-muted-foreground">{formatDate(s.submittedAt, "dd MMM yyyy")}</td>
+                  <td className="px-4 py-3 text-right">
+                    {isCompanyUser && (s.status === "pending" || s.status === "under_review") ? (
+                      <div className="flex justify-end gap-1.5">
+                        <ConfirmDialog
+                          trigger={
+                            <Button variant="outline" size="sm" className="h-8 gap-1 text-[12px] text-success-foreground">
+                              <Check className="size-3.5" /> Approve
+                            </Button>
+                          }
+                          title="Approve task?"
+                          description={`"${s.title}" from ${s.agentName} will be marked completed. Both you and the agent will receive an email notification.`}
+                          confirmLabel="Approve"
+                          onConfirm={() => toast.success(`Task approved. Email sent to ${s.agentName} and you.`)}
+                        />
+                        <ConfirmDialog
+                          trigger={
+                            <Button variant="ghost" size="sm" className="h-8 gap-1 text-[12px] text-destructive">
+                              <X className="size-3.5" /> Reject
+                            </Button>
+                          }
+                          title="Reject task?"
+                          description="The agent will be notified via email and may re-submit."
+                          confirmLabel="Reject"
+                          destructive
+                          onConfirm={() => toast.success(`Task rejected. Email sent to ${s.agentName}.`)}
+                        />
+                      </div>
+                    ) : (
+                      <Button variant="ghost" size="sm" className="h-8 text-[12px] text-primary">View</Button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+            {filtered.length === 0 && (
+              <tr>
+                <td colSpan={isCompanyUser ? 7 : 6} className="px-4 py-10 text-center text-[13px] text-muted-foreground">
+                  No submissions in this category.
+                </td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      {/* Mobile: card stack */}
+      <div className="space-y-3 lg:hidden">
         {filtered.map((s) => {
           const meta = TYPE_META[s.type];
           const Icon = meta.icon;
@@ -389,13 +494,26 @@ function NewSubmissionDialog({
   const [type, setType] = React.useState<SubmissionType>("monthly_field_report");
   const [files, setFiles] = React.useState<File[]>([]);
   const inputRef = React.useRef<HTMLInputElement>(null);
+  const isRegistration = type === "icecash_registration" || type === "zinara_registration";
+  const [regRef, setRegRef] = React.useState("");
+  const [floatUsed, setFloatUsed] = React.useState("");
+  const [remitted, setRemitted] = React.useState("");
 
   function submit() {
-    toast.success("Task submitted", {
-      description: "Company staff will review it. You'll receive an email notification when it's reviewed.",
+    if (isRegistration && (!regRef.trim() || !floatUsed.trim() || !remitted.trim())) {
+      toast.error("Registration details required", {
+        description: "Reference number, float used and amount remitted are required.",
+      });
+      return;
+    }
+    toast.success(isRegistration ? "Registration submitted" : "Task submitted", {
+      description: isRegistration
+        ? `${regRef} recorded — float ${floatUsed}, remitted ${remitted}. It feeds your reconciliation.`
+        : "Company staff will review it. You'll receive an email notification when it's reviewed.",
     });
     onOpenChange(false);
     setFiles([]);
+    setRegRef(""); setFloatUsed(""); setRemitted("");
   }
 
   return (
@@ -404,7 +522,7 @@ function NewSubmissionDialog({
         <DialogHeader>
           <DialogTitle>New Submission</DialogTitle>
           <DialogDescription>
-            Submit work documents to the operations team. You'll receive email
+            Submit work documents to the operations team. You&apos;ll receive email
             notifications at each stage of the review process.
           </DialogDescription>
         </DialogHeader>
@@ -422,6 +540,35 @@ function NewSubmissionDialog({
               </SelectContent>
             </Select>
           </div>
+          {isRegistration && (
+            <div className="space-y-3 rounded-xl border border-primary/20 bg-primary-soft/40 p-3.5">
+              <p className="text-[12px] font-semibold text-primary">
+                {type === "icecash_registration" ? "Insurance registration" : "ZINARA vehicle license"} — tracked for reconciliation
+              </p>
+              <div className="space-y-1.5">
+                <Label htmlFor="sub-ref">
+                  {type === "icecash_registration" ? "Policy / IceCash Reference" : "Vehicle Registration Number"} <span className="text-destructive">*</span>
+                </Label>
+                <Input
+                  id="sub-ref"
+                  className="bg-card"
+                  placeholder={type === "icecash_registration" ? "e.g. ENP-2026-00421" : "e.g. ABR 1234"}
+                  value={regRef}
+                  onChange={(e) => setRegRef(e.target.value)}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="sub-float">Float Used (ZiG) <span className="text-destructive">*</span></Label>
+                  <Input id="sub-float" type="number" className="bg-card" placeholder="0.00" value={floatUsed} onChange={(e) => setFloatUsed(e.target.value)} />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="sub-remitted">Amount Remitted (ZiG) <span className="text-destructive">*</span></Label>
+                  <Input id="sub-remitted" type="number" className="bg-card" placeholder="0.00" value={remitted} onChange={(e) => setRemitted(e.target.value)} />
+                </div>
+              </div>
+            </div>
+          )}
           <div className="space-y-1.5">
             <Label htmlFor="sub-title">Title</Label>
             <Input id="sub-title" placeholder="e.g. Monthly Field Report" />

@@ -14,11 +14,33 @@ import {
   Banknote,
   ArrowUpRight,
   ArrowDownRight,
+  FileDown,
+  Printer,
+  RefreshCcw,
+  LoaderCircle,
 } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { downloadPayslip } from "@/lib/erp/payslip";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { formatMoney } from "@/lib/format";
 import { ExportButton } from "@/components/shared/export-button";
@@ -154,7 +176,7 @@ function AccountingTab() {
             </table>
           </div>
           <div className="mt-3 flex justify-end">
-            <ExportButton filename={`trial-balance-${Date.now()}`} rows={transactions.length} label="Export Trial Balance" />
+            <ExportButton filename="trial-balance" rows={transactions.length} label="Export Trial Balance" />
           </div>
         </CardContent>
       </Card>
@@ -181,27 +203,28 @@ function HRTab() {
     { id: "EMP-012", name: "Tinashe Kamwendo", role: "Insurer", dept: "Insurance", salary: 24000, status: "on_leave", phone: "+263 77 234 5678", email: "tinashe@quickrecon.co.zw" },
   ];
 
+  // Agents are independent contractors — commission + bonus, no salary.
   const agents = [
-    { id: "AGT-001", name: "Musa Zhou", role: "Field Agent", dept: "Field Ops", salary: 18000, status: "active", phone: "+263 78 111 2222", email: "musa.zhou@quickrecon.co.zw", province: "Harare" },
-    { id: "AGT-002", name: "Tendai Moyo", role: "Field Agent", dept: "Field Ops", salary: 18000, status: "suspended", phone: "+263 78 222 3333", email: "tendai.moyo@quickrecon.co.zw", province: "Bulawayo" },
-    { id: "AGT-003", name: "Rumbi Chiweshe", role: "Field Agent", dept: "Field Ops", salary: 18000, status: "active", phone: "+263 78 333 4444", email: "rumbi.c@quickrecon.co.zw", province: "Mutare" },
-    { id: "AGT-004", name: "Nyanga Dube", role: "Field Agent", dept: "Field Ops", salary: 18000, status: "active", phone: "+263 78 444 5555", email: "nyanga.d@quickrecon.co.zw", province: "Gweru" },
-    { id: "AGT-005", name: "Farai Mlambo", role: "Field Agent", dept: "Field Ops", salary: 18000, status: "active", phone: "+263 78 555 6666", email: "farai.m@quickrecon.co.zw", province: "Masvingo" },
-    { id: "AGT-006", name: "Simbarashe Dube", role: "Assistant", dept: "Field Ops", salary: 12000, status: "active", phone: "+263 78 666 7777", email: "simba.d@quickrecon.co.zw", province: "Harare" },
-    { id: "AGT-007", name: "Patricia Chirwa", role: "Field Agent", dept: "Field Ops", salary: 18000, status: "active", phone: "+263 78 777 8888", email: "patricia.c@quickrecon.co.zw", province: "Mutare" },
-    { id: "AGT-008", name: "Blessing Ndlovu", role: "Field Agent", dept: "Field Ops", salary: 18000, status: "inactive", phone: "+263 78 888 9999", email: "blessing.n@quickrecon.co.zw", province: "Bulawayo" },
+    { id: "AGT-001", name: "Musa Zhou", role: "Field Agent", dept: "Field Ops", commission: 42800, bonus: 5000, status: "active", phone: "+263 78 111 2222", email: "musa.zhou@quickrecon.co.zw", province: "Harare" },
+    { id: "AGT-002", name: "Tendai Moyo", role: "Field Agent", dept: "Field Ops", commission: 39200, bonus: 0, status: "suspended", phone: "+263 78 222 3333", email: "tendai.moyo@quickrecon.co.zw", province: "Bulawayo" },
+    { id: "AGT-003", name: "Rumbi Chiweshe", role: "Field Agent", dept: "Field Ops", commission: 30400, bonus: 3200, status: "active", phone: "+263 78 333 4444", email: "rumbi.c@quickrecon.co.zw", province: "Mutare" },
+    { id: "AGT-004", name: "Nyanga Dube", role: "Field Agent", dept: "Field Ops", commission: 21600, bonus: 1500, status: "active", phone: "+263 78 444 5555", email: "nyanga.d@quickrecon.co.zw", province: "Gweru" },
+    { id: "AGT-005", name: "Farai Mlambo", role: "Field Agent", dept: "Field Ops", commission: 16400, bonus: 2000, status: "active", phone: "+263 78 555 6666", email: "farai.m@quickrecon.co.zw", province: "Masvingo" },
+    { id: "AGT-006", name: "Simbarashe Dube", role: "Assistant", dept: "Field Ops", commission: 9600, bonus: 0, status: "active", phone: "+263 78 666 7777", email: "simba.d@quickrecon.co.zw", province: "Harare" },
+    { id: "AGT-007", name: "Patricia Chirwa", role: "Field Agent", dept: "Field Ops", commission: 35600, bonus: 4500, status: "active", phone: "+263 78 777 8888", email: "patricia.c@quickrecon.co.zw", province: "Mutare" },
+    { id: "AGT-008", name: "Blessing Ndlovu", role: "Field Agent", dept: "Field Ops", commission: 0, bonus: 0, status: "inactive", phone: "+263 78 888 9999", email: "blessing.n@quickrecon.co.zw", province: "Bulawayo" },
   ];
 
-  const currentData = hrSubTab === "executive" ? executiveStaff : agents;
-  const totalSalary = currentData.reduce((s, e) => s + e.salary, 0);
+  const isAgents = hrSubTab === "agents";
+  const currentData = isAgents ? agents : executiveStaff;
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <MetricCard icon={Users} label="Executive Staff" value={String(executiveStaff.length)} />
         <MetricCard icon={Users} label="Agents" value={String(agents.length)} />
-        <MetricCard icon={DollarSign} label="Monthly Payroll" value={formatMoney(executiveStaff.reduce((s, e) => s + e.salary, 0) + agents.reduce((s, a) => s + a.salary, 0))} />
-        <MetricCard icon={TrendingUp} label="Active Today" value={String([...executiveStaff, ...agents].filter((e) => e.status === "active").length)} trend="94%" trendUp />
+        <MetricCard icon={DollarSign} label="Staff Payroll" value={formatMoney(executiveStaff.reduce((s, e) => s + e.salary, 0))} />
+        <MetricCard icon={Banknote} label="Agent Payouts (Comm + Bonus)" value={formatMoney(agents.reduce((s, a) => s + a.commission + a.bonus, 0))} />
       </div>
 
       {/* Sub-tabs: Executive Staff vs Agents */}
@@ -221,11 +244,13 @@ function HRTab() {
       </div>
 
       <Card className="gap-0 py-0 shadow-xs">
-        <CardHeader className="flex flex-row items-center justify-between px-4 pt-4 sm:px-5">
+        <CardHeader className="px-4 pt-4 sm:px-5">
           <CardTitle className="text-[14.5px] font-semibold">
             {hrSubTab === "executive" ? "Executive Staff Directory" : "Agents Directory"}
           </CardTitle>
-          <ExportButton filename={`hr-${hrSubTab}-${Date.now()}`} rows={currentData.length} label="Export" />
+          <CardAction>
+            <ExportButton filename={`hr-${hrSubTab}`} rows={currentData.length} label="Export" />
+          </CardAction>
         </CardHeader>
         <CardContent className="px-4 pb-4 sm:px-5">
           <div className="overflow-x-auto rounded-xl border">
@@ -236,27 +261,73 @@ function HRTab() {
                   <th className="px-3 py-2.5">Name</th>
                   <th className="px-3 py-2.5">Role</th>
                   <th className="px-3 py-2.5">Department</th>
-                  {hrSubTab === "agents" && <th className="px-3 py-2.5">Province</th>}
-                  <th className="px-3 py-2.5 text-right">Salary (ZiG)</th>
+                  {isAgents && <th className="px-3 py-2.5">Province</th>}
+                  {isAgents ? (
+                    <>
+                      <th className="px-3 py-2.5 text-right">Commission</th>
+                      <th className="px-3 py-2.5 text-right">Bonus</th>
+                      <th className="px-3 py-2.5 text-right">Total Payout</th>
+                    </>
+                  ) : (
+                    <th className="px-3 py-2.5 text-right">Salary (ZiG)</th>
+                  )}
                   <th className="px-3 py-2.5">Status</th>
+                  {isAgents && <th className="px-3 py-2.5 text-right">Payslip</th>}
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {currentData.map((e) => (
-                  <tr key={e.id} className="hover:bg-surface-hover">
-                    <td className="font-mono text-[12px] text-muted-foreground px-3 py-2.5">{e.id}</td>
-                    <td className="px-3 py-2.5 font-medium">{e.name}</td>
-                    <td className="px-3 py-2.5">{e.role}</td>
-                    <td className="px-3 py-2.5">{e.dept}</td>
-                    {hrSubTab === "agents" && <td className="px-3 py-2.5">{(e as typeof agents[0]).province}</td>}
-                    <td className="tnum px-3 py-2.5 text-right">{e.salary.toLocaleString()}</td>
-                    <td className="px-3 py-2.5">
-                      <Badge variant="outline" className={e.status === "active" ? "border-transparent bg-success-soft text-success-foreground" : e.status === "on_leave" ? "border-transparent bg-warning-soft text-warning-foreground" : "border-transparent bg-destructive-soft text-destructive"}>
-                        {e.status === "on_leave" ? "On Leave" : e.status}
-                      </Badge>
-                    </td>
-                  </tr>
-                ))}
+                {isAgents
+                  ? (currentData as typeof agents).map((a) => (
+                      <tr key={a.id} className="hover:bg-surface-hover">
+                        <td className="font-mono text-[12px] text-muted-foreground px-3 py-2.5">{a.id}</td>
+                        <td className="px-3 py-2.5 font-medium">{a.name}</td>
+                        <td className="px-3 py-2.5">{a.role}</td>
+                        <td className="px-3 py-2.5">{a.dept}</td>
+                        <td className="px-3 py-2.5">{a.province}</td>
+                        <td className="tnum px-3 py-2.5 text-right">{a.commission.toLocaleString()}</td>
+                        <td className="tnum px-3 py-2.5 text-right">{a.bonus.toLocaleString()}</td>
+                        <td className="tnum px-3 py-2.5 text-right font-semibold">{(a.commission + a.bonus).toLocaleString()}</td>
+                        <td className="px-3 py-2.5">
+                          <Badge variant="outline" className={a.status === "active" ? "border-transparent bg-success-soft text-success-foreground" : "border-transparent bg-destructive-soft text-destructive"}>
+                            {a.status}
+                          </Badge>
+                        </td>
+                        <td className="px-3 py-2.5 text-right">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-8 gap-1 text-[12px]"
+                            onClick={() =>
+                              downloadPayslip({
+                                agentId: a.id,
+                                agentName: a.name,
+                                province: a.province,
+                                period: "September 2026",
+                                currency: "ZWG",
+                                commission: a.commission,
+                                bonus: a.bonus,
+                              })
+                            }
+                          >
+                            <FileDown className="size-3.5" aria-hidden /> Payslip
+                          </Button>
+                        </td>
+                      </tr>
+                    ))
+                  : (currentData as typeof executiveStaff).map((e) => (
+                      <tr key={e.id} className="hover:bg-surface-hover">
+                        <td className="font-mono text-[12px] text-muted-foreground px-3 py-2.5">{e.id}</td>
+                        <td className="px-3 py-2.5 font-medium">{e.name}</td>
+                        <td className="px-3 py-2.5">{e.role}</td>
+                        <td className="px-3 py-2.5">{e.dept}</td>
+                        <td className="tnum px-3 py-2.5 text-right">{e.salary.toLocaleString()}</td>
+                        <td className="px-3 py-2.5">
+                          <Badge variant="outline" className={e.status === "active" ? "border-transparent bg-success-soft text-success-foreground" : e.status === "on_leave" ? "border-transparent bg-warning-soft text-warning-foreground" : "border-transparent bg-destructive-soft text-destructive"}>
+                            {e.status === "on_leave" ? "On Leave" : e.status}
+                          </Badge>
+                        </td>
+                      </tr>
+                    ))}
               </tbody>
             </table>
           </div>
@@ -286,9 +357,11 @@ function SalesTab() {
       </div>
 
       <Card className="gap-0 py-0 shadow-xs">
-        <CardHeader className="flex flex-row items-center justify-between px-4 pt-4 sm:px-5">
+        <CardHeader className="px-4 pt-4 sm:px-5">
           <CardTitle className="text-[14.5px] font-semibold">Sales by Region</CardTitle>
-          <ExportButton filename={`sales-${Date.now()}`} rows={salesData.length} label="Export" />
+          <CardAction>
+            <ExportButton filename="sales-export" rows={salesData.length} label="Export" />
+          </CardAction>
         </CardHeader>
         <CardContent className="px-4 pb-4 sm:px-5">
           <div className="overflow-x-auto rounded-xl border">
@@ -323,6 +396,9 @@ function SalesTab() {
 
 /* ─── POS ─── */
 function POSTab() {
+  const [connectOpen, setConnectOpen] = React.useState(false);
+  const [receiptTerminal, setReceiptTerminal] = React.useState<typeof terminals[0] | null>(null);
+
   const terminals = [
     { id: "POS-001", location: "Harare CBD", agent: "Musa Zhou", transactions: 342, revenue: 68400, status: "online" },
     { id: "POS-002", location: "Bulawayo", agent: "Tendai Moyo", transactions: 218, revenue: 43600, status: "online" },
@@ -337,6 +413,13 @@ function POSTab() {
         <MetricCard icon={ShoppingCart} label="Today's Transactions" value="716" trend="9.2%" trendUp />
         <MetricCard icon={DollarSign} label="Today's Revenue" value={formatMoney(143200)} trend="14.7%" trendUp />
         <MetricCard icon={TrendingDown} label="Offline Terminals" value="1" />
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-[13.5px] font-semibold">Connected Devices</p>
+        <Button className="h-9 gap-1.5 text-[13px]" onClick={() => setConnectOpen(true)}>
+          <MonitorSmartphone className="size-4" aria-hidden /> Connect POS Device
+        </Button>
       </div>
 
       <div className="grid gap-3 md:grid-cols-2">
@@ -362,11 +445,177 @@ function POSTab() {
                   <p className="tnum text-[16px] font-bold">{t.revenue.toLocaleString()}</p>
                 </div>
               </div>
+              <div className="mt-3 flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 flex-1 gap-1 text-[12px]"
+                  disabled={t.status !== "online"}
+                  onClick={() => setReceiptTerminal(t)}
+                >
+                  <Printer className="size-3.5" aria-hidden /> Print Receipt
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-8 flex-1 gap-1 text-[12px]"
+                  onClick={() => toast.success(`${t.id} synced`, { description: "Latest transactions pulled from device." })}
+                >
+                  <RefreshCcw className="size-3.5" aria-hidden /> Sync
+                </Button>
+              </div>
             </CardContent>
           </Card>
         ))}
       </div>
+
+      <ConnectPOSDialog open={connectOpen} onOpenChange={setConnectOpen} />
+      {receiptTerminal && (
+        <ReceiptDialog terminal={receiptTerminal} onClose={() => setReceiptTerminal(null)} />
+      )}
     </div>
+  );
+}
+
+/* POS device connection + receipt printing */
+function ConnectPOSDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const [terminalId, setTerminalId] = React.useState("");
+  const [connectionType, setConnectionType] = React.useState("network");
+  const [printerModel, setPrinterModel] = React.useState("");
+  const [connecting, setConnecting] = React.useState(false);
+
+  async function connect() {
+    if (!terminalId.trim()) {
+      toast.error("Terminal ID required");
+      return;
+    }
+    setConnecting(true);
+    try {
+      // Persist the paired device so it survives reloads.
+      await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          key: "pos_devices",
+          value: { id: terminalId.trim(), connectionType, printerModel, pairedAt: new Date().toISOString() },
+        }),
+      });
+      toast.success(`Device ${terminalId} connected`, {
+        description: `${connectionType === "network" ? "Network" : "Bluetooth"} pairing successful${printerModel ? ` · printer ${printerModel}` : ""}.`,
+      });
+      onOpenChange(false);
+      setTerminalId(""); setPrinterModel("");
+    } catch {
+      toast.error("Pairing failed", { description: "Check the terminal ID and try again." });
+    } finally {
+      setConnecting(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[420px]">
+        <DialogHeader>
+          <DialogTitle className="text-[15px]">Connect POS Device</DialogTitle>
+          <DialogDescription className="text-[12.5px]">
+            Pair a card terminal or receipt printer. Network devices pair by terminal ID; Bluetooth devices pair nearby.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3.5 py-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="pos-id">Terminal ID <span className="text-destructive">*</span></Label>
+            <Input id="pos-id" placeholder="e.g. POS-005" value={terminalId} onChange={(e) => setTerminalId(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Connection</Label>
+            <Select value={connectionType} onValueChange={setConnectionType}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="network">Network / Wi-Fi</SelectItem>
+                <SelectItem value="bluetooth">Bluetooth</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="pos-printer">Receipt Printer (optional)</Label>
+            <Input id="pos-printer" placeholder="e.g. Epson TM-T20III" value={printerModel} onChange={(e) => setPrinterModel(e.target.value)} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={connecting}>Cancel</Button>
+          <Button onClick={connect} disabled={connecting} className="gap-1.5">
+            {connecting ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : <MonitorSmartphone className="size-4" aria-hidden />}
+            {connecting ? "Pairing…" : "Connect"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function ReceiptDialog({
+  terminal,
+  onClose,
+}: {
+  terminal: { id: string; location: string; agent: string; transactions: number; revenue: number };
+  onClose: () => void;
+}) {
+  const receiptRef = React.useRef<HTMLDivElement>(null);
+
+  function print() {
+    const html = receiptRef.current?.innerHTML ?? "";
+    const win = window.open("", "_blank", "width=380,height=600");
+    if (!win) return;
+    win.document.write(`
+      <html><head><title>Receipt ${terminal.id}</title>
+      <style>
+        body{font-family:ui-monospace,monospace;font-size:12px;padding:16px;width:280px;margin:0 auto;color:#000}
+        .center{text-align:center}.line{border-top:1px dashed #000;margin:8px 0}
+        table{width:100%;border-collapse:collapse}td{padding:2px 0}
+        .r{text-align:right}.bold{font-weight:700}
+      </style></head><body>${html}<script>window.print();window.onafterprint=()=>window.close();<\/script></body></html>`);
+    win.document.close();
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[360px]">
+        <DialogHeader>
+          <DialogTitle className="text-[15px]">Terminal Receipt — {terminal.id}</DialogTitle>
+          <DialogDescription className="text-[12.5px]">
+            Preview and print the daily summary receipt for {terminal.location}.
+          </DialogDescription>
+        </DialogHeader>
+        <div ref={receiptRef} className="rounded-lg border bg-card p-4 font-mono text-[12px]">
+          <div className="center bold" style={{ textAlign: "center", fontWeight: 700 }}>QuickRecon App</div>
+          <div className="center" style={{ textAlign: "center" }}>POS Terminal Summary</div>
+          <div className="center" style={{ textAlign: "center" }}>{new Date().toLocaleString()}</div>
+          <div className="line" style={{ borderTop: "1px dashed #999", margin: "8px 0" }} />
+          <table style={{ width: "100%" }}>
+            <tbody>
+              <tr><td>Terminal</td><td className="r" style={{ textAlign: "right" }}>{terminal.id}</td></tr>
+              <tr><td>Location</td><td className="r" style={{ textAlign: "right" }}>{terminal.location}</td></tr>
+              <tr><td>Agent</td><td className="r" style={{ textAlign: "right" }}>{terminal.agent}</td></tr>
+            </tbody>
+          </table>
+          <div className="line" style={{ borderTop: "1px dashed #999", margin: "8px 0" }} />
+          <table style={{ width: "100%" }}>
+            <tbody>
+              <tr><td>Transactions</td><td className="r" style={{ textAlign: "right" }}>{terminal.transactions}</td></tr>
+              <tr className="bold"><td>Revenue (ZiG)</td><td className="r" style={{ textAlign: "right", fontWeight: 700 }}>{terminal.revenue.toLocaleString()}</td></tr>
+            </tbody>
+          </table>
+          <div className="line" style={{ borderTop: "1px dashed #999", margin: "8px 0" }} />
+          <div className="center" style={{ textAlign: "center" }}>Thank you</div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Close</Button>
+          <Button className="gap-1.5" onClick={print}>
+            <Printer className="size-4" aria-hidden /> Print Receipt
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -395,17 +644,17 @@ function InvoicesTab() {
       </div>
 
       <Card className="gap-0 py-0 shadow-xs">
-        <CardHeader className="flex flex-row items-center justify-between px-4 pt-4 sm:px-5">
+        <CardHeader className="px-4 pt-4 sm:px-5">
           <CardTitle className="text-[14.5px] font-semibold">Invoice List</CardTitle>
-          <div className="flex items-center gap-2">
-            <ExportButton filename={`invoices-${Date.now()}`} rows={invoices.length} label="Export" />
+          <CardAction className="flex flex-wrap items-center justify-end gap-2">
+            <ExportButton filename="invoices-export" rows={invoices.length} label="Export" />
             <Button
               className="h-9 gap-1.5 text-[13px]"
               onClick={() => toast.success("New invoice created", { description: "Invoice draft saved" })}
             >
               <FileText className="size-4" aria-hidden /> New Invoice
             </Button>
-          </div>
+          </CardAction>
         </CardHeader>
         <CardContent className="px-4 pb-4 sm:px-5">
           <div className="overflow-x-auto rounded-xl border">

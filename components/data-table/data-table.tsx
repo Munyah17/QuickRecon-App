@@ -56,6 +56,7 @@ export function DataTable<TData>({
   const [sorting, setSorting] = React.useState<SortingState>(initialSorting ?? []);
   const [globalFilter, setGlobalFilter] = React.useState("");
 
+  // eslint-disable-next-line react-hooks/incompatible-library -- TanStack Table v8 is not React-Compiler-compatible; safe to skip memoization here.
   const table = useReactTable({
     data,
     columns,

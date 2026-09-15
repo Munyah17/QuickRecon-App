@@ -196,7 +196,7 @@ export function ReportDistribution({ history }: { history: DistributionJob[] }) 
             </Button>
           )}
           <ExportButton
-            filename={`distribution-history-${Date.now()}`}
+            filename="distribution-history"
             rows={filteredHistory.length}
             label="Export History"
             className="ml-auto"
@@ -243,7 +243,7 @@ export function ReportDistribution({ history }: { history: DistributionJob[] }) 
 function StepCard({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
   return (
     <Card className="gap-0 py-0 shadow-xs">
-      <CardHeader className="flex-row items-center gap-3 px-4 pt-4 sm:px-5">
+      <CardHeader className="flex flex-row items-center gap-3 px-4 pt-4 sm:px-5">
         <span className="flex size-7 shrink-0 items-center justify-center rounded-full bg-primary text-[12px] font-bold text-primary-foreground">
           {n}
         </span>

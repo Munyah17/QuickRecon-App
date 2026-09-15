@@ -43,6 +43,13 @@ function makeRecord(
   const externalIdRaw = cell(row, ...idKeys);
   const externalId = externalIdRaw != null ? String(externalIdRaw).trim() : undefined;
   const nameHint = cell(row, "Agent", "Agent Name", "Name");
+  const commission = category === "insurance" ? toNumber(cell(row, "Commission", "Comm")) : undefined;
+  const bankAccount = category === "deposit" ? String(cell(row, "Account", "Bank", "Account Name") ?? "").trim() || undefined : undefined;
+  const usdRaw = category === "deposit" ? cell(row, "USD", "USD Amount", "USD Deposit") : undefined;
+  const usdAmount = usdRaw != null ? toNumber(usdRaw) : undefined;
+  const conversionRaw = cell(row, "USD- ZWG Conversion", "Conversion", "Rate");
+  const usdConversionRate = conversionRaw != null ? toNumber(conversionRaw) : undefined;
+  const narration = String(cell(row, "Narration", "Narration /Ref", "Ref", "Description") ?? "").trim() || undefined;
   return {
     externalId: externalId || undefined,
     agentNameHint: nameHint != null ? String(nameHint).trim() : undefined,
@@ -53,6 +60,11 @@ function makeRecord(
     date: toDate(cell(row, "Date", "Txn Date", "Transaction Date")),
     sourceSheet: sheetName,
     sourceRow: rowIndex,
+    commission: commission || undefined,
+    bankAccount: bankAccount || undefined,
+    usdAmount: usdAmount || undefined,
+    usdConversionRate: usdConversionRate || undefined,
+    narration: narration || undefined,
   };
 }
 
@@ -79,8 +91,8 @@ export const enpassentAdapter: SourceAdapter = {
           : "adjustment";
 
     const amountKeys = isDeposit
-      ? ["Amount", "Deposit", "Settled", "Value"]
-      : ["Amount", "Premium", "Value", "Total"];
+      ? ["Amount", "Deposit", "Settled", "Value", "USD- ZWG Conversion"]
+      : ["Amount", "Premium", "Premium Collected", "Value", "Total"];
 
     return rows
       .map((row, i) =>
@@ -89,9 +101,10 @@ export const enpassentAdapter: SourceAdapter = {
           "Reference",
           "Policy No",
           "Receipt No",
+          "Narration /Ref",
         ])
       )
-      .filter((r) => r.amount !== 0 || r.externalId);
+      .filter((r) => r.amount !== 0 || r.externalId || r.usdAmount);
   },
 };
 

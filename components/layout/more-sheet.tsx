@@ -12,6 +12,8 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import { LogOut } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { AgentAvatar } from "@/components/shared/agent-avatar";
 import { ThemeToggle } from "./theme-toggle";
 import type { AppUser } from "@/types";
@@ -35,9 +37,17 @@ export function MoreSheet({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
+  const router = useRouter();
   const all = navForRole(user.role);
   const items = all.filter((i) => !pinnedHrefs.includes(i.href));
   const [open, setOpen] = React.useState(false);
+
+  const signOut = async () => {
+    setOpen(false);
+    document.cookie = "qr_preview_role=; Max-Age=0; path=/";
+    router.push("/login");
+    router.refresh();
+  };
 
   return (
     <Sheet open={open} onOpenChange={setOpen}>
@@ -67,6 +77,14 @@ export function MoreSheet({
               </Link>
             );
           })}
+          <button
+            type="button"
+            onClick={signOut}
+            className="flex h-11 w-full items-center gap-3 rounded-lg px-3 text-[14px] font-medium text-destructive"
+          >
+            <LogOut className="size-[19px]" aria-hidden />
+            Log out
+          </button>
         </div>
         <div className="mt-2 flex items-center justify-between border-t px-5 pt-3">
           <div className="flex items-center gap-2.5">

@@ -5,9 +5,7 @@ export type SourceRow = Record<string, unknown>;
 
 /** Canonical transaction after an adapter has understood a source row. */
 export interface NormalizedRecord {
-  /** Strong identity when present (e.g. EP-99117, IceCash ID). */
   externalId?: string;
-  /** Weaker identity hint, never trusted on its own. */
   agentNameHint?: string;
   agentId?: string;
   category: "insurance" | "zinara" | "deposit" | "adjustment";
@@ -17,6 +15,16 @@ export interface NormalizedRecord {
   date?: string;
   sourceSheet: string;
   sourceRow: number;
+  /** Commission deducted from insurance (Enpassent field). */
+  commission?: number;
+  /** Bank/account channel for deposits (e.g. NBS, CBZ, Ecocash, NMB). */
+  bankAccount?: string;
+  /** USD amount for dual-currency deposit rows. */
+  usdAmount?: number;
+  /** Conversion rate applied (USD -> ZWG). */
+  usdConversionRate?: number;
+  /** Narration / reference text from the source. */
+  narration?: string;
 }
 
 /** Mapping table used by the identity resolver (agent_external_ids). */
@@ -41,18 +49,52 @@ export interface EngineException {
   description: string;
 }
 
+/** Known bank / deposit channels from the real Enpassent workflow. */
+export const BANK_CHANNELS = [
+  "Ecocash",
+  "STEWARD",
+  "NBS",
+  "Transfers",
+  "USD",
+  "CBZ",
+  "NMB",
+] as const;
+export type BankChannel = (typeof BANK_CHANNELS)[number];
+
+export interface TransactionDetail {
+  date?: string;
+  agentName: string;
+  amount: number;
+  usdAmount?: number;
+  usdConversionRate?: number;
+  bankAccount?: string;
+  narration?: string;
+  reference: string;
+}
+
 export interface AgentReconResult {
   agentId: string;
   agentName: string;
   currency: Currency;
   openingPosition: number;
+  openingVariance: number;
   insurance: number;
+  premiumCover: number;
+  commission: number;
+  netInsurance: number;
   zinara: number;
+  pds: number;
+  totalExpected: number;
+  /** Per-bank deposit breakdown. */
+  bankDeposits: Record<string, number>;
   deposits: number;
   adjustments: number;
   closingPosition: number;
+  closingVariance: number;
   status: "success" | "warning" | "attention";
   recordCount: number;
+  /** Transaction-level deposit detail rows. */
+  transactions: TransactionDetail[];
   /** Line-level expected vs actual for the detail view. */
   lines: {
     item: string;

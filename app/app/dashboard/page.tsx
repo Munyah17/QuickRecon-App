@@ -33,5 +33,16 @@ export default async function DashboardPage() {
   const agent = (await getAgentById(agentId)) ?? (await getAgents())[0];
   const booths = await getBooths(agent.id);
 
-  return <AgentDashboard agent={agent} booths={booths} activities={activities} />;
+  const hour = new Date().getHours();
+  const greeting =
+    hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
+
+  return (
+    <AgentDashboard
+      agent={agent}
+      booths={booths}
+      activities={activities}
+      greeting={greeting}
+    />
+  );
 }

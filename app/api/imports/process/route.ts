@@ -35,6 +35,8 @@ export async function POST(request: NextRequest) {
     .split(",")
     .map((s) => s.trim())
     .filter(Boolean);
+  // "all" | a specific agent id — lets the super admin reconcile one agent at a time.
+  const agentScope = String(form.get("agent") ?? "all");
 
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "No file provided" }, { status: 400 });
@@ -54,11 +56,17 @@ export async function POST(request: NextRequest) {
 
     const [agents, aliases] = await Promise.all([getAgents(), getIdentityAliases()]);
 
+    const scopedAgents =
+      agentScope === "all" ? agents : agents.filter((a) => a.id === agentScope);
+    if (agentScope !== "all" && scopedAgents.length === 0) {
+      return NextResponse.json({ error: `Agent ${agentScope} not found` }, { status: 404 });
+    }
+
     const output = runReconciliationEngine({
       module: moduleCode,
       period,
       sheets,
-      agents: agents.map((a) => ({ id: a.id, fullName: a.fullName, openingPosition: 0 })),
+      agents: scopedAgents.map((a) => ({ id: a.id, fullName: a.fullName, openingPosition: 0 })),
       aliases,
     });
 
@@ -68,15 +76,62 @@ export async function POST(request: NextRequest) {
     const { createServiceClient } = await import("@/lib/supabase/server");
     const sb = await createServiceClient();
     if (sb) {
+      const importId = `IMP-${period.replace("-", "")}-${moduleCode === "enpassent" ? "ENP" : "ECN"}-${Date.now() % 10000}`;
+      const { error: impErr } = await sb.from("import_batches").insert({
+        id: importId,
+        module: moduleCode,
+        period,
+        file_name: file.name,
+        file_size: file.size,
+        status: "completed",
+        uploaded_by: session.user.id,
+      });
+      if (impErr) console.error("import_batches insert failed:", impErr.message);
+
       await sb.from("reconciliation_batches").insert({
         id: batchDocs.batchId,
         module: batchDocs.module,
         period: batchDocs.period,
-        generated_at: batchDocs.generatedAt,
-        generated_by: session.user.id,
-        status: "pending_review",
-        source_batch_id: `IMP-${period.replace("-", "")}-${moduleCode === "enpassent" ? "ENP" : "ECN"}`,
+        import_batch_id: impErr ? null : importId,
+        created_by: session.user.id,
+        status: "review",
       });
+
+      // Per-agent reconciliation rows (batch review reads these).
+      const reconRows = output.results.map((r, i) => ({
+        id: `RCN-${period.replace("-", "")}-${String(i + 1).padStart(3, "0")}`,
+        batch_id: batchDocs.batchId,
+        agent_id: r.agentId,
+        module: batchDocs.module,
+        period: batchDocs.period,
+        status: r.status,
+        currency: r.currency,
+        opening_position: r.openingPosition,
+        insurance: r.insurance,
+        zinara: r.zinara,
+        deposits: r.deposits,
+        adjustments: r.adjustments,
+        closing_position: r.closingPosition,
+        version: 1,
+      }));
+      const { error: reconErr } = await sb
+        .from("reconciliations")
+        .upsert(reconRows, { onConflict: "id" });
+      if (reconErr) console.error("reconciliations upsert failed:", reconErr.message);
+      else {
+        const lineRows = output.results.flatMap((r, i) =>
+          r.lines.map((l) => ({
+            reconciliation_id: `RCN-${period.replace("-", "")}-${String(i + 1).padStart(3, "0")}`,
+            item: l.item,
+            category: l.category,
+            expected: l.expected,
+            actual: l.actual,
+            variance: l.variance,
+            status: l.variance === 0 ? "matched" : "variance",
+          }))
+        );
+        if (lineRows.length) await sb.from("reconciliation_lines").insert(lineRows);
+      }
 
       await sb.from("reconciliation_documents").insert(
         batchDocs.documents.map((d) => ({
@@ -86,13 +141,22 @@ export async function POST(request: NextRequest) {
           module: d.module,
           period: d.period,
           currency: d.currency,
-          opening_position: d.openingPosition,
+          opening_variance: d.openingVariance,
           insurance: d.insurance,
+          premium_cover: d.premiumCover,
+          commission: d.commission,
+          net_insurance: d.netInsurance,
           zinara: d.zinara,
+          pds: d.pds,
+          total_expected: d.totalExpected,
+          bank_deposits: d.bankDeposits,
           deposits: d.deposits,
           adjustments: d.adjustments,
+          closing_variance: d.closingVariance,
           closing_position: d.closingPosition,
           status: d.status,
+          transactions: d.transactions,
+          summary_text: d.summaryText,
           csv_text: documentToCSV(d),
           created_at: d.generatedAt,
         }))

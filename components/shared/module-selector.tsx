@@ -1,6 +1,7 @@
 "use client";
 
 import { Boxes, Check, ChevronDown } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -20,15 +21,51 @@ import type { ModuleSelection } from "@/types";
 export function ModuleSelector({
   allowAll = true,
   compact = false,
+  variant = "dropdown",
 }: {
   allowAll?: boolean;
   compact?: boolean;
+  variant?: "dropdown" | "segmented";
 }) {
   const { module, setModule, availableModules } = useWorkspace();
   const options: ModuleSelection[] = [
     ...(allowAll && availableModules.length > 1 ? (["all"] as const) : []),
     ...availableModules,
   ];
+
+  if (variant === "segmented") {
+    if (options.length <= 1) {
+      return (
+        <span className="inline-flex h-9 items-center rounded-lg bg-primary px-3.5 text-[13px] font-semibold text-primary-foreground">
+          {moduleName(options[0] ?? "enpassent")}
+        </span>
+      );
+    }
+    return (
+      <div
+        role="group"
+        aria-label="Active module"
+        className="inline-flex items-center gap-1 rounded-lg border bg-card p-1"
+      >
+        {options.map((opt) => (
+          <button
+            key={opt}
+            type="button"
+            onClick={() => setModule(opt)}
+            aria-pressed={module === opt}
+            className={cn(
+              "h-7 rounded-md px-3 text-[12.5px] font-semibold transition-colors",
+              module === opt
+                ? "bg-primary text-primary-foreground shadow-sm"
+                : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {moduleName(opt)}
+          </button>
+        ))}
+      </div>
+    );
+  }
 
   if (options.length <= 1) {
     return (

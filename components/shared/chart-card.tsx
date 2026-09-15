@@ -21,7 +21,7 @@ export function ChartCard({
 }) {
   return (
     <Card className={cn("gap-0 py-0 shadow-xs", className)}>
-      <CardHeader className="flex-row items-start justify-between gap-2 px-4 pt-4 pb-0 sm:px-5">
+      <CardHeader className="flex flex-row items-start justify-between gap-2 px-4 pt-4 pb-0 sm:px-5">
         <div>
           <CardTitle className="text-[14.5px] font-semibold">{title}</CardTitle>
           {subtitle ? (

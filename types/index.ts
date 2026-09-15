@@ -259,6 +259,8 @@ export type ReportType =
 export interface AgentReport {
   id: string;
   agentId: string;
+  /** Reconciliation this report was generated from (links to the detail view). */
+  reconId?: string;
   type: ReportType;
   title: string;
   module: ModuleCode;
@@ -285,6 +287,8 @@ export interface DistributionJob {
 
 export type SubmissionType =
   | "monthly_field_report"
+  | "icecash_registration"
+  | "zinara_registration"
   | "proof_of_payment"
   | "customer_query"
   | "expense_document"

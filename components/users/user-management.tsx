@@ -422,22 +422,7 @@ function UserActions({ user }: { user: TeamUser }) {
       </Dialog>
 
       {/* Reset Password Dialog */}
-      <Dialog open={resetOpen} onOpenChange={setResetOpen}>
-        <DialogContent className="sm:max-w-[440px]">
-          <DialogHeader>
-            <DialogTitle>Reset Password</DialogTitle>
-            <DialogDescription>
-              A password reset link will be sent to {user.email}. This action is audit-logged.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setResetOpen(false)}>Cancel</Button>
-            <Button onClick={() => { toast.success(`Reset link sent to ${user.email}`); setResetOpen(false); }}>
-              Send Reset Link
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      <ResetPasswordDialog user={user} open={resetOpen} onOpenChange={setResetOpen} />
 
       {/* Suspend Dialog */}
       <Dialog open={suspendOpen} onOpenChange={setSuspendOpen}>
@@ -460,22 +445,130 @@ function UserActions({ user }: { user: TeamUser }) {
   );
 }
 
+function ResetPasswordDialog({
+  user,
+  open,
+  onOpenChange,
+}: {
+  user: TeamUser;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const [password, setPassword] = React.useState("");
+  const [confirm, setConfirm] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+
+  async function reset() {
+    if (password.length < 8) {
+      toast.error("Password must be at least 8 characters");
+      return;
+    }
+    if (password !== confirm) {
+      toast.error("Passwords do not match");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, password }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Reset failed");
+      toast.success(`Password updated for ${user.fullName}`);
+      onOpenChange(false);
+      setPassword(""); setConfirm("");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not reset password");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[440px]">
+        <DialogHeader>
+          <DialogTitle>Reset Password</DialogTitle>
+          <DialogDescription>
+            Set a new password for {user.fullName} ({user.email}). This action is audit-logged.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="reset-pw">New Password</Label>
+            <Input id="reset-pw" type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="reset-pw2">Confirm Password</Label>
+            <Input id="reset-pw2" type="password" autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
+          <Button onClick={reset} disabled={saving}>
+            {saving ? "Updating…" : "Set New Password"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function AddUserDialog() {
   const [open, setOpen] = React.useState(false);
   const [fullName, setFullName] = React.useState("");
   const [email, setEmail] = React.useState("");
+  const [phone, setPhone] = React.useState("");
+  const [nationalId, setNationalId] = React.useState("");
+  const [location, setLocation] = React.useState("");
   const [role, setRole] = React.useState<RoleCode>("agent");
+  const [moduleAccess, setModuleAccess] = React.useState<string>("both");
+  const [password, setPassword] = React.useState("");
+  const [confirmPassword, setConfirmPassword] = React.useState("");
+  const [creating, setCreating] = React.useState(false);
 
-  const handleCreate = () => {
-    if (!fullName || !email) {
-      toast.error("Please fill in all required fields");
+  const reset = () => {
+    setFullName(""); setEmail(""); setPhone(""); setNationalId("");
+    setLocation(""); setRole("agent"); setModuleAccess("both");
+    setPassword(""); setConfirmPassword("");
+  };
+
+  const handleCreate = async () => {
+    if (!fullName.trim() || !email.trim()) {
+      toast.error("Full name and email are required");
       return;
     }
-    toast.success(`User ${fullName} created successfully`);
-    setFullName("");
-    setEmail("");
-    setRole("agent");
-    setOpen(false);
+    if (password.length < 8) {
+      toast.error("Password must be at least 8 characters");
+      return;
+    }
+    if (password !== confirmPassword) {
+      toast.error("Passwords do not match");
+      return;
+    }
+    setCreating(true);
+    try {
+      const res = await fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName, email, phone, nationalId, location, role, moduleAccess, password,
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to create user");
+      toast.success(`User ${fullName} created`, {
+        description: `${roleLabel(role)} account is ${data.status ?? "active"}.`,
+      });
+      reset();
+      setOpen(false);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to create user");
+    } finally {
+      setCreating(false);
+    }
   };
 
   return (
@@ -485,43 +578,47 @@ export function AddUserDialog() {
           <Plus className="size-4" aria-hidden /> Add User
         </Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[520px]">
         <DialogHeader>
-          <DialogTitle>Add New User</DialogTitle>
+          <DialogTitle>Add New Staff Member</DialogTitle>
           <DialogDescription>
-            Create a new user account. They will receive an email with login instructions.
+            Create an account with the details below. Login credentials are sent to their email.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-2">
-          <div className="space-y-1.5">
+        <div className="grid gap-4 py-2 sm:grid-cols-2">
+          <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="add-user-name">
               Full Name <span className="text-destructive">*</span>
             </Label>
-            <Input
-              id="add-user-name"
-              placeholder="e.g. John Smith"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-            />
+            <Input id="add-user-name" placeholder="e.g. John Smith" value={fullName}
+              onChange={(e) => setFullName(e.target.value)} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="add-user-email">
               Email <span className="text-destructive">*</span>
             </Label>
-            <Input
-              id="add-user-email"
-              type="email"
-              placeholder="user@example.com"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-            />
+            <Input id="add-user-email" type="email" placeholder="user@example.com" value={email}
+              onChange={(e) => setEmail(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="add-user-phone">Phone</Label>
+            <Input id="add-user-phone" placeholder="+263 7X XXX XXXX" value={phone}
+              onChange={(e) => setPhone(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="add-user-id">National ID / Passport</Label>
+            <Input id="add-user-id" placeholder="XX-XXXXXXX-X-XX" value={nationalId}
+              onChange={(e) => setNationalId(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="add-user-location">Location / Province</Label>
+            <Input id="add-user-location" placeholder="e.g. Harare" value={location}
+              onChange={(e) => setLocation(e.target.value)} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="add-user-role">Role</Label>
             <Select value={role} onValueChange={(v) => setRole(v as RoleCode)}>
-              <SelectTrigger id="add-user-role">
-                <SelectValue />
-              </SelectTrigger>
+              <SelectTrigger id="add-user-role"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {(Object.keys(ROLE_BADGE) as RoleCode[]).map((r) => (
                   <SelectItem key={r} value={r}>{roleLabel(r)}</SelectItem>
@@ -529,10 +626,37 @@ export function AddUserDialog() {
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="add-user-module">Module Access</Label>
+            <Select value={moduleAccess} onValueChange={setModuleAccess}>
+              <SelectTrigger id="add-user-module"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="both">Both modules</SelectItem>
+                <SelectItem value="enpassent">Enpassent only</SelectItem>
+                <SelectItem value="econet-moovah">Econet Moovah only</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="add-user-password">
+              Password <span className="text-destructive">*</span>
+            </Label>
+            <Input id="add-user-password" type="password" placeholder="Min. 8 characters"
+              value={password} onChange={(e) => setPassword(e.target.value)} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="add-user-confirm">
+              Confirm Password <span className="text-destructive">*</span>
+            </Label>
+            <Input id="add-user-confirm" type="password" placeholder="Repeat password"
+              value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} />
+          </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
-          <Button onClick={handleCreate}>Create User</Button>
+          <Button variant="outline" onClick={() => setOpen(false)} disabled={creating}>Cancel</Button>
+          <Button onClick={handleCreate} disabled={creating}>
+            {creating ? "Creating…" : "Create User"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

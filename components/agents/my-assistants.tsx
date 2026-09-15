@@ -7,7 +7,7 @@ import { z } from "zod";
 import { Ellipsis, Plus, UserRoundPlus, Search, Users, ShieldCheck, AlertCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
@@ -34,7 +34,6 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { AgentAvatar } from "@/components/shared/agent-avatar";
-import { DataTable } from "@/components/data-table/data-table";
 import { ExportButton } from "@/components/shared/export-button";
 import type { Assistant, Booth } from "@/types";
 
@@ -115,6 +114,14 @@ export function MyAssistants({
 
   return (
     <div className="space-y-4">
+      {/* Approval notice (per mockup) */}
+      {!isAdminView && (
+        <div className="flex items-center gap-2.5 rounded-xl border border-primary/20 bg-primary-soft px-4 py-3 text-[13px] text-primary">
+          <AlertCircle className="size-4.5 shrink-0" aria-hidden />
+          All assistant accounts require Super Admin approval before they can access the system.
+        </div>
+      )}
+
       {/* Stats */}
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
         <StatCard icon={Users} label="Total Assistants" value={stats.total} />
@@ -125,7 +132,7 @@ export function MyAssistants({
 
       {/* Search & filters */}
       <div className="flex flex-wrap items-center gap-2">
-        <div className="relative min-w-0 flex-1">
+        <div className="relative w-full min-w-0 sm:w-auto sm:flex-1">
           <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
           <Input
             placeholder="Search by name, email or phone"
@@ -135,7 +142,7 @@ export function MyAssistants({
           />
         </div>
         <Select value={statusFilter} onValueChange={setStatusFilter}>
-          <SelectTrigger className="h-9 w-36 bg-card text-[12.5px]">
+          <SelectTrigger className="h-9 w-36 shrink-0 bg-card text-[12.5px]">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -159,7 +166,16 @@ export function MyAssistants({
             ))}
           </SelectContent>
         </Select>
-        <ExportButton filename={`assistants-${Date.now()}`} rows={filtered.length} label="Export" />
+        <ExportButton
+          filename="assistants-export"
+          rows={filtered.length}
+          label="Export"
+          title="QuickRecon — Assistants"
+          data={{
+            columns: ["Name", "Email", "Phone", "Booth", "Status"],
+            rows: filtered.map((a) => [a.fullName, a.email, a.phone, a.boothName ?? "—", a.status]),
+          }}
+        />
       </div>
 
       {!isAdminView && (

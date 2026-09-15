@@ -21,6 +21,7 @@ import {
   TriangleAlert,
   CalendarClock,
   History,
+  Megaphone,
   type LucideIcon,
 } from "lucide-react";
 import type { RoleCode } from "@/types";
@@ -33,6 +34,8 @@ export interface NavChild {
 
 export interface NavItem {
   label: string;
+  /** Label shown to field users (agents/assistants) when it differs. */
+  fieldLabel?: string;
   href: string;
   icon: LucideIcon;
   roles: RoleCode[];
@@ -61,6 +64,7 @@ export const NAV_ITEMS: NavItem[] = [
   },
   {
     label: "Reports",
+    fieldLabel: "My Reports",
     href: "/app/reports",
     icon: FileBarChart,
     roles: [...COMPANY_ROLES, ...FIELD_ROLES],
@@ -71,9 +75,9 @@ export const NAV_ITEMS: NavItem[] = [
       { label: "History", href: "/app/reports?tab=history", icon: History },
     ],
   },
-  { label: "Task Management", href: "/app/submissions", icon: ClipboardList, roles: [...COMPANY_ROLES, ...FIELD_ROLES], mobilePrimary: true },
-  { label: "Agents Management", href: "/app/agents", icon: Users, roles: COMPANY_ROLES, mobilePrimary: true },
-  { label: "User Management", href: "/app/users", icon: UserCog, roles: ["super_admin", "admin", "tech_support"] },
+  { label: "Submissions", href: "/app/submissions", icon: ClipboardList, roles: [...COMPANY_ROLES, ...FIELD_ROLES], mobilePrimary: true },
+  { label: "Agents", href: "/app/agents", icon: Users, roles: COMPANY_ROLES, mobilePrimary: true },
+  { label: "Staff Management", href: "/app/users", icon: UserCog, roles: ["super_admin", "admin", "tech_support"] },
   { label: "Communications", href: "/app/communications", icon: Send, roles: ["super_admin", "admin"] },
   {
     label: "ERP",
@@ -89,9 +93,10 @@ export const NAV_ITEMS: NavItem[] = [
     ],
   },
   { label: "My Booths", href: "/app/booths", icon: Store, roles: FIELD_ROLES },
-  { label: "Agents Assistants", href: "/app/assistants", icon: UserRoundCheck, roles: ["agent", "super_admin", "admin"] },
+  { label: "Assistants", href: "/app/assistants", icon: UserRoundCheck, roles: ["agent", "super_admin", "admin"] },
   { label: "Transactions", href: "/app/transactions", icon: ArrowLeftRight, roles: FIELD_ROLES },
   { label: "My Profile", href: "/app/profile", icon: UserRound, roles: FIELD_ROLES },
+  { label: "Announcements", href: "/app/notifications", icon: Megaphone, roles: FIELD_ROLES },
   { label: "Support", href: "/app/support", icon: LifeBuoy, roles: [...COMPANY_ROLES, ...FIELD_ROLES] },
   { label: "Settings", href: "/app/settings", icon: Settings, roles: [...COMPANY_ROLES, ...FIELD_ROLES] },
 ];
@@ -101,11 +106,48 @@ export const AGENT_MOBILE_PRIMARY = [
   { label: "Home", href: "/app/dashboard", icon: LayoutDashboard },
   { label: "Reports", href: "/app/reports", icon: FileBarChart },
   { label: "Booths", href: "/app/booths", icon: Store },
-  { label: "Tasks", href: "/app/submissions", icon: ClipboardList },
+  { label: "Submissions", href: "/app/submissions", icon: ClipboardList },
 ] as const;
 
+/** Sidebar ordering per audience, matching the mockups exactly. */
+const COMPANY_ORDER = [
+  "/app/dashboard",
+  "/app/agents",
+  "/app/imports",
+  "/app/reconciliation",
+  "/app/reports",
+  "/app/communications",
+  "/app/users",
+  "/app/submissions",
+  "/app/erp",
+  "/app/support",
+  "/app/settings",
+];
+const FIELD_ORDER = [
+  "/app/dashboard",
+  "/app/profile",
+  "/app/booths",
+  "/app/reports",
+  "/app/assistants",
+  "/app/submissions",
+  "/app/transactions",
+  "/app/notifications",
+  "/app/support",
+  "/app/settings",
+];
+
 export function navForRole(role: RoleCode): NavItem[] {
-  return NAV_ITEMS.filter((item) => item.roles.includes(role));
+  const field = FIELD_ROLES.includes(role);
+  const order = field ? FIELD_ORDER : COMPANY_ORDER;
+  return NAV_ITEMS.filter((item) => item.roles.includes(role))
+    .map((item) =>
+      field && item.fieldLabel ? { ...item, label: item.fieldLabel } : item
+    )
+    .sort(
+      (a, b) =>
+        (order.indexOf(a.href) === -1 ? 99 : order.indexOf(a.href)) -
+        (order.indexOf(b.href) === -1 ? 99 : order.indexOf(b.href))
+    );
 }
 
 export function isCompanyRole(role: RoleCode): boolean {

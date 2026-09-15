@@ -25,11 +25,11 @@ export default async function SubmissionsPage({
   return (
     <div className="space-y-4">
       <PageHeader
-        title={company ? "Task Management" : "My Tasks"}
+        title={company ? "Submissions" : "My Submissions"}
         description={
           company
-            ? "Assign tasks to agents, review submissions and follow up on progress"
-            : "Submit documents, reports and track your assigned tasks"
+            ? "Review agent submissions, documents and queries"
+            : "Submit documents, reports and queries"
         }
       />
       <SubmissionsView

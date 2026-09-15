@@ -3,7 +3,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { FileSpreadsheet } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
-import { getImportBatches } from "@/lib/data";
+import { getAgents, getImportBatches } from "@/lib/data";
 import { PageHeader } from "@/components/layout/page-header";
 import { ImportWizard } from "@/components/imports/import-wizard";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -16,7 +16,7 @@ export default async function ImportsPage() {
   const session = await getSession();
   if (!session) redirect("/login");
 
-  const batches = await getImportBatches();
+  const [batches, agents] = await Promise.all([getImportBatches(), getAgents()]);
 
   return (
     <div className="space-y-5">
@@ -25,7 +25,9 @@ export default async function ImportsPage() {
         description="Upload and process Enpassent or Econet Moovah workbooks"
       />
 
-      <ImportWizard />
+      <ImportWizard
+        agents={agents.map((a) => ({ id: a.id, fullName: a.fullName }))}
+      />
 
       {/* Recent imports */}
       <Card className="gap-0 py-0 shadow-xs">

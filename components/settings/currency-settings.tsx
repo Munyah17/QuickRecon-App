@@ -16,6 +16,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
+import { CURRENCY_SETTINGS_KEY } from "@/lib/format";
 
 interface CurrencyConfig {
   baseCurrency: "USD" | "ZWG";
@@ -52,6 +53,37 @@ export function CurrencySettings() {
 
   const [rbzRate, setRbzRate] = React.useState<number | null>(null);
   const [fetchingRate, setFetchingRate] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+  const [loaded, setLoaded] = React.useState(false);
+
+  // Load persisted config: Supabase system_settings first, localStorage fallback.
+  React.useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch("/api/settings?key=currency");
+        const data = await res.json();
+        if (!cancelled && data.value) {
+          setConfig((c) => ({ ...c, ...data.value }));
+          window.localStorage.setItem(CURRENCY_SETTINGS_KEY, JSON.stringify(data.value));
+          setLoaded(true);
+          return;
+        }
+      } catch {
+        /* fall through to localStorage */
+      }
+      if (!cancelled) {
+        try {
+          const raw = window.localStorage.getItem(CURRENCY_SETTINGS_KEY);
+          if (raw) setConfig((c) => ({ ...c, ...JSON.parse(raw) }));
+        } catch {
+          /* ignore */
+        }
+        setLoaded(true);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   function fetchRbzRate() {
     setFetchingRate(true);
@@ -66,10 +98,32 @@ export function CurrencySettings() {
     setConfig((c) => ({ ...c, services: { ...c.services, [service]: value } }));
   }
 
-  function saveConfig() {
-    toast.success("Currency settings saved", {
-      description: `Base: ${config.baseCurrency} · Default: ${config.defaultCurrency} · Rate: 1 USD = ZiG ${config.manualRate}`,
-    });
+  async function saveConfig() {
+    setSaving(true);
+    const payload = { ...config, lastUpdated: new Date().toISOString() };
+    try {
+      window.localStorage.setItem(CURRENCY_SETTINGS_KEY, JSON.stringify(payload));
+    } catch {
+      /* ignore */
+    }
+    try {
+      const res = await fetch("/api/settings", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ key: "currency", value: payload }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Save failed");
+      toast.success("Currency settings saved", {
+        description: `Base: ${config.baseCurrency} · Default: ${config.defaultCurrency} · Rate: 1 USD = ZiG ${config.manualRate}`,
+      });
+    } catch (e) {
+      toast.error("Could not save to server", {
+        description: e instanceof Error ? e.message : "Saved locally only.",
+      });
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -186,8 +240,8 @@ export function CurrencySettings() {
       </Card>
 
       <div className="flex justify-end">
-        <Button className="h-9 gap-1.5 text-[13px]" onClick={saveConfig}>
-          <Check className="size-4" aria-hidden /> Save Currency Settings
+        <Button className="h-9 gap-1.5 text-[13px]" onClick={saveConfig} disabled={saving || !loaded}>
+          <Check className="size-4" aria-hidden /> {saving ? "Saving…" : "Save Currency Settings"}
         </Button>
       </div>
     </div>

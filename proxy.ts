@@ -5,7 +5,7 @@ import { createServerClient } from "@supabase/ssr";
  * Keeps the Supabase session cookie fresh on navigation.
  * In preview mode (no env configured) requests pass straight through.
  */
-export async function middleware(request: NextRequest) {
+export async function proxy(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
   if (!url || !key) return NextResponse.next();

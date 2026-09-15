@@ -217,7 +217,25 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
                 ))}
               </SelectContent>
             </Select>
-            <ExportButton filename={`agents-${Date.now()}`} rows={filtered.length} label="Export" />
+            <ExportButton
+              filename="agents-export"
+              rows={filtered.length}
+              label="Export"
+              title="QuickRecon — Agents"
+              data={{
+                columns: ["#", "Name", "Agent ID", "Modules", "Booths", "Phone", "Email", "Status"],
+                rows: filtered.map((a, i) => [
+                  i + 1,
+                  a.fullName,
+                  a.id,
+                  a.modules.filter((m) => m.enabled).map((m) => (m.module === "econet-moovah" ? "Econet" : "Enpassent")).join(", "),
+                  a.boothsCount,
+                  a.phone,
+                  a.email,
+                  a.status,
+                ]),
+              }}
+            />
           </div>
         }
         renderMobileCard={(a) => <AgentMobileCard agent={a} />}

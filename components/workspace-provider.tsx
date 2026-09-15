@@ -35,16 +35,20 @@ export function WorkspaceProvider({
   const [period, setPeriodState] = React.useState<string>(currentPeriod());
 
   React.useEffect(() => {
-    const savedModule = localStorage.getItem("qr_module");
-    const savedPeriod = localStorage.getItem("qr_period");
-    if (
-      savedModule &&
-      (savedModule === "all" ||
-        availableModules.includes(savedModule as ModuleCode))
-    ) {
-      setModuleState(savedModule as ModuleSelection);
-    }
-    if (savedPeriod) setPeriodState(savedPeriod);
+    // Hydrate persisted workspace selection once on mount. Deferred to a
+    // microtask so the update is async rather than a synchronous cascade.
+    queueMicrotask(() => {
+      const savedModule = localStorage.getItem("qr_module");
+      const savedPeriod = localStorage.getItem("qr_period");
+      if (
+        savedModule &&
+        (savedModule === "all" ||
+          availableModules.includes(savedModule as ModuleCode))
+      ) {
+        setModuleState(savedModule as ModuleSelection);
+      }
+      if (savedPeriod) setPeriodState(savedPeriod);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 

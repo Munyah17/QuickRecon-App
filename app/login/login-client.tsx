@@ -1,7 +1,7 @@
 "use client";
 
 import * as React from "react";
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Eye, EyeOff, LoaderCircle } from "lucide-react";
@@ -21,52 +21,6 @@ const loginSchema = z.object({
 });
 type LoginValues = z.infer<typeof loginSchema>;
 
-/** Abstract skyline used on the brand panel (matches mockup composition). */
-function Skyline() {
-  return (
-    <svg viewBox="0 0 480 300" className="h-full w-full" preserveAspectRatio="xMidYMax slice" aria-hidden>
-      <defs>
-        <linearGradient id="bld" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#1e40af" />
-          <stop offset="100%" stopColor="#172554" />
-        </linearGradient>
-        <linearGradient id="win" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0%" stopColor="#93c5fd" stopOpacity="0.9" />
-          <stop offset="100%" stopColor="#bfdbfe" stopOpacity="0.4" />
-        </linearGradient>
-      </defs>
-      <g fill="url(#bld)">
-        <rect x="20" y="120" width="90" height="180" rx="3" />
-        <rect x="130" y="60" width="110" height="240" rx="3" />
-        <rect x="255" y="140" width="80" height="160" rx="3" />
-        <rect x="350" y="90" width="110" height="210" rx="3" />
-      </g>
-      <g fill="url(#win)" opacity="0.85">
-        {Array.from({ length: 6 }).map((_, r) =>
-          Array.from({ length: 4 }).map((_, c) => (
-            <rect key={`a${r}${c}`} x={32 + c * 20} y={132 + r * 28} width="12" height="16" rx="1.5" />
-          ))
-        )}
-        {Array.from({ length: 8 }).map((_, r) =>
-          Array.from({ length: 5 }).map((_, c) => (
-            <rect key={`b${r}${c}`} x={144 + c * 20} y={74 + r * 28} width="12" height="16" rx="1.5" />
-          ))
-        )}
-        {Array.from({ length: 5 }).map((_, r) =>
-          Array.from({ length: 3 }).map((_, c) => (
-            <rect key={`c${r}${c}`} x={265 + c * 24} y={152 + r * 28} width="14" height="16" rx="1.5" />
-          ))
-        )}
-        {Array.from({ length: 7 }).map((_, r) =>
-          Array.from({ length: 4 }).map((_, c) => (
-            <rect key={`d${r}${c}`} x={364 + c * 24} y={104 + r * 28} width="14" height="16" rx="1.5" />
-          ))
-        )}
-      </g>
-    </svg>
-  );
-}
-
 const PREVIEW_ROLES: { role: RoleCode; label: string }[] = [
   { role: "super_admin", label: "Super Admin" },
   { role: "agent", label: "Agent" },
@@ -81,6 +35,7 @@ export function LoginClient({ supabaseConfigured }: { supabaseConfigured: boolea
     resolver: zodResolver(loginSchema),
     defaultValues: { email: "", password: "", remember: true },
   });
+  const remember = useWatch({ control: form.control, name: "remember" });
 
   async function onSubmit(values: LoginValues) {
     setPending(true);
@@ -94,29 +49,26 @@ export function LoginClient({ supabaseConfigured }: { supabaseConfigured: boolea
       {/* Brand panel */}
       <div className="relative hidden overflow-hidden bg-gradient-to-b from-brand-700 via-brand-800 to-brand-950 lg:flex lg:flex-col">
         <div className="flex items-center gap-3 p-8">
-          <span className="flex size-11 items-center justify-center rounded-xl bg-white/10 ring-1 ring-white/20 backdrop-blur">
-            <span className="text-[15px] font-bold text-white">QR</span>
+          <span className="flex size-11 items-center justify-center overflow-hidden rounded-xl bg-white ring-1 ring-white/20">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img src="/quickrecon-logo.png" alt="QuickRecon App" className="size-full object-contain p-1" />
           </span>
           <div className="leading-tight text-white">
             <p className="text-[17px] font-bold">QuickRecon App</p>
             <p className="text-[11.5px] text-brand-200">Agents. Reconciliation. Growth.</p>
           </div>
         </div>
-        <div className="min-h-0 flex-1 px-8">
-          <Skyline />
+        <div className="flex min-h-0 flex-1 items-center justify-center px-8">
+          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl shadow-brand-950/40">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src="/quickrecon-logo.png"
+              alt="QuickRecon App — circular reconciliation logo"
+              className="h-auto w-full"
+            />
+          </div>
         </div>
-        <div className="p-8 text-white">
-          <p className="text-[22px] leading-7 font-bold">
-            Accurate Data
-            <br />
-            Empowered Agents
-            <br />
-            Stronger Business
-          </p>
-          <p className="mt-3 text-[12px] text-brand-200">
-            © 2026 QuickRecon App. All rights reserved.
-          </p>
-        </div>
+        <div className="p-8" />
       </div>
 
       {/* Sign-in panel */}
@@ -183,7 +135,7 @@ export function LoginClient({ supabaseConfigured }: { supabaseConfigured: boolea
             <div className="flex items-center justify-between">
               <label className="flex items-center gap-2 text-[13px] text-muted-foreground">
                 <Checkbox
-                  checked={form.watch("remember") ?? true}
+                  checked={remember ?? true}
                   onCheckedChange={(c) => form.setValue("remember", c === true)}
                 />
                 Remember me
@@ -229,10 +181,6 @@ export function LoginClient({ supabaseConfigured }: { supabaseConfigured: boolea
               </div>
             </div>
           ) : null}
-
-          <p className="mt-8 text-center text-[11.5px] text-muted-foreground">
-            Trusted by teams for secure reconciliation across Zimbabwe.
-          </p>
         </div>
       </div>
     </div>

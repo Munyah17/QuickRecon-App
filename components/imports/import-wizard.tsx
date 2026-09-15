@@ -72,12 +72,17 @@ function monthOptions(count = 6): string[] {
   return out;
 }
 
-export function ImportWizard() {
+export function ImportWizard({
+  agents = [],
+}: {
+  agents?: { id: string; fullName: string }[];
+}) {
   const { module: workspaceModule } = useWorkspace();
   const [module, setModule] = React.useState<ModuleCode>(
     workspaceModule === "all" ? "enpassent" : workspaceModule
   );
   const [period, setPeriod] = React.useState(monthOptions()[0]);
+  const [agentScope, setAgentScope] = React.useState("all");
   const [runValidation, setRunValidation] = React.useState(true);
 
   const [step, setStep] = React.useState(1);
@@ -119,6 +124,7 @@ export function ImportWizard() {
       form.set("module", module);
       form.set("period", period);
       form.set("sheets", Array.from(selectedSheets).join(","));
+      form.set("agent", agentScope);
       const res = await fetch("/api/imports/process", { method: "POST", body: form });
       const body = await res.json();
       if (!res.ok) throw new Error(body.error ?? "Processing failed");
@@ -228,6 +234,25 @@ export function ImportWizard() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>Reconciliation Scope</Label>
+                <Select value={agentScope} onValueChange={setAgentScope}>
+                  <SelectTrigger className="h-9 bg-card">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All agents — whole group</SelectItem>
+                    {agents.map((a) => (
+                      <SelectItem key={a.id} value={a.id}>
+                        {a.fullName} ({a.id})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground">
+                  Pick one agent to produce that agent&apos;s consolidated document only.
+                </p>
               </div>
               <div className="space-y-1.5">
                 <Label>Select Worksheets</Label>
@@ -413,7 +438,7 @@ export function ImportWizard() {
             ))}
           <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-between">
             <Button variant="outline" onClick={() => setStep(2)}>Back</Button>
-            <Button onClick={() => { setStep(4); void processBatch(); }}>
+            <Button disabled={processing} onClick={() => { setStep(4); void processBatch(); }}>
               Process reconciliation
             </Button>
           </div>

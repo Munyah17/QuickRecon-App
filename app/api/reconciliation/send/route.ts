@@ -2,7 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { isCompanyRole } from "@/lib/nav";
 import { createServiceClient } from "@/lib/supabase/server";
-import { documentToCSV, documentToHTML, documentToSMS } from "@/lib/reconciliation/document";
+import {
+  documentToCSV,
+  documentToHTML,
+  documentToSMS,
+  type AgentReconDocument,
+} from "@/lib/reconciliation/document";
 import { sendEmail } from "@/lib/email/send";
 import { getWhatsAppProvider } from "@/lib/whatsapp/provider";
 
@@ -23,23 +28,9 @@ export async function POST(request: NextRequest) {
     }
 
     const sb = await createServiceClient();
-    let doc: {
-      agentId: string;
-      agentName: string;
-      module: string;
-      period: string;
-      currency: "ZWG" | "USD";
-      openingPosition: number;
-      insurance: number;
-      zinara: number;
-      deposits: number;
-      adjustments: number;
-      closingPosition: number;
-      status: "success" | "warning" | "attention";
-      lines: { item: string; expected: number; actual: number; variance: number }[];
-      agentEmail?: string;
-      agentPhone?: string;
-    } | null = null;
+    let doc: AgentReconDocument | null = null;
+    let agentEmail: string | undefined;
+    let agentPhone: string | undefined;
 
     if (sb) {
       const { data } = await sb
@@ -56,17 +47,27 @@ export async function POST(request: NextRequest) {
           module: data.module,
           period: data.period,
           currency: data.currency,
-          openingPosition: data.opening_position,
-          insurance: data.insurance,
-          zinara: data.zinara,
-          deposits: data.deposits,
-          adjustments: data.adjustments,
-          closingPosition: data.closing_position,
+          generatedAt: data.created_at,
+          openingVariance: Number(data.opening_variance),
+          insurance: Number(data.insurance),
+          premiumCover: Number(data.premium_cover),
+          commission: Number(data.commission),
+          netInsurance: Number(data.net_insurance),
+          zinara: Number(data.zinara),
+          pds: Number(data.pds),
+          totalExpected: Number(data.total_expected),
+          bankDeposits: data.bank_deposits ?? {},
+          deposits: Number(data.deposits),
+          adjustments: Number(data.adjustments),
+          closingVariance: Number(data.closing_variance),
+          closingPosition: Number(data.closing_position),
           status: data.status,
-          lines: [], // stored as CSV text for now
-          agentEmail: data.agents?.email,
-          agentPhone: data.agents?.phone,
+          transactions: data.transactions ?? [],
+          lines: [],
+          summaryText: data.summary_text ?? "",
         };
+        agentEmail = data.agents?.email;
+        agentPhone = data.agents?.phone;
       }
     }
 
@@ -83,34 +84,45 @@ export async function POST(request: NextRequest) {
         module: "enpassent",
         period: "2026-09",
         currency: "ZWG",
-        openingPosition: 0,
+        generatedAt: new Date().toISOString(),
+        openingVariance: 0,
         insurance: 125000,
+        premiumCover: 0,
+        commission: 0,
+        netInsurance: 125000,
         zinara: 45000,
+        pds: 0,
+        totalExpected: 170000,
+        bankDeposits: {},
         deposits: 150000,
         adjustments: 0,
+        closingVariance: 20000,
         closingPosition: 20000,
         status: "warning",
+        transactions: [],
         lines: [
           { item: "Insurance", expected: 125000, actual: 125000, variance: 0 },
           { item: "ZINARA", expected: 45000, actual: 45000, variance: 0 },
           { item: "Deposits", expected: 150000, actual: 150000, variance: 0 },
         ],
-        agentEmail: agent.email,
-        agentPhone: agent.phone,
+        summaryText:
+          "A variance of ZWG 20,000 was detected. Please review the attached detail.",
       };
+      agentEmail = agent.email;
+      agentPhone = agent.phone;
     }
 
-    const summary = documentToSMS(doc as any);
-    const csv = documentToCSV(doc as any);
-    const html = documentToHTML(doc as any);
+    const summary = documentToSMS(doc);
+    const csv = documentToCSV(doc);
+    const html = documentToHTML(doc);
     const subject = `QuickRecon Reconciliation — ${doc.period}`;
 
     const delivered: string[] = [];
     const failures: string[] = [];
 
-    if (channels.includes("email") && doc.agentEmail) {
+    if (channels.includes("email") && agentEmail) {
       const result = await sendEmail({
-        to: doc.agentEmail,
+        to: agentEmail,
         subject,
         text: summary,
         html,
@@ -125,9 +137,9 @@ export async function POST(request: NextRequest) {
       else failures.push("email");
     }
 
-    if (channels.includes("whatsapp") && doc.agentPhone) {
+    if (channels.includes("whatsapp") && agentPhone) {
       const wa = getWhatsAppProvider();
-      const result = await wa.sendDocument(doc.agentPhone, {
+      const result = await wa.sendDocument(agentPhone, {
         buffer: Buffer.from(csv, "utf-8"),
         fileName: `reconciliation-${doc.agentId}-${doc.period}.csv`,
         caption: summary.slice(0, 240),
@@ -136,12 +148,12 @@ export async function POST(request: NextRequest) {
       else failures.push("whatsapp");
     }
 
-    if (channels.includes("sms") && doc.agentPhone) {
+    if (channels.includes("sms") && agentPhone) {
       const smsRes = await fetch(`${request.nextUrl.origin}/api/sms`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          recipients: [doc.agentPhone],
+          recipients: [agentPhone],
           message: summary,
           senderId,
         }),

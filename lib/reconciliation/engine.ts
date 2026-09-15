@@ -7,8 +7,23 @@ import type {
   IdentityAlias,
   NormalizedRecord,
   SourceRow,
+  TransactionDetail,
 } from "./types";
 import type { Currency, ModuleCode } from "@/types";
+
+/** Normalise bank/account names to canonical channel names. */
+function normalizeBankName(raw: string): string {
+  const upper = raw.toUpperCase().trim();
+  if (upper.includes("ECOCASH")) return "Ecocash";
+  if (upper.includes("STEWARD")) return "STEWARD";
+  if (upper.includes("NBS")) return "NBS";
+  if (upper.includes("CBZ")) return "CBZ";
+  if (upper.includes("NMB")) return "NMB";
+  if (upper.includes("BANC ABC") || upper.includes("BANCABC")) return "NBS";
+  if (upper.includes("TRANSFER")) return "Transfers";
+  if (upper.includes("USD") || upper.includes("US$")) return "USD";
+  return raw.trim() || "Other";
+}
 
 interface AgentIdentity {
   id: string;
@@ -62,7 +77,6 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
   // 2. Identity resolution.
   const resolver = new IdentityResolver(input.aliases);
   const agentNameIndex = new Map(input.agents.map((a) => [a.fullName.toUpperCase(), a.id]));
-  const agentIndex = new Map(input.agents.map((a) => [a.id, a]));
 
   const matched: (NormalizedRecord & { agentId: string })[] = [];
   let unmatched = 0;
@@ -164,7 +178,6 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
       if (from === primaryCurrency) return amount;
       const rate = rates[from];
       if (rate) return Math.round(amount * rate);
-      // No rate: flag but include at face value (better than silently dropping).
       return amount;
     };
 
@@ -173,19 +186,53 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
         .filter((r) => r.category === cat)
         .reduce((n, r) => n + convert(r.amount, r.currency), 0);
 
+    const insuranceRecs = recs.filter((r) => r.category === "insurance");
+    const depositRecs = recs.filter((r) => r.category === "deposit");
+
     const insurance = sum("insurance");
     const zinara = sum("zinara");
-    const deposits = sum("deposit");
     const adjustments = sum("adjustment");
-    const opening = agent.openingPosition ?? 0;
+    const pds = 0; // Placeholder: Pds category not yet in source data
 
-    // Expected = what the agent should have banked (opening + revenue + adjustments)
-    // Actual (deposits) = what was actually banked
-    // Closing = Expected - Actual (positive = surplus, negative = shortfall)
-    const expected = opening + insurance + zinara + adjustments;
-    const closing = expected - deposits;
+    // Commission and net insurance (Enpassent-specific).
+    const commission = insuranceRecs.reduce(
+      (n, r) => n + convert(r.commission ?? 0, r.currency),
+      0
+    );
+    const netInsurance = insurance - commission;
+    const premiumCover = netInsurance; // Premium cover = net insurance in Enpassent.
 
-    // Build meaningful line items: revenue lines show expected vs actual deposits.
+    // Per-bank deposit breakdown.
+    const bankDeposits: Record<string, number> = {};
+    for (const r of depositRecs) {
+      const bank = normalizeBankName(r.bankAccount ?? "Other");
+      bankDeposits[bank] = (bankDeposits[bank] ?? 0) + convert(r.amount, r.currency);
+    }
+    const deposits = Object.values(bankDeposits).reduce((n, v) => n + v, 0);
+
+    // Opening variance = carry-forward from previous period (openingPosition).
+    const openingVariance = agent.openingPosition ?? 0;
+
+    // Total Expected = Net Insurance + Zinara + Pds + Opening Variance
+    const totalExpected = netInsurance + zinara + pds + openingVariance;
+
+    // Closing Variance = Total Expected - Total Deposits + Alterations
+    const closingVariance = totalExpected - deposits + adjustments;
+    const closing = closingVariance;
+
+    // Transaction-level detail rows for deposits.
+    const transactions: TransactionDetail[] = depositRecs.map((r) => ({
+      date: r.date,
+      agentName: agent.fullName,
+      amount: convert(r.amount, r.currency),
+      usdAmount: r.usdAmount,
+      usdConversionRate: r.usdConversionRate,
+      bankAccount: r.bankAccount,
+      narration: r.narration,
+      reference: r.reference,
+    }));
+
+    // Build meaningful line items.
     const lines = (
       [
         { cat: "insurance" as const, label: "Insurance" },
@@ -194,10 +241,9 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
         { cat: "adjustment" as const, label: "Adjustments" },
       ]
     ).map(({ cat, label }) => {
-      const actual = sum(cat);
-      // For deposits, expected = revenue categories; for revenue, expected = actual (source of truth)
-      const lineExpected = cat === "deposit" ? expected : actual;
-      const lineVariance = cat === "deposit" ? expected - actual : 0;
+      const actual = cat === "deposit" ? deposits : sum(cat);
+      const lineExpected = cat === "deposit" ? totalExpected : actual;
+      const lineVariance = cat === "deposit" ? totalExpected - deposits : 0;
       return {
         item: label,
         category: cat,
@@ -219,14 +265,23 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
       agentId,
       agentName: agent.fullName,
       currency: primaryCurrency,
-      openingPosition: opening,
+      openingPosition: openingVariance,
+      openingVariance,
       insurance,
+      premiumCover,
+      commission,
+      netInsurance,
       zinara,
+      pds,
+      totalExpected,
+      bankDeposits,
       deposits,
       adjustments,
       closingPosition: closing,
+      closingVariance,
       status,
       recordCount: recs.length,
+      transactions,
       lines,
     });
   }

@@ -8,7 +8,6 @@ import {
   Wallet,
   MapPin,
   Download,
-  FileWarning,
   Plus,
   ArrowUpRight,
   Store,
@@ -26,7 +25,7 @@ import { ActivityFeed } from "@/components/shared/activity-feed";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ActivityItem, Agent, Booth } from "@/types";
 import { mockAgentPerformance, mockBoothRevenue } from "@/lib/data/mock";
-import { formatMoneyCompact, moduleName } from "@/lib/format";
+import { formatMoneyCompact, formatPeriod } from "@/lib/format";
 import { useWorkspace } from "@/components/workspace-provider";
 
 const TrendChart = dynamic(() => import("@/components/charts/trend-chart").then(m => m.TrendChart), {
@@ -53,14 +52,15 @@ export function AgentDashboard({
   agent,
   booths,
   activities,
+  greeting,
 }: {
   agent: Agent;
   booths: Booth[];
   activities: ActivityItem[];
+  greeting: string;
 }) {
-  const { module } = useWorkspace();
+  const { period } = useWorkspace();
   const m = agent.metrics;
-  const firstName = agent.fullName.split(" ")[0];
 
   const boothSeries = booths.slice(0, 3).map((b, i) => ({
     month: b.name.split(" ")[0],
@@ -74,30 +74,23 @@ export function AgentDashboard({
       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
         <div className="min-w-0">
           <h1 className="text-[22px] leading-7 font-bold tracking-tight sm:text-[26px]">
-            Welcome back, {firstName}
+            <span className="lg:hidden">{greeting}, {agent.fullName} 👋</span>
+            <span className="hidden lg:inline">Welcome, {agent.fullName}</span>
           </h1>
           <p className="mt-1 text-[13px] text-muted-foreground">
-            Here&apos;s your reconciliation summary
-          </p>
-          <div className="mt-3 flex flex-wrap items-center gap-2">
-            <div className="lg:hidden">
-              <ModuleSelector allowAll={false} />
-            </div>
-            <span className="hidden h-9 items-center gap-1.5 rounded-lg border bg-card px-3 text-[13px] lg:inline-flex">
-              <span className="size-2 rounded-full bg-success" aria-hidden />
-              Active Module: <strong className="font-semibold">{moduleName(module)}</strong>
+            <span className="lg:hidden">Here&apos;s your reconciliation summary</span>
+            <span className="hidden lg:inline">
+              Here&apos;s your reconciliation overview for {formatPeriod(period)}.
             </span>
-            <div className="lg:hidden">
-              <PeriodSelector />
-            </div>
+          </p>
+          <div className="mt-3 flex flex-wrap items-center gap-2 lg:hidden">
+            <ModuleSelector allowAll={false} />
+            <PeriodSelector />
           </div>
         </div>
         <div className="hidden flex-wrap items-center gap-2 lg:flex">
           <Button variant="outline" className="h-9 gap-1.5 text-[13px]">
-            <Download className="size-4" aria-hidden /> Download Reconciled Report
-          </Button>
-          <Button variant="outline" className="h-9 gap-1.5 text-[13px]">
-            <FileWarning className="size-4" aria-hidden /> Report Discrepancy
+            <Download className="size-4" aria-hidden /> Download Report
           </Button>
           <Button className="h-9 gap-1.5 text-[13px]" asChild>
             <Link href="/app/submissions?new=1">
@@ -206,7 +199,7 @@ export function AgentDashboard({
       {/* Booths, volume, activity */}
       <div className="grid gap-4 lg:grid-cols-12">
         <Card className="gap-0 py-0 shadow-xs lg:col-span-4">
-          <CardHeader className="flex-row items-center justify-between px-4 pt-4 pb-2 sm:px-5">
+          <CardHeader className="flex flex-row items-center justify-between px-4 pt-4 pb-2 sm:px-5">
             <CardTitle className="text-[14.5px] font-semibold">My Booths</CardTitle>
             <Store className="size-4 text-muted-foreground" aria-hidden />
           </CardHeader>

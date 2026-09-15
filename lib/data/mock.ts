@@ -307,6 +307,38 @@ export const MOCK_RECONCILIATIONS: Reconciliation[] = [
     closingPosition: 370_500,
     version: 1,
   },
+  {
+    id: "RCN-2607-001",
+    agentId: "AGT-000184",
+    agentName: "Musa Zhou",
+    module: "enpassent",
+    period: "2026-07",
+    status: "success",
+    currency: "ZWG",
+    openingPosition: 0,
+    insurance: 1_114_000,
+    zinara: 298_700,
+    deposits: 1_380_000,
+    adjustments: 0,
+    closingPosition: -32_700,
+    version: 1,
+  },
+  {
+    id: "RCN-2606-001",
+    agentId: "AGT-000184",
+    agentName: "Musa Zhou",
+    module: "enpassent",
+    period: "2026-06",
+    status: "warning",
+    currency: "ZWG",
+    openingPosition: 0,
+    insurance: 1_076_900,
+    zinara: 285_400,
+    deposits: 1_290_000,
+    adjustments: -1_500,
+    closingPosition: -73_900,
+    version: 1,
+  },
 ];
 
 export const MOCK_RECON_LINES: Record<string, ReconciliationLine[]> = {
@@ -317,6 +349,18 @@ export const MOCK_RECON_LINES: Record<string, ReconciliationLine[]> = {
     { item: "NMB deposit — 09 Aug", category: "deposit", expected: 420_000, actual: 420_000, variance: 0, status: "matched" },
     { item: "POS settlement — 15 Aug", category: "deposit", expected: 390_000, actual: 380_000, variance: -10_000, status: "variance" },
     { item: "Cash deposit — 22 Aug", category: "deposit", expected: 690_000, actual: 700_000, variance: 10_000, status: "variance" },
+  ],
+  "RCN-2607-001": [
+    { item: "Motor insurance", category: "insurance", expected: 914_000, actual: 914_000, variance: 0, status: "matched" },
+    { item: "Funeral cover", category: "insurance", expected: 200_000, actual: 200_000, variance: 0, status: "matched" },
+    { item: "ZINARA licences", category: "zinara", expected: 298_700, actual: 298_700, variance: 0, status: "matched" },
+    { item: "Deposits", category: "deposit", expected: 1_380_000, actual: 1_412_700, variance: 32_700, status: "matched" },
+  ],
+  "RCN-2606-001": [
+    { item: "Motor insurance", category: "insurance", expected: 876_900, actual: 876_900, variance: 0, status: "matched" },
+    { item: "Funeral cover", category: "insurance", expected: 200_000, actual: 200_000, variance: 0, status: "matched" },
+    { item: "ZINARA licences", category: "zinara", expected: 285_400, actual: 285_400, variance: 0, status: "matched" },
+    { item: "Deposits", category: "deposit", expected: 1_290_000, actual: 1_365_400, variance: 75_400, status: "variance" },
   ],
 };
 
@@ -409,11 +453,13 @@ export const MOCK_IMPORTS: ImportBatch[] = [
 ];
 
 export const MOCK_REPORTS: AgentReport[] = [
-  { id: "RPT-01", agentId: "AGT-000184", type: "consolidated", title: "Consolidated Report", module: "enpassent", period: "2026-08", format: "pdf", sizeLabel: "2.4 MB", status: "available", submittedAt: "2026-09-10" },
-  { id: "RPT-02", agentId: "AGT-000184", type: "detailed_transactions", title: "Detailed Transactions", module: "enpassent", period: "2026-08", format: "xlsx", sizeLabel: "1.1 MB", status: "available", submittedAt: "2026-09-10" },
-  { id: "RPT-03", agentId: "AGT-000184", type: "commission_summary", title: "Commission Summary", module: "enpassent", period: "2026-08", format: "pdf", sizeLabel: "989 KB", status: "available", submittedAt: "2026-09-08" },
-  { id: "RPT-04", agentId: "AGT-000184", type: "zinara", title: "ZINARA Report", module: "enpassent", period: "2026-08", format: "xlsx", sizeLabel: "1.5 MB", status: "available", submittedAt: "2026-09-08" },
-  { id: "RPT-05", agentId: "AGT-000184", type: "insurance", title: "Insurance Report", module: "enpassent", period: "2026-08", format: "pdf", sizeLabel: "1.2 MB", status: "available", submittedAt: "2026-09-05" },
+  { id: "RPT-01", agentId: "AGT-000184", reconId: "RCN-2608-001", type: "consolidated", title: "Consolidated Report", module: "enpassent", period: "2026-08", format: "pdf", sizeLabel: "2.4 MB", status: "available", submittedAt: "2026-09-10" },
+  { id: "RPT-02", agentId: "AGT-000184", reconId: "RCN-2608-001", type: "detailed_transactions", title: "Detailed Transactions", module: "enpassent", period: "2026-08", format: "xlsx", sizeLabel: "1.1 MB", status: "available", submittedAt: "2026-09-10" },
+  { id: "RPT-03", agentId: "AGT-000184", reconId: "RCN-2608-001", type: "commission_summary", title: "Commission Summary", module: "enpassent", period: "2026-08", format: "pdf", sizeLabel: "989 KB", status: "available", submittedAt: "2026-09-08" },
+  { id: "RPT-04", agentId: "AGT-000184", reconId: "RCN-2608-001", type: "zinara", title: "ZINARA Report", module: "enpassent", period: "2026-08", format: "xlsx", sizeLabel: "1.5 MB", status: "available", submittedAt: "2026-09-08" },
+  { id: "RPT-05", agentId: "AGT-000184", reconId: "RCN-2608-001", type: "insurance", title: "Insurance Report", module: "enpassent", period: "2026-08", format: "pdf", sizeLabel: "1.2 MB", status: "available", submittedAt: "2026-09-05" },
+  { id: "RPT-06", agentId: "AGT-000184", reconId: "RCN-2607-001", type: "consolidated", title: "Consolidated Report", module: "enpassent", period: "2026-07", format: "pdf", sizeLabel: "2.2 MB", status: "available", submittedAt: "2026-08-08" },
+  { id: "RPT-07", agentId: "AGT-000184", reconId: "RCN-2606-001", type: "consolidated", title: "Consolidated Report", module: "enpassent", period: "2026-06", format: "pdf", sizeLabel: "2.0 MB", status: "available", submittedAt: "2026-07-10" },
 ];
 
 export const MOCK_SUBMISSIONS: Submission[] = [

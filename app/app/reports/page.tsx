@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
-import { getDistributions, getReports } from "@/lib/data";
+import { getDistributions, getReconciliations, getReports } from "@/lib/data";
 import { isCompanyRole } from "@/lib/nav";
 import { PageHeader } from "@/components/layout/page-header";
 import { MyReports } from "@/components/reports/my-reports";
@@ -26,14 +26,17 @@ export default async function ReportsPage() {
     );
   }
 
-  const reports = await getReports(session.user.agentId);
+  const [reports, recons] = await Promise.all([
+    getReports(session.user.agentId),
+    getReconciliations({ agentId: session.user.agentId }),
+  ]);
   return (
     <div className="space-y-4">
       <PageHeader
         title="My Reports"
         description="View and download your reconciled reports"
       />
-      <MyReports reports={reports} />
+      <MyReports reports={reports} recons={recons} />
     </div>
   );
 }
