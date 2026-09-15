@@ -220,7 +220,7 @@ function HRTab() {
   const [customDed, setCustomDed] = React.useState<Deduction[]>([]);
 
   const executiveStaff: StaffRow[] = [
-    { id: "EMP-001", name: "Munyah Griezmann", role: "CEO", dept: "Executive", salary: 65000, status: "active", phone: "+263 77 123 4567", email: "munyamuzvidziwa19@gmail.com" },
+    { id: "EMP-001", name: "Munyah Griezmann", role: "CTO", dept: "Executive", salary: 65000, status: "active", phone: "+263 77 123 4567", email: "munyamuzvidziwa19@gmail.com" },
     { id: "EMP-002", name: "Tererai Chiweshe", role: "Chief Operations Officer", dept: "Executive", salary: 48000, status: "active", phone: "+263 77 234 5678", email: "tererai@quickrecon.co.zw" },
     { id: "EMP-003", name: "Rumbi Chiweshe", role: "Chief Financial Officer", dept: "Executive", salary: 45000, status: "active", phone: "+263 77 345 6789", email: "rumbi@quickrecon.co.zw" },
     { id: "EMP-004", name: "Tafadzwa Ncube", role: "Chief Technology Officer", dept: "Executive", salary: 42000, status: "active", phone: "+263 77 456 7890", email: "tafadzwa@quickrecon.co.zw" },
