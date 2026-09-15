@@ -50,12 +50,18 @@ async function getPdfMake() {
     import("pdfmake/build/vfs_fonts"),
   ]);
   const pdfMake = pdfMakeMod.default;
-  const fonts = pdfFonts as unknown as {
-    vfs?: Record<string, string>;
-    pdfMake?: { vfs: Record<string, string> };
-  };
-  (pdfMake as unknown as { vfs: Record<string, string> }).vfs =
-    fonts.pdfMake?.vfs ?? fonts.vfs ?? {};
+  // vfs_fonts shape varies by bundler interop — try every known shape.
+  const f = pdfFonts as Record<string, unknown>;
+  const vfs =
+    (f.pdfMake as { vfs?: Record<string, string> } | undefined)?.vfs ??
+    (f.vfs as Record<string, string> | undefined) ??
+    (f.default as { vfs?: Record<string, string> } | undefined)?.vfs ??
+    (f.default as { pdfMake?: { vfs?: Record<string, string> } } | undefined)?.pdfMake?.vfs ??
+    {};
+  if (Object.keys(vfs).length === 0) {
+    throw new Error("pdfmake fonts failed to load (empty vfs)");
+  }
+  (pdfMake as unknown as { vfs: Record<string, string> }).vfs = vfs;
   return pdfMake;
 }
 

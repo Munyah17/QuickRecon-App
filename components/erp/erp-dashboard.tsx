@@ -323,11 +323,13 @@ function HRTab() {
       )}
 
       <Card className="gap-0 py-0 shadow-xs">
-        <CardHeader className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4 sm:px-5">
+        <CardHeader className="px-4 pt-4 sm:px-5">
           <CardTitle className="text-[14.5px] font-semibold">
             {hrSubTab === "executive" ? "Executive Staff Directory" : "Agents Directory"}
           </CardTitle>
-          <ExportButton filename={`hr-${hrSubTab}`} rows={isAgents ? agents.length : executiveStaff.length} label="Export" />
+          <CardAction>
+            <ExportButton filename={`hr-${hrSubTab}`} rows={isAgents ? agents.length : executiveStaff.length} label="Export" />
+          </CardAction>
         </CardHeader>
         <CardContent className="px-4 pb-4 sm:px-5">
           <div className="overflow-x-auto rounded-xl border">
@@ -564,19 +566,26 @@ function PayslipDialog({
           <Button variant="outline" onClick={onClose}>Close</Button>
           <Button
             className="gap-1.5"
-            onClick={() => {
-              void downloadPayslip({
-                employeeId: staff.id,
-                employeeName: staff.name,
-                role: staff.role,
-                department: staff.dept,
-                period: "September 2026",
-                currency: "ZWG",
-                basicSalary: staff.salary,
-                deductions,
-                loanRepayment: staff.loan,
-              });
-              onClose();
+            onClick={async () => {
+              try {
+                await downloadPayslip({
+                  employeeId: staff.id,
+                  employeeName: staff.name,
+                  role: staff.role,
+                  department: staff.dept,
+                  period: "September 2026",
+                  currency: "ZWG",
+                  basicSalary: staff.salary,
+                  deductions,
+                  loanRepayment: staff.loan,
+                });
+                toast.success("Payslip downloaded");
+                onClose();
+              } catch (err) {
+                toast.error("Download failed", {
+                  description: err instanceof Error ? err.message : "Could not generate the PDF.",
+                });
+              }
             }}
           >
             <FileDown className="size-4" aria-hidden /> Download PDF
