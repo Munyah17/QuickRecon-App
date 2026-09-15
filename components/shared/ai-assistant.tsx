@@ -3,6 +3,7 @@
 import * as React from "react";
 import { Bot, Send, Sparkles, X, LoaderCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { Markdown } from "@/components/shared/markdown";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -121,7 +122,7 @@ export function AIAssistant() {
                       : "bg-muted"
                   )}
                 >
-                  {m.content}
+                  {m.role === "assistant" ? <Markdown text={m.content} /> : m.content}
                 </div>
               </div>
             ))}
