@@ -6,6 +6,7 @@ import {
   Send,
   TriangleAlert,
   Eye,
+  Download,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -351,20 +352,21 @@ function DocumentsView({
                 <Button variant="outline" size="sm" className="h-8 gap-1 text-[12px]" asChild>
                   <Link href={`/app/reconciliation/${d.id}`}><Eye className="size-3.5" aria-hidden /> View</Link>
                 </Button>
-                <ExportButton
-                  filename={`recon-doc-${d.agentId}-${d.period}`}
-                  label=""
-                  className="h-8"
-                  data={{
-                    columns: ["Field", "Value"],
-                    rows: [
-                      ["Agent", d.agentName], ["Agent ID", d.agentId], ["Period", formatPeriod(d.period)],
-                      ["Total Expected", d.totalExpected], ["Deposits", d.deposits],
-                      ["Adjustments", d.adjustments], ["Closing Position", d.closingPosition],
-                      ["Status", d.status],
-                    ],
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-8 gap-1 text-[12px]"
+                  onClick={() => {
+                    const a = document.createElement("a");
+                    a.href = `/api/reconciliation/download?agentId=${encodeURIComponent(d.agentId)}&period=${encodeURIComponent(d.period)}&format=xlsx`;
+                    a.download = `reconciliation-${d.agentId}-${d.period}.xlsx`;
+                    document.body.appendChild(a);
+                    a.click();
+                    a.remove();
                   }}
-                />
+                >
+                  <Download className="size-3.5" aria-hidden /> XLSX
+                </Button>
                 <Button size="sm" className="h-8 gap-1 text-[12px]" onClick={() => setSendTarget(d)}>
                   <Send className="size-3.5" aria-hidden /> Send
                 </Button>

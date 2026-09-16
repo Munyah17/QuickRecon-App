@@ -73,6 +73,18 @@ export function ReconDetail({
   const [item, setItem] = React.useState<string>("");
   const [note, setNote] = React.useState("");
 
+  /** Downloads the real stored document (same file that's emailed). */
+  function downloadDoc(format: "csv" | "xlsx" = "xlsx") {
+    const url = `/api/reconciliation/download?agentId=${encodeURIComponent(recon.agentId)}&period=${encodeURIComponent(recon.period)}&format=${format}`;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `reconciliation-${recon.agentId}-${recon.period}.${format}`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    toast.success("Download started", { description: `reconciliation-${recon.agentId}-${recon.period}.${format}` });
+  }
+
   /** One-row consolidated export for this agent only. */
   function agentRow() {
     return {
@@ -89,6 +101,8 @@ export function ReconDetail({
   }
 
   function downloadFull(format: "csv" | "excel" | "pdf") {
+    if (format === "excel") { downloadDoc("xlsx"); return; }
+    if (format === "csv") { downloadDoc("csv"); return; }
     const fname = `reconciliation-${recon.agentId}-${recon.period}`;
     void exportData(
       format,
@@ -99,7 +113,7 @@ export function ReconDetail({
       fname,
       `Reconciliation — ${recon.agentName} (${formatPeriod(recon.period)})`
     );
-    toast.success("Download started", { description: `${fname}.${format === "excel" ? "xlsx" : format}` });
+    toast.success("Download started", { description: `${fname}.${format}` });
   }
 
   function submitDiscrepancy() {
@@ -137,10 +151,7 @@ export function ReconDetail({
             variant="outline"
             size="sm"
             className="h-9 gap-1.5 text-[12.5px]"
-            onClick={() => {
-              void exportData("pdf", agentRow(), `reconciliation-${recon.agentId}-${recon.period}`, `Reconciliation — ${recon.agentName}`);
-              toast.success("Report downloaded");
-            }}
+            onClick={() => downloadDoc("xlsx")}
           >
             <Download className="size-4" aria-hidden /> Download Report
           </Button>
@@ -252,9 +263,8 @@ export function ReconDetail({
               <div className="flex flex-wrap items-center justify-between gap-2 border-t px-3 py-2.5">
                 <p className="text-[11.5px] text-muted-foreground">This row is the agent&apos;s consolidated document — export it directly.</p>
                 <div className="flex gap-1.5">
-                  <Button variant="outline" size="sm" className="h-7.5 gap-1 text-[11.5px]" onClick={() => { void exportData("csv", agentRow(), `recon-${recon.agentId}`); }}>CSV</Button>
-                  <Button variant="outline" size="sm" className="h-7.5 gap-1 text-[11.5px]" onClick={() => { void exportData("excel", agentRow(), `recon-${recon.agentId}`); }}>Excel</Button>
-                  <Button variant="outline" size="sm" className="h-7.5 gap-1 text-[11.5px]" onClick={() => { void exportData("pdf", agentRow(), `recon-${recon.agentId}`, `Reconciliation — ${recon.agentName}`); }}>PDF</Button>
+                  <Button variant="outline" size="sm" className="h-7.5 gap-1 text-[11.5px]" onClick={() => downloadDoc("csv")}>CSV</Button>
+                  <Button variant="outline" size="sm" className="h-7.5 gap-1 text-[11.5px]" onClick={() => downloadDoc("xlsx")}>Excel</Button>
                 </div>
               </div>
             </CardContent>
