@@ -1157,27 +1157,27 @@ function InvoicesTab() {
           <CardTitle className="text-[14.5px] font-semibold">
             {docTab === "invoice" ? "Invoices" : "Quotations"}
           </CardTitle>
-          <CardAction>
+        </CardHeader>
+        <CardContent className="px-4 pb-4 sm:px-5">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex overflow-hidden rounded-lg border text-[12px]">
+              {(["invoice", "quotation"] as const).map((k) => (
+                <button
+                  key={k}
+                  onClick={() => setDocTab(k)}
+                  className={`px-3 py-1.5 font-medium capitalize transition-colors ${docTab === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                >
+                  {k === "invoice" ? `Invoices (${invoices.length})` : `Quotations (${quotes.length})`}
+                </button>
+              ))}
+            </div>
             <div className="flex items-center gap-2">
-              <div className="flex overflow-hidden rounded-lg border text-[12px]">
-                {(["invoice", "quotation"] as const).map((k) => (
-                  <button
-                    key={k}
-                    onClick={() => setDocTab(k)}
-                    className={`px-3 py-1.5 font-medium capitalize transition-colors ${docTab === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                  >
-                    {k === "invoice" ? `Invoices (${invoices.length})` : `Quotations (${quotes.length})`}
-                  </button>
-                ))}
-              </div>
               <ExportButton filename={`${docTab}-export`} rows={shown.length} label="Export" />
               <Button className="h-9 gap-1.5 text-[13px]" onClick={() => setCreateOpen(docTab)}>
                 <FileText className="size-4" aria-hidden /> New {docTab === "invoice" ? "Invoice" : "Quotation"}
               </Button>
             </div>
-          </CardAction>
-        </CardHeader>
-        <CardContent className="px-4 pb-4 sm:px-5">
+          </div>
           <div className="overflow-x-auto rounded-xl border">
             <table className="w-full text-[13px]">
               <thead>
