@@ -58,17 +58,27 @@ export function LoginClient({ supabaseConfigured }: { supabaseConfigured: boolea
             <p className="text-[11.5px] text-brand-200">Agents. Reconciliation. Growth.</p>
           </div>
         </div>
-        <div className="flex min-h-0 flex-1 items-center justify-center px-8">
-          <div className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl shadow-brand-950/40">
-            {/* eslint-disable-next-line @next/next/no-img-element */}
-            <img
-              src="/quickrecon-logo.png"
-              alt="QuickRecon App — circular reconciliation logo"
-              className="h-auto w-full"
-            />
-          </div>
+        <div className="relative min-h-0 flex-1">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?ixlib=rb-4.0.3&auto=format&fit=crop&w=1200&q=80"
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover opacity-50"
+          />
+          <div className="absolute inset-0 bg-gradient-to-t from-brand-950 via-brand-900/30 to-transparent" />
         </div>
-        <div className="p-8" />
+        <div className="relative p-8 text-white">
+          <p className="text-[22px] leading-7 font-bold">
+            Accurate Data
+            <br />
+            Empowered Agents
+            <br />
+            Stronger Business
+          </p>
+          <p className="mt-3 text-[12px] text-brand-200">
+            © 2026 QuickRecon App. All rights reserved.
+          </p>
+        </div>
       </div>
 
       {/* Sign-in panel */}
