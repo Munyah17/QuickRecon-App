@@ -138,8 +138,20 @@ export async function POST(request: NextRequest) {
     }
 
     const summary = documentToSMS(doc);
-    const csv = documentToCSV(doc);
     const html = brandedEmail(documentToHTML(doc), doc.agentName);
+    const text = [
+      `Dear ${doc.agentName},`,
+      ``,
+      `Your ${doc.period} reconciliation report is attached.`,
+      ``,
+      `Insurance: ${doc.insurance.toLocaleString()} | Zinara: ${doc.zinara.toLocaleString()}`,
+      `Total Expected: ${doc.totalExpected.toLocaleString()} | Deposits: ${doc.deposits.toLocaleString()}`,
+      `Closing Variance: ${doc.closingVariance.toLocaleString()}`,
+      ``,
+      `Regards,`,
+      `Kareem — QuickRecon App`,
+      `Enpassent (Private) Limited, Harare, Zimbabwe`,
+    ].join("\n");
     const subject = `QuickRecon Reconciliation — ${doc.period}`;
 
     const delivered: string[] = [];
@@ -150,16 +162,12 @@ export async function POST(request: NextRequest) {
       const result = await sendEmail({
         to: agentEmail,
         subject,
-        text: summary,
+        text,
         html,
         attachments: [
           {
             filename: `reconciliation-${doc.agentId}-${doc.period}.xlsx`,
             content: xlsx,
-          },
-          {
-            filename: `reconciliation-${doc.agentId}-${doc.period}.csv`,
-            content: Buffer.from(csv, "utf-8"),
           },
         ],
       });
@@ -168,6 +176,7 @@ export async function POST(request: NextRequest) {
     }
 
     if (channels.includes("whatsapp") && agentPhone) {
+      const csv = documentToCSV(doc);
       const wa = getWhatsAppProvider();
       const result = await wa.sendDocument(agentPhone, {
         buffer: Buffer.from(csv, "utf-8"),

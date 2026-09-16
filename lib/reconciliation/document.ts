@@ -101,6 +101,13 @@ function buildDocumentForAgent(
   };
 }
 
+/** Neutralise CSV formula injection — cells starting with =, +, @ or tab
+ * are flagged by mail scanners and dangerous when opened in Excel. */
+function csvSafe(value: unknown): string {
+  const s = String(value ?? "");
+  return /^[=+@\t]/.test(s) ? `'${s}` : s;
+}
+
 /**
  * Serialises one agent document to CSV matching the real Enpassent
  * "Consolidated A" report — exactly 2 rows: header + figures, bank columns
@@ -139,7 +146,7 @@ export function documentToCSV(doc: AgentReconDocument): string {
     String(doc.closingVariance),
   ];
   return [headerRow, dataRow]
-    .map((r) => r.map((c) => `"${String(c).replace(/"/g, '""')}"`).join(","))
+    .map((r) => r.map((c) => `"${csvSafe(c).replace(/"/g, '""')}"`).join(","))
     .join("\n");
 }
 

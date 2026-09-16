@@ -45,8 +45,9 @@ export async function sendEmail(payload: EmailPayload): Promise<SendResult> {
       html: payload.html,
       attachments: payload.attachments,
       headers: {
-        "X-Mailer": "QuickRecon App",
+        "Organization": "Enpassent (Private) Limited",
         "X-Priority": "3",
+        "Importance": "normal",
         "List-Unsubscribe": `<mailto:${process.env.SMTP_USER}?subject=unsubscribe>`,
       },
     });
