@@ -65,11 +65,24 @@ export interface TransactionDetail {
   date?: string;
   agentName: string;
   amount: number;
+  currency?: Currency;
   usdAmount?: number;
   usdConversionRate?: number;
   bankAccount?: string;
   narration?: string;
   reference: string;
+  /** Bucket used by workbook sheets: insurance | zinara | deposit | adjustment. */
+  category?: "insurance" | "zinara" | "deposit" | "adjustment";
+  /** Vehicle registration / plate (Insurance & ZINARA sheets). */
+  vrn?: string;
+  /** Insurer name (Insurance & bank sheets). */
+  insuranceCompany?: string;
+  /** RTA amount for insurance sales. */
+  rtaAmount?: number;
+  /** ZINARA account identifier (ZINARA sheet). */
+  zinaraAccountId?: string;
+  /** Payment method for ZINARA sales. */
+  paymentMethod?: string;
 }
 
 export interface AgentReconResult {

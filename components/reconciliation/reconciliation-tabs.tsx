@@ -49,11 +49,14 @@ export function ReconciliationTabs({
   rows,
   transactions,
   documents,
+  canEditCells = false,
 }: {
   activeTab: string;
   rows: Reconciliation[];
   transactions: Txn[];
   documents: ReconDocument[];
+  /** Super-admin inline cell editing on Breakdowns. */
+  canEditCells?: boolean;
 }) {
   const { module } = useWorkspace();
   const scoped = React.useMemo(
@@ -87,15 +90,97 @@ export function ReconciliationTabs({
       </div>
 
       {activeTab === "summary" && <BatchReview rows={rows} />}
-      {activeTab === "breakdowns" && <BreakdownsView rows={scoped} />}
+      {activeTab === "breakdowns" && <BreakdownsView rows={scoped} canEdit={canEditCells} />}
       {activeTab === "transactions" && <TransactionsView transactions={transactions} />}
       {activeTab === "documents" && <DocumentsView documents={documents} scopedRows={scoped} />}
     </div>
   );
 }
 
+/** Inline-editable numeric cell — super admin only, writes via /api/reconciliation/edit-cell. */
+function EditableCell({
+  reconId,
+  field,
+  value,
+  currency,
+  canEdit,
+  bold,
+}: {
+  reconId: string;
+  field: string;
+  value: number;
+  currency: string;
+  canEdit?: boolean;
+  bold?: boolean;
+}) {
+  const [editing, setEditing] = React.useState(false);
+  const [draft, setDraft] = React.useState(String(value));
+  const [current, setCurrent] = React.useState(value);
+  const [saving, setSaving] = React.useState(false);
+
+  async function save() {
+    const v = parseFloat(draft);
+    if (!Number.isFinite(v)) { toast.error("Enter a number"); return; }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/reconciliation/edit-cell", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reconId, field, value: v }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Save failed");
+      setCurrent(v);
+      setEditing(false);
+      toast.success("Cell updated", { description: `${field} → ${v.toLocaleString()} — change logged.` });
+    } catch (e) {
+      toast.error("Save failed", { description: e instanceof Error ? e.message : "Could not update." });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!canEdit) {
+    return (
+      <td className={`tnum px-4 py-3 text-right ${bold ? "font-semibold" : ""}`}>
+        {bold ? <MoneyValue amount={current} currency={currency as "USD" | "ZWG"} /> : current.toLocaleString()}
+      </td>
+    );
+  }
+
+  return (
+    <td className={`tnum px-4 py-3 text-right ${bold ? "font-semibold" : ""}`}>
+      {editing ? (
+        <span className="inline-flex items-center gap-1">
+          <input
+            type="number"
+            step="0.01"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            onKeyDown={(e) => { if (e.key === "Enter") save(); if (e.key === "Escape") setEditing(false); }}
+            autoFocus
+            className="h-7 w-24 rounded-md border bg-card px-2 text-right text-[12px] outline-none focus:ring-1 focus:ring-primary"
+          />
+          <button onClick={save} disabled={saving} className="rounded bg-primary px-1.5 py-0.5 text-[10px] font-bold text-primary-foreground disabled:opacity-50">
+            {saving ? "…" : "✓"}
+          </button>
+          <button onClick={() => setEditing(false)} className="rounded px-1 py-0.5 text-[10px] text-muted-foreground hover:text-foreground">×</button>
+        </span>
+      ) : (
+        <button
+          onClick={() => { setDraft(String(current)); setEditing(true); }}
+          className="cursor-pointer rounded px-1 py-0.5 hover:bg-muted/70"
+          title="Click to edit (super admin — logged)"
+        >
+          {bold ? <MoneyValue amount={current} currency={currency as "USD" | "ZWG"} /> : current.toLocaleString()}
+        </button>
+      )}
+    </td>
+  );
+}
+
 /* ─── Breakdowns: one agent per row, full consolidated columns ─── */
-function BreakdownsView({ rows }: { rows: Reconciliation[] }) {
+function BreakdownsView({ rows, canEdit }: { rows: Reconciliation[]; canEdit?: boolean }) {
   const [query, setQuery] = React.useState("");
   const filtered = React.useMemo(
     () =>
@@ -157,14 +242,12 @@ function BreakdownsView({ rows }: { rows: Reconciliation[] }) {
                       </Link>
                     </td>
                     <td className="px-4 py-3 text-muted-foreground">{moduleName(r.module)}</td>
-                    <td className="tnum px-4 py-3 text-right">{r.openingPosition.toLocaleString()}</td>
-                    <td className="tnum px-4 py-3 text-right">{r.insurance.toLocaleString()}</td>
-                    <td className="tnum px-4 py-3 text-right">{r.zinara.toLocaleString()}</td>
-                    <td className="tnum px-4 py-3 text-right">{r.deposits.toLocaleString()}</td>
-                    <td className="tnum px-4 py-3 text-right">{r.adjustments.toLocaleString()}</td>
-                    <td className="tnum px-4 py-3 text-right font-semibold">
-                      <MoneyValue amount={r.closingPosition} currency={r.currency} />
-                    </td>
+                    <EditableCell reconId={r.id} field="opening_position" value={r.openingPosition} currency={r.currency} canEdit={canEdit} />
+                    <EditableCell reconId={r.id} field="insurance" value={r.insurance} currency={r.currency} canEdit={canEdit} />
+                    <EditableCell reconId={r.id} field="zinara" value={r.zinara} currency={r.currency} canEdit={canEdit} />
+                    <EditableCell reconId={r.id} field="deposits" value={r.deposits} currency={r.currency} canEdit={canEdit} />
+                    <EditableCell reconId={r.id} field="adjustments" value={r.adjustments} currency={r.currency} canEdit={canEdit} />
+                    <EditableCell reconId={r.id} field="closing_position" value={r.closingPosition} currency={r.currency} canEdit={canEdit} bold />
                     <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
                     <td className="px-4 py-3 text-right">
                       <ExportButton

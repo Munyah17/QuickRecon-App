@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import { downloadPayslip, type Deduction } from "@/lib/erp/payslip";
 import { downloadCommissionStatement } from "@/lib/erp/commission-statement";
+import { downloadBusinessDoc, type DocLine } from "@/lib/erp/document-pdf";
+import type { Currency } from "@/types";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -1077,20 +1079,69 @@ function ReceiptDialog({
   );
 }
 
-/* ─── Invoices ─── */
+/* ─── Invoices & Quotations ─── */
+interface BizDocRow {
+  id: string;
+  kind: "invoice" | "quotation";
+  client: string;
+  amount: number;
+  date: string;
+  due?: string;
+  validUntil?: string;
+  status: "paid" | "pending" | "overdue" | "draft" | "accepted" | "declined";
+  lines: DocLine[];
+  currency: Currency;
+}
+
 function InvoicesTab() {
-  const invoices = [
-    { id: "INV-2026-001", client: "Econet Wireless", amount: 187500, date: "2026-09-01", due: "2026-09-15", status: "paid" },
-    { id: "INV-2026-002", client: "ZINARA Harare", amount: 45200, date: "2026-09-03", due: "2026-09-17", status: "pending" },
-    { id: "INV-2026-003", client: "CBZ Bank", amount: 92000, date: "2026-09-05", due: "2026-09-19", status: "pending" },
-    { id: "INV-2026-004", client: "Mutare Motors", amount: 18500, date: "2026-09-07", due: "2026-09-21", status: "overdue" },
-    { id: "INV-2026-005", client: "Gweru Hardware", amount: 23800, date: "2026-09-10", due: "2026-09-24", status: "pending" },
-    { id: "INV-2026-006", client: "Masvingo Traders", amount: 31200, date: "2026-09-12", due: "2026-09-26", status: "paid" },
-  ];
+  const [docs, setDocs] = React.useState<BizDocRow[]>([
+    { id: "INV-2026-001", kind: "invoice", client: "Econet Wireless", amount: 187500, date: "2026-09-01", due: "2026-09-15", status: "paid", lines: [{ description: "Reconciliation services — August 2026", qty: 1, unitPrice: 187500 }], currency: "ZWG" },
+    { id: "INV-2026-002", kind: "invoice", client: "ZINARA Harare", amount: 45200, date: "2026-09-03", due: "2026-09-17", status: "pending", lines: [{ description: "ZINARA reconciliation module", qty: 1, unitPrice: 45200 }], currency: "ZWG" },
+    { id: "INV-2026-003", kind: "invoice", client: "CBZ Bank", amount: 92000, date: "2026-09-05", due: "2026-09-19", status: "pending", lines: [{ description: "Agent network reconciliation", qty: 1, unitPrice: 92000 }], currency: "ZWG" },
+    { id: "INV-2026-004", kind: "invoice", client: "Mutare Motors", amount: 18500, date: "2026-09-07", due: "2026-09-21", status: "overdue", lines: [{ description: "Monthly reconciliation", qty: 1, unitPrice: 18500 }], currency: "ZWG" },
+    { id: "QT-2026-001", kind: "quotation", client: "Bulawayo Insurers", amount: 64000, date: "2026-09-10", validUntil: "2026-09-30", status: "pending", lines: [{ description: "Q4 reconciliation setup", qty: 1, unitPrice: 64000 }], currency: "ZWG" },
+  ]);
+  const [createOpen, setCreateOpen] = React.useState<"invoice" | "quotation" | null>(null);
+  const [docTab, setDocTab] = React.useState<"invoice" | "quotation">("invoice");
+
+  const invoices = docs.filter((d) => d.kind === "invoice");
+  const quotes = docs.filter((d) => d.kind === "quotation");
+  const shown = docTab === "invoice" ? invoices : quotes;
 
   const totalPaid = invoices.filter((i) => i.status === "paid").reduce((s, i) => s + i.amount, 0);
   const totalPending = invoices.filter((i) => i.status === "pending").reduce((s, i) => s + i.amount, 0);
   const totalOverdue = invoices.filter((i) => i.status === "overdue").reduce((s, i) => s + i.amount, 0);
+
+  async function downloadDoc(d: BizDocRow) {
+    try {
+      await downloadBusinessDoc({
+        kind: d.kind,
+        number: d.id,
+        client: d.client,
+        issueDate: d.date,
+        dueDate: d.due,
+        validUntil: d.validUntil,
+        currency: d.currency,
+        lines: d.lines,
+        vatRate: 0.155,
+      });
+      toast.success(`${d.kind === "invoice" ? "Invoice" : "Quotation"} downloaded`, { description: `${d.id}.pdf` });
+    } catch (err) {
+      toast.error("Download failed", { description: err instanceof Error ? err.message : "Could not generate PDF." });
+    }
+  }
+
+  function statusBadge(status: BizDocRow["status"]) {
+    const map: Record<string, string> = {
+      paid: "border-transparent bg-success-soft text-success-foreground",
+      accepted: "border-transparent bg-success-soft text-success-foreground",
+      pending: "border-transparent bg-warning-soft text-warning-foreground",
+      overdue: "border-transparent bg-destructive-soft text-destructive",
+      declined: "border-transparent bg-destructive-soft text-destructive",
+      draft: "border-transparent bg-muted text-muted-foreground",
+    };
+    return <Badge variant="outline" className={map[status]}>{status}</Badge>;
+  }
 
   return (
     <div className="space-y-4">
@@ -1102,52 +1153,79 @@ function InvoicesTab() {
       </div>
 
       <Card className="gap-0 py-0 shadow-xs">
-        <CardHeader className="flex flex-wrap items-center justify-between gap-2 px-4 pt-4 sm:px-5">
-          <CardTitle className="text-[14.5px] font-semibold">Invoice List</CardTitle>
-          <div className="flex items-center gap-2">
-            <ExportButton filename="invoices-export" rows={invoices.length} label="Export" />
-            <Button
-              className="h-9 gap-1.5 text-[13px]"
-              onClick={() => toast.success("New invoice created", { description: "Invoice draft saved" })}
-            >
-              <FileText className="size-4" aria-hidden /> New Invoice
-            </Button>
-          </div>
+        <CardHeader className="px-4 pt-4 sm:px-5">
+          <CardTitle className="text-[14.5px] font-semibold">
+            {docTab === "invoice" ? "Invoices" : "Quotations"}
+          </CardTitle>
+          <CardAction>
+            <div className="flex items-center gap-2">
+              <div className="flex overflow-hidden rounded-lg border text-[12px]">
+                {(["invoice", "quotation"] as const).map((k) => (
+                  <button
+                    key={k}
+                    onClick={() => setDocTab(k)}
+                    className={`px-3 py-1.5 font-medium capitalize transition-colors ${docTab === k ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  >
+                    {k === "invoice" ? `Invoices (${invoices.length})` : `Quotations (${quotes.length})`}
+                  </button>
+                ))}
+              </div>
+              <ExportButton filename={`${docTab}-export`} rows={shown.length} label="Export" />
+              <Button className="h-9 gap-1.5 text-[13px]" onClick={() => setCreateOpen(docTab)}>
+                <FileText className="size-4" aria-hidden /> New {docTab === "invoice" ? "Invoice" : "Quotation"}
+              </Button>
+            </div>
+          </CardAction>
         </CardHeader>
         <CardContent className="px-4 pb-4 sm:px-5">
           <div className="overflow-x-auto rounded-xl border">
             <table className="w-full text-[13px]">
               <thead>
                 <tr className="border-b bg-muted/50 text-left text-[11.5px] font-semibold text-muted-foreground uppercase">
-                  <th className="px-3 py-2.5">Invoice #</th>
+                  <th className="px-3 py-2.5">{docTab === "invoice" ? "Invoice #" : "Quote #"}</th>
                   <th className="px-3 py-2.5">Client</th>
-                  <th className="px-3 py-2.5 text-right">Amount (ZiG)</th>
+                  <th className="px-3 py-2.5 text-right">Amount</th>
                   <th className="px-3 py-2.5">Issued</th>
-                  <th className="px-3 py-2.5">Due</th>
+                  <th className="px-3 py-2.5">{docTab === "invoice" ? "Due" : "Valid Until"}</th>
                   <th className="px-3 py-2.5">Status</th>
+                  <th className="w-10 px-3 py-2.5"></th>
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {invoices.map((inv) => (
-                  <tr key={inv.id} className="hover:bg-surface-hover">
-                    <td className="font-mono text-[12px] px-3 py-2.5">{inv.id}</td>
-                    <td className="px-3 py-2.5 font-medium">{inv.client}</td>
-                    <td className="tnum px-3 py-2.5 text-right">{inv.amount.toLocaleString()}</td>
-                    <td className="tnum px-3 py-2.5 text-muted-foreground">{inv.date}</td>
-                    <td className="tnum px-3 py-2.5 text-muted-foreground">{inv.due}</td>
+                {shown.map((d) => (
+                  <tr key={d.id} className="hover:bg-surface-hover">
+                    <td className="font-mono text-[12px] px-3 py-2.5">{d.id}</td>
+                    <td className="px-3 py-2.5 font-medium">{d.client}</td>
+                    <td className="tnum px-3 py-2.5 text-right">{d.amount.toLocaleString()}</td>
+                    <td className="tnum px-3 py-2.5 text-muted-foreground">{d.date}</td>
+                    <td className="tnum px-3 py-2.5 text-muted-foreground">{d.due ?? d.validUntil}</td>
+                    <td className="px-3 py-2.5">{statusBadge(d.status)}</td>
                     <td className="px-3 py-2.5">
-                      <Badge
-                        variant="outline"
-                        className={
-                          inv.status === "paid"
-                            ? "border-transparent bg-success-soft text-success-foreground"
-                            : inv.status === "overdue"
-                              ? "border-transparent bg-destructive-soft text-destructive"
-                              : "border-transparent bg-warning-soft text-warning-foreground"
-                        }
-                      >
-                        {inv.status}
-                      </Badge>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon-sm" aria-label={`Actions for ${d.id}`}>
+                            <Ellipsis className="size-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onSelect={() => downloadDoc(d)}>
+                            Download PDF
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onSelect={() => toast.success(`${d.id} marked as sent`, { description: `Delivered to ${d.client}` })}>
+                            Mark Sent
+                          </DropdownMenuItem>
+                          {d.kind === "quotation" && d.status === "pending" && (
+                            <DropdownMenuItem onSelect={() => setDocs((all) => all.map((x) => x.id === d.id ? { ...x, status: "accepted" as const } : x))}>
+                              Mark Accepted
+                            </DropdownMenuItem>
+                          )}
+                          {d.kind === "invoice" && d.status === "pending" && (
+                            <DropdownMenuItem onSelect={() => setDocs((all) => all.map((x) => x.id === d.id ? { ...x, status: "paid" as const } : x))}>
+                              Mark Paid
+                            </DropdownMenuItem>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </td>
                   </tr>
                 ))}
@@ -1156,6 +1234,110 @@ function InvoicesTab() {
           </div>
         </CardContent>
       </Card>
+
+      {createOpen && (
+        <BizDocDialog
+          kind={createOpen}
+          onClose={() => setCreateOpen(null)}
+          onCreate={(d) => {
+            setDocs((all) => [d, ...all]);
+            setCreateOpen(null);
+            toast.success(`${d.kind === "invoice" ? "Invoice" : "Quotation"} created`, { description: `${d.id} · ${d.client}` });
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+/** Create invoice/quotation dialog with line items. */
+function BizDocDialog({
+  kind,
+  onClose,
+  onCreate,
+}: {
+  kind: "invoice" | "quotation";
+  onClose: () => void;
+  onCreate: (d: BizDocRow) => void;
+}) {
+  const [client, setClient] = React.useState("");
+  const [currency, setCurrency] = React.useState<Currency>("ZWG");
+  const [lines, setLines] = React.useState<DocLine[]>([{ description: "", qty: 1, unitPrice: 0 }]);
+  const total = lines.reduce((s, l) => s + l.qty * l.unitPrice, 0);
+
+  function updateLine(i: number, field: keyof DocLine, v: string | number) {
+    setLines((ls) => ls.map((l, j) => (j === i ? { ...l, [field]: v } : l)));
+  }
+
+  function create() {
+    if (!client.trim()) { toast.error("Client name required"); return; }
+    if (lines.some((l) => !l.description.trim())) { toast.error("All line items need a description"); return; }
+    const prefix = kind === "invoice" ? "INV" : "QT";
+    const id = `${prefix}-2026-${String(Math.floor(Math.random() * 900) + 100)}`;
+    onCreate({
+      id,
+      kind,
+      client,
+      amount: total,
+      date: new Date().toISOString().slice(0, 10),
+      due: kind === "invoice" ? new Date(Date.now() + 14 * 86400e3).toISOString().slice(0, 10) : undefined,
+      validUntil: kind === "quotation" ? new Date(Date.now() + 30 * 86400e3).toISOString().slice(0, 10) : undefined,
+      status: "draft",
+      lines,
+      currency,
+    });
+  }
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent className="sm:max-w-[560px]">
+        <DialogHeader>
+          <DialogTitle>New {kind === "invoice" ? "Invoice" : "Quotation"}</DialogTitle>
+          <DialogDescription>Build line items — the PDF is generated on save.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-[12.5px]">Client</Label>
+              <Input value={client} onChange={(e) => setClient(e.target.value)} placeholder="Client name" className="h-9 bg-card" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[12.5px]">Currency</Label>
+              <Select value={currency} onValueChange={(v) => setCurrency(v as Currency)}>
+                <SelectTrigger className="h-9 bg-card"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ZWG">ZiG</SelectItem>
+                  <SelectItem value="USD">USD</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label className="text-[12.5px]">Line Items</Label>
+            {lines.map((l, i) => (
+              <div key={i} className="grid grid-cols-[1fr_60px_100px_32px] items-center gap-2">
+                <Input value={l.description} onChange={(e) => updateLine(i, "description", e.target.value)} placeholder="Description" className="h-8.5 bg-card text-[12.5px]" />
+                <Input type="number" min={1} value={l.qty} onChange={(e) => updateLine(i, "qty", parseInt(e.target.value) || 1)} className="h-8.5 bg-card text-[12.5px]" />
+                <Input type="number" min={0} step="0.01" value={l.unitPrice} onChange={(e) => updateLine(i, "unitPrice", parseFloat(e.target.value) || 0)} placeholder="Price" className="h-8.5 bg-card text-[12.5px]" />
+                <Button variant="ghost" size="icon-sm" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))} disabled={lines.length === 1} aria-label="Remove line">
+                  ×
+                </Button>
+              </div>
+            ))}
+            <Button variant="outline" size="sm" className="h-8 gap-1 text-[12px]" onClick={() => setLines((ls) => [...ls, { description: "", qty: 1, unitPrice: 0 }])}>
+              + Add line
+            </Button>
+          </div>
+          <div className="flex justify-between border-t pt-2 text-[13.5px] font-bold">
+            <span>Total</span>
+            <span className="tnum">{currency === "ZWG" ? "ZiG" : "USD"} {total.toLocaleString("en-ZW", { minimumFractionDigits: 2 })}</span>
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose}>Cancel</Button>
+          <Button onClick={create}>Create {kind === "invoice" ? "Invoice" : "Quotation"}</Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

@@ -203,9 +203,13 @@ function CollapsibleNavItem({
         title={item.label}
         className={cn(
           "flex h-9.5 w-full items-center gap-2.5 rounded-lg px-3 text-[13.5px] font-medium transition-colors",
-          active || childActive
+          // Parent highlights only when it's the open page itself, not when
+          // a child sub-page is the active one.
+          active && !childActive
             ? "bg-sidebar-accent text-sidebar-accent-foreground shadow-sm"
-            : "text-sidebar-foreground hover:bg-white/6 hover:text-white"
+            : childActive
+              ? "text-sidebar-accent-foreground"
+              : "text-sidebar-foreground hover:bg-white/6 hover:text-white"
         )}
       >
         <item.icon className="size-[17px] opacity-90" aria-hidden />

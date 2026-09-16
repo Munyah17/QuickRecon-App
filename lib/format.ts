@@ -8,28 +8,65 @@ const CURRENCY_SYMBOL: Record<Currency, string> = {
 
 export const CURRENCY_SETTINGS_KEY = "qr_currency_config";
 
+export type CurrencyDisplayMode = "USD" | "ZWG" | "both";
+
 /** Persisted default display currency (set in Settings → Currency). */
 export function getDefaultCurrency(): Currency {
+  const mode = getDisplayMode();
+  return mode === "both" ? "ZWG" : mode;
+}
+
+/** USD | ZWG | both — controls whether money stat cards show one or both. */
+export function getDisplayMode(): CurrencyDisplayMode {
   if (typeof window === "undefined") return "ZWG";
   try {
     const raw = window.localStorage.getItem(CURRENCY_SETTINGS_KEY);
     const v = raw ? JSON.parse(raw)?.defaultCurrency : null;
-    if (v === "USD" || v === "ZWG") return v;
+    if (v === "USD" || v === "ZWG" || v === "both") return v;
   } catch {
     /* ignore */
   }
   return "ZWG";
 }
 
-/** "ZiG 1,248,320" / "USD 1,250.00" — never silently mix currencies. */
-export function formatMoney(amount: number, currency?: Currency): string {
-  const cur = currency ?? getDefaultCurrency();
+/** USD↔ZiG conversion rate used for the "both" display (1 USD = rate ZiG). */
+export function getUsdZwgRate(): number {
+  if (typeof window === "undefined") return 26.5;
+  try {
+    const raw = window.localStorage.getItem(CURRENCY_SETTINGS_KEY);
+    const cfg = raw ? JSON.parse(raw) : null;
+    const r = cfg?.manualRate ?? cfg?.usdZwgRate;
+    if (typeof r === "number" && r > 0) return r;
+  } catch {
+    /* ignore */
+  }
+  return 26.5;
+}
+
+/** Dual-currency display: "ZiG 12,000 · USD 400.00" using the configured rate. */
+export function formatMoneyDual(amount: number, base?: Currency): string {
+  const cur = base ?? getDefaultCurrency();
+  const rate = getUsdZwgRate();
+  const other = cur === "ZWG" ? amount / rate : amount * rate;
+  const otherCur: Currency = cur === "ZWG" ? "USD" : "ZWG";
+  return `${formatMoneySingle(amount, cur)} · ${formatMoneySingle(other, otherCur)}`;
+}
+
+function formatMoneySingle(amount: number, cur: Currency): string {
   const symbol = CURRENCY_SYMBOL[cur];
   const formatted = new Intl.NumberFormat("en-ZW", {
     minimumFractionDigits: cur === "USD" ? 2 : 0,
     maximumFractionDigits: cur === "USD" ? 2 : 0,
   }).format(amount);
   return `${symbol} ${formatted}`;
+}
+
+/** "ZiG 1,248,320" / "USD 1,250.00" — never silently mix currencies.
+ * When the display mode is "both", renders dual ("ZiG 12,000 · USD 400"). */
+export function formatMoney(amount: number, currency?: Currency): string {
+  const cur = currency ?? getDefaultCurrency();
+  if (getDisplayMode() === "both") return formatMoneyDual(amount, cur);
+  return formatMoneySingle(amount, cur);
 }
 
 export function formatNumber(value: number): string {

@@ -4,7 +4,7 @@ import { isCompanyRole } from "@/lib/nav";
 import { createServiceClient } from "@/lib/supabase/server";
 import {
   documentToCSV,
-  documentToXLSX,
+  documentsToWorkbook,
   documentToHTML,
   documentToSMS,
   type AgentReconDocument,
@@ -53,57 +53,61 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    let doc: AgentReconDocument | null = null;
     let agentEmail: string | undefined;
     let agentPhone: string | undefined;
 
+    let docs: AgentReconDocument[] = [];
     if (sb) {
+      // Load every currency doc for this agent (USD + ZiG) — the workbook
+      // is dual-currency, so we need both rows.
       const { data } = await sb
         .from("reconciliation_documents")
         .select("*, agents!inner(email, phone)")
         .eq("batch_id", batchId)
-        .eq("agent_id", agentId)
-        .single();
+        .eq("agent_id", agentId);
 
-      if (data) {
-        doc = {
-          agentId: data.agent_id,
-          agentName: data.agent_name,
-          module: data.module,
-          period: data.period,
-          currency: data.currency,
-          generatedAt: data.created_at,
-          openingVariance: Number(data.opening_variance),
-          insurance: Number(data.insurance),
-          premiumCover: Number(data.premium_cover),
-          commission: Number(data.commission),
-          netInsurance: Number(data.net_insurance),
-          zinara: Number(data.zinara),
-          pds: Number(data.pds),
-          totalExpected: Number(data.total_expected),
-          bankDeposits: data.bank_deposits ?? {},
-          deposits: Number(data.deposits),
-          adjustments: Number(data.adjustments),
-          closingVariance: Number(data.closing_variance),
-          closingPosition: Number(data.closing_position),
-          status: data.status,
-          transactions: data.transactions ?? [],
+      if (data?.length) {
+        docs = data.map((d: Record<string, unknown>) => ({
+          agentId: d.agent_id,
+          agentName: d.agent_name,
+          module: d.module,
+          period: d.period,
+          currency: d.currency,
+          generatedAt: d.created_at,
+          openingVariance: Number(d.opening_variance),
+          insurance: Number(d.insurance),
+          premiumCover: Number(d.premium_cover),
+          commission: Number(d.commission),
+          netInsurance: Number(d.net_insurance),
+          zinara: Number(d.zinara),
+          pds: Number(d.pds),
+          insurancePds: Number(d.insurance_pds ?? d.pds ?? 0),
+          zinaraPds: Number(d.zinara_pds ?? 0),
+          totalExpected: Number(d.total_expected),
+          bankDeposits: d.bank_deposits ?? {},
+          deposits: Number(d.deposits),
+          adjustments: Number(d.adjustments),
+          closingVariance: Number(d.closing_variance),
+          closingPosition: Number(d.closing_position),
+          status: d.status,
+          transactions: d.transactions ?? [],
           lines: [],
-          summaryText: data.summary_text ?? "",
-        };
-        agentEmail = data.agents?.email;
-        agentPhone = data.agents?.phone;
+          summaryText: d.summary_text ?? "",
+        })) as unknown as AgentReconDocument[];
+        const first = data[0] as Record<string, unknown> & { agents?: { email?: string; phone?: string } };
+        agentEmail = first.agents?.email;
+        agentPhone = first.agents?.phone;
       }
     }
 
     // Fallback: rebuild a synthetic document for demo / when Supabase is not configured.
-    if (!doc) {
+    if (docs.length === 0) {
       const { getAgentById } = await import("@/lib/data");
       const agent = await getAgentById(agentId);
       if (!agent) {
         return NextResponse.json({ error: "Agent not found" }, { status: 404 });
       }
-      doc = {
+      const fallback: AgentReconDocument = {
         agentId: agent.id,
         agentName: agent.fullName,
         module: "enpassent",
@@ -133,10 +137,12 @@ export async function POST(request: NextRequest) {
         summaryText:
           "A variance of ZWG 20,000 was detected. Please review the attached detail.",
       };
+      docs = [fallback];
       agentEmail = agent.email;
       agentPhone = agent.phone;
     }
 
+    const doc = docs.find((d) => d.currency === "ZWG") ?? docs[0];
     const summary = documentToSMS(doc);
     const html = brandedEmail(documentToHTML(doc), doc.agentName);
     const text = [
@@ -144,9 +150,9 @@ export async function POST(request: NextRequest) {
       ``,
       `Your ${doc.period} reconciliation report is attached.`,
       ``,
-      `Insurance: ${doc.insurance.toLocaleString()} | Zinara: ${doc.zinara.toLocaleString()}`,
-      `Total Expected: ${doc.totalExpected.toLocaleString()} | Deposits: ${doc.deposits.toLocaleString()}`,
-      `Closing Variance: ${doc.closingVariance.toLocaleString()}`,
+      ...docs.map((d) =>
+        `[${d.currency === "USD" ? "USD" : "ZiG"}] Insurance: ${d.insurance.toLocaleString()} | Zinara: ${d.zinara.toLocaleString()} | Expected: ${d.totalExpected.toLocaleString()} | Deposits: ${d.deposits.toLocaleString()} | Closing: ${d.closingVariance.toLocaleString()}`
+      ),
       ``,
       `Regards,`,
       `Kareem — QuickRecon App`,
@@ -158,7 +164,7 @@ export async function POST(request: NextRequest) {
     const failures: string[] = [];
 
     if (channels.includes("email") && agentEmail) {
-      const xlsx = await documentToXLSX(doc);
+      const xlsx = await documentsToWorkbook(docs);
       const result = await sendEmail({
         to: agentEmail,
         subject,

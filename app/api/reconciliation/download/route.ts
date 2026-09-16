@@ -4,7 +4,7 @@ import { isCompanyRole } from "@/lib/nav";
 import { createServiceClient } from "@/lib/supabase/server";
 import {
   documentToCSV,
-  documentToXLSX,
+  documentsToWorkbook,
   type AgentReconDocument,
 } from "@/lib/reconciliation/document";
 
@@ -41,45 +41,50 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Storage unavailable" }, { status: 503 });
   }
 
+  // Load every currency doc for this agent (USD + ZiG) — dual-currency workbook.
   let q = sb.from("reconciliation_documents").select("*").eq("agent_id", agentId);
   if (batchId) q = q.eq("batch_id", batchId);
   if (period) q = q.eq("period", period);
-  const { data } = await q.order("created_at", { ascending: false }).limit(1).maybeSingle();
+  const { data } = await q.order("created_at", { ascending: false });
 
-  if (!data) {
+  if (!data?.length) {
     return NextResponse.json({ error: "Document not found" }, { status: 404 });
   }
 
-  const doc: AgentReconDocument = {
-    agentId: data.agent_id,
-    agentName: data.agent_name,
-    module: data.module,
-    period: data.period,
-    currency: data.currency,
-    generatedAt: data.created_at,
-    openingVariance: Number(data.opening_variance),
-    insurance: Number(data.insurance),
-    premiumCover: Number(data.premium_cover),
-    commission: Number(data.commission),
-    netInsurance: Number(data.net_insurance),
-    zinara: Number(data.zinara),
-    pds: Number(data.pds),
-    totalExpected: Number(data.total_expected),
-    bankDeposits: data.bank_deposits ?? {},
-    deposits: Number(data.deposits),
-    adjustments: Number(data.adjustments),
-    closingVariance: Number(data.closing_variance),
-    closingPosition: Number(data.closing_position),
-    status: data.status,
-    transactions: data.transactions ?? [],
+  const docs: AgentReconDocument[] = data.map((d: Record<string, unknown>) => ({
+    agentId: d.agent_id,
+    agentName: d.agent_name,
+    module: d.module,
+    period: d.period,
+    currency: d.currency,
+    generatedAt: d.created_at,
+    openingVariance: Number(d.opening_variance),
+    insurance: Number(d.insurance),
+    premiumCover: Number(d.premium_cover),
+    commission: Number(d.commission),
+    netInsurance: Number(d.net_insurance),
+    zinara: Number(d.zinara),
+    pds: Number(d.pds),
+    insurancePds: Number(d.insurance_pds ?? d.pds ?? 0),
+    zinaraPds: Number(d.zinara_pds ?? 0),
+    totalExpected: Number(d.total_expected),
+    bankDeposits: d.bank_deposits ?? {},
+    deposits: Number(d.deposits),
+    adjustments: Number(d.adjustments),
+    closingVariance: Number(d.closing_variance),
+    closingPosition: Number(d.closing_position),
+    status: d.status,
+    transactions: d.transactions ?? [],
     lines: [],
-    summaryText: data.summary_text ?? "",
-  };
+    summaryText: d.summary_text ?? "",
+  })) as unknown as AgentReconDocument[];
 
-  const fname = `reconciliation-${doc.agentId}-${doc.period}`;
+  const primary = docs.find((d) => d.currency === "ZWG") ?? docs[0];
+  const fname = `reconciliation-${primary.agentId}-${primary.period}`;
 
   if (format === "csv") {
-    const csv = data.csv_text ?? documentToCSV(doc);
+    const stored = data.find((d: Record<string, unknown>) => d.csv_text) as Record<string, unknown> | undefined;
+    const csv = (stored?.csv_text as string) ?? documentToCSV(primary);
     return new NextResponse(csv, {
       headers: {
         "Content-Type": "text/csv; charset=utf-8",
@@ -88,7 +93,7 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const xlsx = await documentToXLSX(doc);
+  const xlsx = await documentsToWorkbook(docs);
   return new NextResponse(new Uint8Array(xlsx), {
     headers: {
       "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",

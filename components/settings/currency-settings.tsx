@@ -20,7 +20,7 @@ import { CURRENCY_SETTINGS_KEY } from "@/lib/format";
 
 interface CurrencyConfig {
   baseCurrency: "USD" | "ZWG";
-  defaultCurrency: "USD" | "ZWG";
+  defaultCurrency: "USD" | "ZWG" | "both";
   autoExchangeRate: boolean;
   manualRate: number;
   lastUpdated: string;
@@ -150,14 +150,17 @@ export function CurrencySettings() {
             </div>
             <div className="space-y-1.5">
               <Label className="text-[12.5px]">Default Display Currency</Label>
-              <Select value={config.defaultCurrency} onValueChange={(v) => setConfig((c) => ({ ...c, defaultCurrency: v as "USD" | "ZWG" }))}>
+              <Select value={config.defaultCurrency} onValueChange={(v) => setConfig((c) => ({ ...c, defaultCurrency: v as "USD" | "ZWG" | "both" }))}>
                 <SelectTrigger className="h-9 bg-card"><SelectValue /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="USD">USD</SelectItem>
-                  <SelectItem value="ZWG">ZiG</SelectItem>
+                  <SelectItem value="USD">USD only</SelectItem>
+                  <SelectItem value="ZWG">ZiG only</SelectItem>
+                  <SelectItem value="both">Both (USD + ZiG)</SelectItem>
                 </SelectContent>
               </Select>
-              <p className="text-[11.5px] text-muted-foreground">What users see by default across the app.</p>
+              <p className="text-[11.5px] text-muted-foreground">
+                Stat cards show one currency or both — "Both" uses the exchange rate below.
+              </p>
             </div>
           </CardContent>
         </Card>

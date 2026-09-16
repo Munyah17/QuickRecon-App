@@ -35,6 +35,7 @@ export default async function ReconciliationPage({
         rows={rows}
         transactions={transactions}
         documents={documents}
+        canEditCells={session.user.role === "super_admin"}
       />
     </div>
   );

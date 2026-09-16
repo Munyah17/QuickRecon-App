@@ -1,4 +1,4 @@
-import { formatMoney } from "@/lib/format";
+﻿import { formatMoney } from "@/lib/format";
 import type { Currency } from "@/types";
 import type { AgentReconResult, EngineOutput, TransactionDetail } from "./types";
 import { BANK_CHANNELS } from "./types";
@@ -17,6 +17,9 @@ export interface AgentReconDocument {
   netInsurance: number;
   zinara: number;
   pds: number;
+  /** Split PDS for the workbook Summary sheet (default: pds â†’ insurancePds). */
+  insurancePds?: number;
+  zinaraPds?: number;
   totalExpected: number;
   bankDeposits: Record<string, number>;
   deposits: number;
@@ -46,7 +49,7 @@ export interface BatchDocuments {
 
 /**
  * Builds one consolidated reconciliation document per agent from engine output.
- * No agent sees another agent's figures — documents are isolated by agentId.
+ * No agent sees another agent's figures â€” documents are isolated by agentId.
  */
 export function generateAgentDocuments(engineOutput: EngineOutput): BatchDocuments {
   const generatedAt = new Date().toISOString();
@@ -101,7 +104,7 @@ function buildDocumentForAgent(
   };
 }
 
-/** Neutralise CSV formula injection — cells starting with =, +, @ or tab
+/** Neutralise CSV formula injection â€” cells starting with =, +, @ or tab
  * are flagged by mail scanners and dangerous when opened in Excel. */
 function csvSafe(value: unknown): string {
   const s = String(value ?? "");
@@ -110,7 +113,7 @@ function csvSafe(value: unknown): string {
 
 /**
  * Serialises one agent document to CSV matching the real Enpassent
- * "Consolidated A" report — exactly 2 rows: header + figures, bank columns
+ * "Consolidated A" report â€” exactly 2 rows: header + figures, bank columns
  * before Alterations/Closing Variance. Private to that agent.
  */
 export function documentToCSV(doc: AgentReconDocument): string {
@@ -150,224 +153,316 @@ export function documentToCSV(doc: AgentReconDocument): string {
     .join("\n");
 }
 
+/** Canonical summary-sheet column order from the client's real workbook. */
+const SUMMARY_BANK_COLS = ["Ecocash", "CBZ", "NBS", "STEWARD", "USD Deposits", "Transfers"] as const;
+
+interface DetailSheet {
+  name: string;
+  columns: string[];
+  rows: (string | number)[][];
+}
+
 /**
- * Produces the client-specified XLSX workbook via ExcelJS.
- * Worksheet 1 "Summary" — styled dashboard: navy title band, agent info,
- * colour-coded KPI cards, deposit-channel bar chart drawn with cell fills,
- * and a status banner. Worksheet 2 "Consolidated A" — the real 2-row
- * report plus transaction detail, matching the delivered sample layout.
+ * Produces the client's real multi-sheet reconciliation workbook:
+ *   Dashboard  â€” USD | ZiG split dashboard (stat cards, bars, status banner)
+ *   Summary    â€” every column, 2 rows (USD + ZiG), zero-filled
+ *   Insurance  â€” insurance sales (VRN, premium, RTA, insurer)
+ *   ZINARA     â€” zinara sales (account ID, VRN, payment method)
+ *   <Bank>     â€” one sheet per bank actually used (CBZ, NBS, NMB, STEWARDâ€¦)
+ *   USD Deposits / ZiG Deposits
+ *   Transfers & Ecocash
+ *   Alterations
+ * `docs` is the agent's document set â€” one per currency. Missing currency
+ * rows are zero-filled so the workbook never fails.
  */
-export async function documentToXLSX(doc: AgentReconDocument): Promise<Buffer> {
+export async function documentsToWorkbook(docs: AgentReconDocument[]): Promise<Buffer> {
   const ExcelJS = await import("exceljs");
   const wb = new ExcelJS.default.Workbook();
   wb.creator = "QuickRecon App";
   wb.created = new Date();
 
-  const NAVY = "FF0F2B4C";
-  const BLUE = "FF1D4ED8";
-  const LBLUE = "FFEFF6FF";
-  const GREEN = "FF16A34A";
-  const GREEN_BG = "FFF0FDF4";
-  const AMBER = "FFD97706";
-  const AMBER_BG = "FFFFFBEB";
-  const RED = "FFDC2626";
-  const RED_BG = "FFFEF2F2";
-  const GREY = "FF6B7280";
-  const BORDER = "FFE5E7EB";
+  const usd = docs.find((d) => d.currency === "USD") ?? null;
+  const zig = docs.find((d) => d.currency === "ZWG") ?? null;
+  const primary = usd ?? zig;
+  if (!primary) throw new Error("No documents to render");
 
+  const NAVY = "FF0F2B4C", BLUE = "FF1D4ED8", LBLUE = "FFEFF6FF",
+    GREEN = "FF16A34A", GREEN_BG = "FFF0FDF4", AMBER = "FFD97706",
+    AMBER_BG = "FFFFFBEB", RED = "FFDC2626", RED_BG = "FFFEF2F2",
+    GREY = "FF6B7280", BORDER = "FFE5E7EB";
   const thin = { style: "thin" as const, color: { argb: BORDER } };
   const box = { top: thin, left: thin, bottom: thin, right: thin };
+  const fill = (argb: string) => ({ type: "pattern" as const, pattern: "solid" as const, fgColor: { argb } });
 
-  const statusColor = doc.status === "success" ? GREEN : doc.status === "warning" ? AMBER : RED;
-  const statusBg = doc.status === "success" ? GREEN_BG : doc.status === "warning" ? AMBER_BG : RED_BG;
-  const statusLabel =
-    doc.status === "success" ? "RECONCILED" : doc.status === "warning" ? "VARIANCE — REVIEW" : "ATTENTION REQUIRED";
+  const statusOf = (d: AgentReconDocument | null) =>
+    !d || d.status === "success" ? GREEN : d.status === "warning" ? AMBER : RED;
+  const statusBgOf = (d: AgentReconDocument | null) =>
+    !d || d.status === "success" ? GREEN_BG : d.status === "warning" ? AMBER_BG : RED_BG;
+  const labelOf = (d: AgentReconDocument | null) =>
+    !d ? "NO DATA" : d.status === "success" ? "RECONCILED" : d.status === "warning" ? "VARIANCE â€” REVIEW" : "ATTENTION REQUIRED";
 
-  // ------------------------------------------------------------------
-  // Sheet 1 — Summary dashboard
-  // ------------------------------------------------------------------
-  const ws = wb.addWorksheet("Summary", {
-    views: [{ showGridLines: false }],
-  });
+  // â”€â”€ Sheet 1: Dashboard â€” USD left, ZiG right â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const ws = wb.addWorksheet("Dashboard", { views: [{ showGridLines: false }] });
   ws.columns = [
-    { width: 3 }, { width: 26 }, { width: 18 }, { width: 18 },
-    { width: 18 }, { width: 18 }, { width: 18 }, { width: 3 },
+    { width: 3 },
+    { width: 24 }, { width: 15 }, { width: 15 }, { width: 15 },   // USD side  Bâ€“E
+    { width: 3 },                                                  // centre divider F
+    { width: 24 }, { width: 15 }, { width: 15 }, { width: 15 },   // ZiG side  Gâ€“J
+    { width: 3 },
   ];
 
-  // Title band
-  ws.mergeCells("B2:G2");
+  ws.mergeCells("B2:J2");
   const title = ws.getCell("B2");
-  title.value = "QUICKRECON — CONSOLIDATED REVENUE REPORT";
+  title.value = "QUICKRECON â€” CONSOLIDATED REVENUE REPORT";
   title.font = { bold: true, size: 16, color: { argb: "FFFFFFFF" } };
   title.alignment = { vertical: "middle", horizontal: "center" };
   ws.getRow(2).height = 34;
-  for (const c of ["B", "C", "D", "E", "F", "G"]) {
-    ws.getCell(`${c}2`).fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
-  }
+  for (let c = 2; c <= 10; c++) ws.getCell(2, c).fill = fill(NAVY);
 
-  ws.mergeCells("B3:G3");
+  ws.mergeCells("B3:J3");
   const sub = ws.getCell("B3");
-  sub.value = `${doc.agentName} (${doc.agentId})  ·  ${doc.module}  ·  Period ${doc.period}  ·  ${doc.currency}`;
+  sub.value = `${primary.agentName} (${primary.agentId})  Â·  ${primary.module}  Â·  Period ${primary.period}`;
   sub.font = { size: 11, color: { argb: GREY } };
   sub.alignment = { vertical: "middle", horizontal: "center" };
-  ws.getRow(3).height = 22;
+  ws.getRow(3).height = 20;
 
-  // Status banner
-  ws.mergeCells("B5:G5");
-  const banner = ws.getCell("B5");
-  banner.value = statusLabel;
-  banner.font = { bold: true, size: 12, color: { argb: statusColor } };
-  banner.alignment = { vertical: "middle", horizontal: "center" };
-  ws.getRow(5).height = 26;
-  for (const c of ["B", "C", "D", "E", "F", "G"]) {
-    ws.getCell(`${c}5`).fill = { type: "pattern", pattern: "solid", fgColor: { argb: statusBg } };
-    ws.getCell(`${c}5`).border = box;
+  // Centre divider
+  for (let r = 5; r <= 40; r++) {
+    ws.getCell(r, 6).fill = fill("FFD1D5DB");
   }
 
-  // KPI cards — 3 per row, label over value
-  const kpis: { label: string; value: number; color: string; bg: string }[] = [
-    { label: "Insurance", value: doc.insurance, color: BLUE, bg: LBLUE },
-    { label: "Commission", value: doc.commission, color: BLUE, bg: LBLUE },
-    { label: "Net Insurance", value: doc.netInsurance, color: BLUE, bg: LBLUE },
-    { label: "Zinara", value: doc.zinara, color: BLUE, bg: LBLUE },
-    { label: "Total Expected", value: doc.totalExpected, color: NAVY, bg: "FFF1F5F9" },
-    { label: "Total Deposits", value: doc.deposits, color: GREEN, bg: GREEN_BG },
-    { label: "Alterations", value: doc.adjustments, color: GREY, bg: "FFF9FAFB" },
-    {
-      label: "Closing Variance",
-      value: doc.closingVariance,
-      color: doc.closingVariance === 0 ? GREEN : RED,
-      bg: doc.closingVariance === 0 ? GREEN_BG : RED_BG,
-    },
-    { label: "Opening Variance", value: doc.openingVariance, color: GREY, bg: "FFF9FAFB" },
-  ];
+  const paintSide = (doc: AgentReconDocument | null, leftCol: number, currency: "USD" | "ZiG") => {
+    // currency heading
+    ws.mergeCells(5, leftCol, 5, leftCol + 3);
+    const h = ws.getCell(5, leftCol);
+    h.value = currency;
+    h.font = { bold: true, size: 20, color: { argb: NAVY } };
+    h.alignment = { horizontal: "center", vertical: "middle" };
+    ws.getRow(5).height = 30;
 
-  let row = 7;
-  for (let i = 0; i < kpis.length; i += 3) {
-    const cards = kpis.slice(i, i + 3);
-    // label row
-    for (let j = 0; j < 3; j++) {
-      const col = 2 + j * 2; // B, D, F
-      const k = cards[j];
-      if (!k) continue;
-      ws.mergeCells(row, col, row, col + 1);
-      const lc = ws.getCell(row, col);
-      lc.value = k.label.toUpperCase();
-      lc.font = { size: 9, bold: true, color: { argb: GREY } };
-      lc.alignment = { horizontal: "center", vertical: "middle" };
-      lc.fill = { type: "pattern", pattern: "solid", fgColor: { argb: k.bg } };
-      ws.getCell(row, col).border = box;
-      ws.getCell(row, col + 1).border = box;
-      // value row
-      ws.mergeCells(row + 1, col, row + 1, col + 1);
-      const vc = ws.getCell(row + 1, col);
-      vc.value = k.value;
-      vc.numFmt = "#,##0.00";
-      vc.font = { size: 15, bold: true, color: { argb: k.color } };
-      vc.alignment = { horizontal: "center", vertical: "middle" };
-      vc.fill = { type: "pattern", pattern: "solid", fgColor: { argb: k.bg } };
-      ws.getCell(row + 1, col).border = box;
-      ws.getCell(row + 1, col + 1).border = box;
+    // status banner
+    ws.mergeCells(6, leftCol, 6, leftCol + 3);
+    const b = ws.getCell(6, leftCol);
+    b.value = labelOf(doc);
+    b.font = { bold: true, size: 11, color: { argb: statusOf(doc) } };
+    b.alignment = { horizontal: "center", vertical: "middle" };
+    ws.getRow(6).height = 24;
+    for (let c = leftCol; c <= leftCol + 3; c++) {
+      ws.getCell(6, c).fill = fill(statusBgOf(doc));
+      ws.getCell(6, c).border = box;
     }
-    ws.getRow(row).height = 18;
-    ws.getRow(row + 1).height = 30;
-    row += 3;
-  }
 
-  // Deposit channels — bar chart drawn with cell fills
-  const channelEntries = BANK_CHANNELS
-    .map((b) => ({ name: b, value: doc.bankDeposits[b] ?? 0 }))
-    .filter((c) => c.value !== 0);
-  if (channelEntries.length > 0) {
-    row += 1;
-    ws.mergeCells(row, 2, row, 7);
-    const h = ws.getCell(row, 2);
-    h.value = "DEPOSIT CHANNELS";
-    h.font = { size: 10, bold: true, color: { argb: NAVY } };
-    h.alignment = { horizontal: "left", vertical: "middle" };
-    ws.getRow(row).height = 20;
-    row += 1;
+    // KPI cards â€” stacked label/value pairs, one column pair each
+    const kpis: [string, number, string, string][] = doc ? [
+      ["Insurance", doc.insurance, BLUE, LBLUE],
+      ["Commission", doc.commission, BLUE, LBLUE],
+      ["Net Insurance", doc.netInsurance, BLUE, LBLUE],
+      ["ZINARA", doc.zinara, BLUE, LBLUE],
+      ["Total Expected", doc.totalExpected, NAVY, "FFF1F5F9"],
+      ["Total Deposits", doc.deposits, GREEN, GREEN_BG],
+      ["Alterations", doc.adjustments, GREY, "FFF9FAFB"],
+      ["Closing Variance", doc.closingVariance, doc.closingVariance === 0 ? GREEN : RED, doc.closingVariance === 0 ? GREEN_BG : RED_BG],
+      ["Opening Variance", doc.openingVariance, GREY, "FFF9FAFB"],
+    ] : [
+      ["Insurance", 0, GREY, "FFF9FAFB"], ["Commission", 0, GREY, "FFF9FAFB"],
+      ["Net Insurance", 0, GREY, "FFF9FAFB"], ["ZINARA", 0, GREY, "FFF9FAFB"],
+      ["Total Expected", 0, GREY, "FFF9FAFB"], ["Total Deposits", 0, GREY, "FFF9FAFB"],
+      ["Alterations", 0, GREY, "FFF9FAFB"], ["Closing Variance", 0, GREY, "FFF9FAFB"],
+      ["Opening Variance", 0, GREY, "FFF9FAFB"],
+    ];
 
-    const max = Math.max(...channelEntries.map((c) => c.value), 1);
-    for (const ch of channelEntries) {
-      const name = ws.getCell(row, 2);
-      name.value = ch.name;
-      name.font = { size: 10, color: { argb: "FF374151" } };
-      name.border = box;
-      // bar spans C–G, filled proportional to share of max
-      const span = Math.max(1, Math.round((ch.value / max) * 5));
-      for (let c = 3; c <= 3 + span - 1; c++) {
-        ws.getCell(row, c).fill = { type: "pattern", pattern: "solid", fgColor: { argb: BLUE } };
+    let row = 8;
+    for (let i = 0; i < kpis.length; i += 2) {
+      const pair = kpis.slice(i, i + 2);
+      for (let j = 0; j < 2; j++) {
+        const col = leftCol + j * 2;
+        const k = pair[j];
+        if (!k) continue;
+        ws.mergeCells(row, col, row, col + 1);
+        const lc = ws.getCell(row, col);
+        lc.value = k[0].toUpperCase();
+        lc.font = { size: 9, bold: true, color: { argb: GREY } };
+        lc.alignment = { horizontal: "center", vertical: "middle" };
+        lc.fill = fill(k[3]);
+        lc.border = box;
+        ws.getCell(row, col + 1).border = box;
+        ws.mergeCells(row + 1, col, row + 1, col + 1);
+        const vc = ws.getCell(row + 1, col);
+        vc.value = k[1];
+        vc.numFmt = "#,##0.00";
+        vc.font = { size: 14, bold: true, color: { argb: k[2] } };
+        vc.alignment = { horizontal: "center", vertical: "middle" };
+        vc.fill = fill(k[3]);
+        vc.border = box;
+        ws.getCell(row + 1, col + 1).border = box;
       }
-      const val = ws.getCell(row, 7);
-      val.value = ch.value;
-      val.numFmt = "#,##0.00";
-      val.font = { size: 10, bold: true, color: { argb: NAVY } };
-      val.alignment = { horizontal: "right" };
-      val.border = box;
+      ws.getRow(row).height = 17;
+      ws.getRow(row + 1).height = 28;
+      row += 3;
+    }
+
+    // Deposit channel bars
+    const chans = doc
+      ? Object.entries(doc.bankDeposits).filter(([, v]) => v !== 0)
+      : [];
+    if (chans.length) {
+      row += 1;
+      ws.mergeCells(row, leftCol, row, leftCol + 3);
+      const ch = ws.getCell(row, leftCol);
+      ch.value = "DEPOSIT CHANNELS";
+      ch.font = { size: 10, bold: true, color: { argb: NAVY } };
       ws.getRow(row).height = 18;
       row += 1;
+      const max = Math.max(...chans.map(([, v]) => v), 1);
+      for (const [name, value] of chans) {
+        const nc = ws.getCell(row, leftCol);
+        nc.value = name;
+        nc.font = { size: 10, color: { argb: "FF374151" } };
+        nc.border = box;
+        const span = Math.max(1, Math.round((value / max) * 2));
+        for (let c = leftCol + 1; c < leftCol + 1 + span; c++) {
+          ws.getCell(row, c).fill = fill(BLUE);
+        }
+        const vc = ws.getCell(row, leftCol + 3);
+        vc.value = value;
+        vc.numFmt = "#,##0.00";
+        vc.font = { size: 10, bold: true, color: { argb: NAVY } };
+        vc.alignment = { horizontal: "right" };
+        vc.border = box;
+        ws.getRow(row).height = 17;
+        row += 1;
+      }
     }
+  };
+
+  paintSide(usd, 2, "USD");
+  paintSide(zig, 7, "ZiG");
+
+  // â”€â”€ Sheet 2: Summary â€” all columns, USD + ZiG rows, zero-filled â”€â”€â”€â”€â”€
+  const wsS = wb.addWorksheet("Summary");
+  const allBanks = new Set<string>();
+  for (const d of [usd, zig]) {
+    if (d) Object.keys(d.bankDeposits).forEach((b) => allBanks.add(b));
   }
-
-  // Footer note
-  row += 2;
-  ws.mergeCells(row, 2, row, 7);
-  const note = ws.getCell(row, 2);
-  note.value = `${doc.summaryText}  Generated ${doc.generatedAt} — confidential, intended for ${doc.agentName} only.`;
-  note.font = { size: 9, italic: true, color: { argb: GREY } };
-  note.alignment = { horizontal: "left", wrapText: true };
-  ws.getRow(row).height = 28;
-
-  // ------------------------------------------------------------------
-  // Sheet 2 — Consolidated A (real 2-row format) + transaction detail
-  // ------------------------------------------------------------------
-  const ws2 = wb.addWorksheet("Consolidated A");
-  const headerRow = [
+  const bankCols = [
+    ...SUMMARY_BANK_COLS,
+    ...[...allBanks].filter((b) => !SUMMARY_BANK_COLS.includes(b as (typeof SUMMARY_BANK_COLS)[number])),
+  ];
+  const sHeader = [
     "Currency", "Agent Name", "Opening Variance", "Insurance", "Premium Cover",
-    "Commission", "Net Insurance", "Zinara", "Pds", "Total Expected",
-    ...BANK_CHANNELS, "Alterations", "Closing Variance",
+    "Commission", "Net Insurance", "ZINARA", "Insurance PDS", "ZINARA PDS",
+    "Total Expected", ...bankCols, "Alterations", "Closing Variance",
   ];
-  const bankVals = BANK_CHANNELS.map((b) => doc.bankDeposits[b] ?? "");
-  const dataRow = [
-    doc.currency, doc.agentName, doc.openingVariance, doc.insurance,
-    doc.premiumCover, doc.commission, doc.netInsurance, doc.zinara,
-    doc.pds === 0 ? "" : doc.pds, doc.totalExpected, ...bankVals,
-    doc.adjustments === 0 ? "" : doc.adjustments, doc.closingVariance,
+  wsS.addRow(sHeader);
+  const sRow = (d: AgentReconDocument | null, cur: "USD" | "ZiG") => [
+    cur, d?.agentName ?? primary.agentName, d?.openingVariance ?? 0,
+    d?.insurance ?? 0, d?.premiumCover ?? 0, d?.commission ?? 0,
+    d?.netInsurance ?? 0, d?.zinara ?? 0, d?.insurancePds ?? d?.pds ?? 0,
+    d?.zinaraPds ?? 0, d?.totalExpected ?? 0,
+    ...bankCols.map((b) => d?.bankDeposits[b] ?? 0),
+    d?.adjustments ?? 0, d?.closingVariance ?? 0,
   ];
-  ws2.addRow(headerRow);
-  ws2.addRow(dataRow);
-  ws2.getRow(1).eachCell((c) => {
-    c.font = { bold: true, size: 10, color: { argb: "FFFFFFFF" } };
-    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: NAVY } };
+  wsS.addRow(sRow(usd, "USD"));
+  wsS.addRow(sRow(zig, "ZiG"));
+  wsS.getRow(1).eachCell((c) => {
+    c.font = { bold: true, size: 9, color: { argb: "FFFFFFFF" } };
+    c.fill = fill(NAVY);
     c.border = box;
+    c.alignment = { vertical: "middle", wrapText: true };
   });
-  ws2.getRow(2).eachCell((c) => {
-    c.border = box;
-    if (typeof c.value === "number") c.numFmt = "#,##0.00";
-  });
-  ws2.columns.forEach((c, i) => (c.width = i === 1 ? 24 : 14));
+  wsS.getRow(1).height = 28;
+  for (const r of [2, 3]) {
+    wsS.getRow(r).eachCell((c) => {
+      c.border = box;
+      if (typeof c.value === "number") c.numFmt = "#,##0.00";
+    });
+    wsS.getRow(r).height = 20;
+  }
+  wsS.columns.forEach((c, i) => (c.width = i === 1 ? 24 : i === 0 ? 9 : 13));
 
-  // Transaction detail
-  ws2.addRow([]);
-  ws2.addRow(["Transaction Detail"]).getCell(1).font = { bold: true, size: 11, color: { argb: NAVY } };
-  const txHeader = ["Date", "Agent", "Amount", "USD Amount", "USD-ZWG Conversion", "Bank/Account", "Narration/Ref", "Reference"];
-  const txh = ws2.addRow(txHeader);
-  txh.eachCell((c) => {
-    c.font = { bold: true, size: 9, color: { argb: "FF374151" } };
-    c.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFF3F4F6" } };
-    c.border = box;
-  });
-  for (const t of doc.transactions) {
-    const r = ws2.addRow([
-      t.date ?? "", t.agentName, t.amount,
-      t.usdAmount ?? "", t.usdConversionRate ?? "",
-      t.bankAccount ?? "", t.narration ?? "", t.reference,
-    ]);
-    r.eachCell((c) => (c.border = box));
+  // â”€â”€ Detail sheets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  const txns = [...(usd?.transactions ?? []), ...(zig?.transactions ?? [])];
+  const bankNames = new Set<string>();
+  for (const t of txns) if (t.bankAccount) bankNames.add(t.bankAccount);
+
+  const detailSheets: DetailSheet[] = [
+    {
+      name: "Insurance",
+      columns: ["VRN", "Agent", "Date", "Premium Collected", "RTA Amount", "Currency", "Insurance Company"],
+      rows: txns
+        .filter((t) => t.category === "insurance")
+        .map((t) => [t.vrn ?? "", t.agentName, t.date ?? "", t.amount, t.rtaAmount ?? 0, t.currency ?? "", t.insuranceCompany ?? ""]),
+    },
+    {
+      name: "ZINARA",
+      columns: ["Agent Name", "ZINARA Account ID", "VRN", "Payment Method", "Amount Paid", "Currency"],
+      rows: txns
+        .filter((t) => t.category === "zinara")
+        .map((t) => [t.agentName, t.zinaraAccountId ?? "", t.vrn ?? "", t.paymentMethod ?? "", t.amount, t.currency ?? ""]),
+    },
+    ...[...bankNames].sort().map((bank): DetailSheet => ({
+      name: bank,
+      columns: ["Name", "Agent", "Amount", "Currency", "Posting Date", "Bank", "Insurance Company"],
+      rows: txns
+        .filter((t) => t.bankAccount === bank)
+        .map((t) => [t.narration ?? t.reference, t.agentName, t.amount, t.currency ?? "", t.date ?? "", bank, t.insuranceCompany ?? ""]),
+    })),
+    {
+      name: "USD Deposits",
+      columns: ["Agent", "Amount", "Currency", "Date"],
+      rows: txns
+        .filter((t) => t.category === "deposit" && (t.currency === "USD" || t.bankAccount === "USD"))
+        .map((t) => [t.agentName, t.amount, t.currency ?? "USD", t.date ?? ""]),
+    },
+    {
+      name: "ZiG Deposits",
+      columns: ["Agent", "Amount", "Currency", "Date"],
+      rows: txns
+        .filter((t) => t.category === "deposit" && (t.currency ?? "ZWG") === "ZWG" && t.bankAccount !== "USD")
+        .map((t) => [t.agentName, t.amount, t.currency ?? "ZWG", t.date ?? ""]),
+    },
+    {
+      name: "Transfers & Ecocash",
+      columns: ["Agent", "Amount", "Currency", "Channel", "Reference", "Date"],
+      rows: txns
+        .filter((t) => t.bankAccount === "Ecocash" || t.bankAccount === "Transfers")
+        .map((t) => [t.agentName, t.amount, t.currency ?? "", t.bankAccount ?? "", t.reference, t.date ?? ""]),
+    },
+    {
+      name: "Alterations",
+      columns: ["Agent", "Amount", "Currency", "Reference", "Narration", "Date"],
+      rows: txns
+        .filter((t) => t.category === "adjustment")
+        .map((t) => [t.agentName, t.amount, t.currency ?? "", t.reference, t.narration ?? "", t.date ?? ""]),
+    },
+  ];
+
+  for (const s of detailSheets) {
+    const w = wb.addWorksheet(s.name);
+    w.addRow(s.columns);
+    for (const r of s.rows) w.addRow(r);
+    w.getRow(1).eachCell((c) => {
+      c.font = { bold: true, size: 9, color: { argb: "FFFFFFFF" } };
+      c.fill = fill(NAVY);
+      c.border = box;
+    });
+    w.getRow(1).height = 22;
+    for (let r = 2; r <= w.rowCount; r++) {
+      w.getRow(r).eachCell((c) => {
+        c.border = box;
+        if (typeof c.value === "number") c.numFmt = "#,##0.00";
+      });
+    }
+    w.columns.forEach((c) => (c.width = 18));
+    if (s.columns.length > 2) w.getColumn(1).width = 24;
   }
 
   return Buffer.from(await wb.xlsx.writeBuffer());
+}
+
+/** Back-compat: single-currency call still works. */
+export async function documentToXLSX(doc: AgentReconDocument): Promise<Buffer> {
+  return documentsToWorkbook([doc]);
 }
 
 /**
@@ -402,7 +497,7 @@ export function documentToHTML(doc: AgentReconDocument): string {
     .join("");
   return `
     <div style="font-family:Arial,sans-serif;font-size:13px;color:#333;">
-      <h2 style="margin-top:0;color:#0f2b4c;">Consolidated Revenue Report — ${doc.period}</h2>
+      <h2 style="margin-top:0;color:#0f2b4c;">Consolidated Revenue Report â€” ${doc.period}</h2>
       <p><strong>Agent:</strong> ${doc.agentName} (${doc.agentId}) &nbsp; <strong>Currency:</strong> ${doc.currency}</p>
       <p>${doc.summaryText}</p>
       <table style="border-collapse:collapse;width:100%;max-width:900px;margin-top:12px;">
