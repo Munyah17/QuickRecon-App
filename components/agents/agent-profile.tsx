@@ -96,13 +96,14 @@ export function AgentProfile({
       <div className="flex items-center justify-between gap-2">
         <Link
           href="/app/agents"
-          className="inline-flex items-center gap-1 text-[12.5px] text-muted-foreground hover:text-foreground"
+          className="inline-flex min-w-0 items-center gap-1 text-[12.5px] text-muted-foreground hover:text-foreground"
         >
-          <ArrowLeft className="size-4" aria-hidden />
-          <span className="hidden sm:inline">Agents /</span> {agent.fullName}
+          <ArrowLeft className="size-4 shrink-0" aria-hidden />
+          <span className="hidden shrink-0 sm:inline">Agents /</span>
+          <span className="truncate">{agent.fullName}</span>
         </Link>
         {canManage && (
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             <Button variant="outline" size="sm" className="gap-1.5 text-[12.5px]">
               <UserPen className="size-3.5" aria-hidden />
               <span className="hidden sm:inline">Edit Profile</span>
