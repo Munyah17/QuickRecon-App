@@ -437,8 +437,24 @@ export async function documentsToWorkbook(docs: AgentReconDocument[]): Promise<B
     },
   ];
 
+  // Excel sheet names must be ≤31 chars, can't contain []:*?/\ and must be
+  // unique — bank accounts like "USD Deposits" collide with the fixed sheet
+  // names below, so sanitize + dedupe before adding.
+  const usedNames = new Set(["dashboard", "summary"]);
+  const safeSheetName = (raw: string) => {
+    let name = raw.replace(/[\[\]:*?/\\]/g, " ").replace(/\s+/g, " ").trim() || "Sheet";
+    if (name.length > 31) name = name.slice(0, 31).trimEnd();
+    let candidate = name;
+    for (let i = 2; usedNames.has(candidate.toLowerCase()); i++) {
+      const suffix = ` (${i})`;
+      candidate = name.slice(0, 31 - suffix.length).trimEnd() + suffix;
+    }
+    usedNames.add(candidate.toLowerCase());
+    return candidate;
+  };
+
   for (const s of detailSheets) {
-    const w = wb.addWorksheet(s.name);
+    const w = wb.addWorksheet(safeSheetName(s.name));
     w.addRow(s.columns);
     for (const r of s.rows) w.addRow(r);
     w.getRow(1).eachCell((c) => {

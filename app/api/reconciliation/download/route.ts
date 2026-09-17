@@ -51,6 +51,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Document not found" }, { status: 404 });
   }
 
+  // JSONB columns can come back as strings depending on how the row was
+  // written — parse them so the workbook builder always gets objects/arrays.
+  const asObj = (v: unknown) =>
+    typeof v === "string" ? JSON.parse(v) : (v ?? {});
+  const asArr = (v: unknown) =>
+    typeof v === "string" ? JSON.parse(v) : (v ?? []);
+
   const docs: AgentReconDocument[] = data.map((d: Record<string, unknown>) => ({
     agentId: d.agent_id,
     agentName: d.agent_name,
@@ -68,13 +75,13 @@ export async function GET(request: NextRequest) {
     insurancePds: Number(d.insurance_pds ?? d.pds ?? 0),
     zinaraPds: Number(d.zinara_pds ?? 0),
     totalExpected: Number(d.total_expected),
-    bankDeposits: d.bank_deposits ?? {},
+    bankDeposits: asObj(d.bank_deposits),
     deposits: Number(d.deposits),
     adjustments: Number(d.adjustments),
     closingVariance: Number(d.closing_variance),
     closingPosition: Number(d.closing_position),
     status: d.status,
-    transactions: d.transactions ?? [],
+    transactions: asArr(d.transactions),
     lines: [],
     summaryText: d.summary_text ?? "",
   })) as unknown as AgentReconDocument[];
@@ -93,11 +100,19 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const xlsx = await documentsToWorkbook(docs);
-  return new NextResponse(new Uint8Array(xlsx), {
-    headers: {
-      "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-      "Content-Disposition": `attachment; filename="${fname}.xlsx"`,
-    },
-  });
+  try {
+    const xlsx = await documentsToWorkbook(docs);
+    return new NextResponse(new Uint8Array(xlsx), {
+      headers: {
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Content-Disposition": `attachment; filename="${fname}.xlsx"`,
+      },
+    });
+  } catch (e) {
+    console.error("reconciliation download failed:", e);
+    return NextResponse.json(
+      { error: e instanceof Error ? e.message : "Failed to generate workbook" },
+      { status: 500 }
+    );
+  }
 }

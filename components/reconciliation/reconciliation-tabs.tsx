@@ -26,6 +26,7 @@ import { MoneyValue } from "@/components/shared/money-value";
 import { ExportButton } from "@/components/shared/export-button";
 import { BatchReview } from "@/components/reconciliation/batch-review";
 import { formatMoney, formatPeriod, moduleName } from "@/lib/format";
+import { downloadFromApi } from "@/lib/export";
 import { useWorkspace } from "@/components/workspace-provider";
 import type { Reconciliation, Txn } from "@/types";
 import type { getReconciliationDocuments } from "@/lib/data";
@@ -440,12 +441,11 @@ function DocumentsView({
                   size="sm"
                   className="h-8 gap-1 text-[12px]"
                   onClick={() => {
-                    const a = document.createElement("a");
-                    a.href = `/api/reconciliation/download?agentId=${encodeURIComponent(d.agentId)}&period=${encodeURIComponent(d.period)}&format=xlsx`;
-                    a.download = `reconciliation-${d.agentId}-${d.period}.xlsx`;
-                    document.body.appendChild(a);
-                    a.click();
-                    a.remove();
+                    const fname = `reconciliation-${d.agentId}-${d.period}.xlsx`;
+                    const url = `/api/reconciliation/download?agentId=${encodeURIComponent(d.agentId)}&period=${encodeURIComponent(d.period)}&format=xlsx`;
+                    downloadFromApi(url, fname)
+                      .then(() => toast.success("Download started", { description: fname }))
+                      .catch((e) => toast.error(e instanceof Error ? e.message : "Download failed"));
                   }}
                 >
                   <Download className="size-3.5" aria-hidden /> XLSX

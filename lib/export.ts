@@ -176,5 +176,25 @@ export async function exportData(
   }
 }
 
+/**
+ * Fetch a server-generated file and save it. Throws on error responses so
+ * callers can surface a toast instead of the browser silently saving the
+ * error body as a broken download (e.g. "file.xlsx.txt").
+ */
+export async function downloadFromApi(url: string, filename: string): Promise<void> {
+  const res = await fetch(url);
+  if (!res.ok) {
+    let msg = `Download failed (${res.status})`;
+    try {
+      const body = await res.json();
+      if (body?.error) msg = body.error;
+    } catch {
+      /* non-JSON error body */
+    }
+    throw new Error(msg);
+  }
+  download(await res.blob(), filename);
+}
+
 /** Shared pdfMake accessor for other generators (payslips, receipts). */
 export { getPdfMake };
