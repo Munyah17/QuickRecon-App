@@ -497,7 +497,11 @@ function findVfs(obj: unknown, depth = 0): Record<string, string> | null {
 }
 
 interface PdfMakeLike {
-  vfs: Record<string, string>;
+  /** pdfmake ≤0.2.x font store. */
+  vfs?: Record<string, string>;
+  /** pdfmake 0.3.x virtual filesystem. */
+  virtualfs?: { storage: Record<string, string> };
+  addVirtualFileSystem?: (vfs: Record<string, string>) => void;
   createPdf: (def: unknown) => { getBuffer: (cb: (b: Uint8Array) => void) => void };
 }
 
@@ -515,7 +519,14 @@ export async function documentsToPDF(docs: AgentReconDocument[]): Promise<Buffer
   const pdfMake = ((pdfMakeMod as { default?: unknown }).default ?? pdfMakeMod) as PdfMakeLike;
   const vfs = findVfs(fontsMod);
   if (!vfs) throw new Error("pdfmake fonts failed to load (empty vfs)");
-  pdfMake.vfs = vfs;
+  // pdfmake 0.3.x stores fonts in virtualfs.storage (older versions used .vfs)
+  if (typeof pdfMake.addVirtualFileSystem === "function") {
+    pdfMake.addVirtualFileSystem(vfs);
+  } else if (pdfMake.virtualfs?.storage) {
+    Object.assign(pdfMake.virtualfs.storage, vfs);
+  } else {
+    pdfMake.vfs = vfs;
+  }
 
   const primary = docs[0];
   const statusLabel = (d: AgentReconDocument) =>

@@ -41,12 +41,23 @@ async function exportExcel(data: ExportData, filename: string) {
   const ws = XLSX.utils.aoa_to_sheet([data.columns, ...data.rows]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Export");
-  XLSX.writeFile(wb, `${filename}.xlsx`);
+  const out = XLSX.write(wb, { bookType: "xlsx", type: "array" }) as ArrayBuffer;
+  download(
+    new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }),
+    `${filename}.xlsx`
+  );
 }
 
-/** Recursively locate the vfs font dictionary (keys end in .ttf) inside
- * whatever interop shape the bundler gives vfs_fonts — default export,
- * nested pdfMake.vfs, or the raw dictionary itself. */
+interface PdfMakeLike {
+  /** pdfmake ≤0.2.x font store. */
+  vfs?: Record<string, string>;
+  /** pdfmake 0.3.x virtual filesystem. */
+  virtualfs?: { storage: Record<string, string> };
+  addVirtualFileSystem?: (vfs: Record<string, string>) => void;
+  createPdf: (doc: unknown) => { download: (name: string) => void };
+}
+
+/** Recursively find the vfs font dictionary inside a module namespace. */
 function findVfs(obj: unknown, depth = 0): Record<string, string> | null {
   if (!obj || typeof obj !== "object" || depth > 4) return null;
   const rec = obj as Record<string, unknown>;
@@ -60,20 +71,28 @@ function findVfs(obj: unknown, depth = 0): Record<string, string> | null {
   return null;
 }
 
+/** Register fonts — pdfmake 0.3.x uses virtualfs.storage, older versions .vfs. */
+function registerFonts(pdfMake: PdfMakeLike, vfs: Record<string, string>) {
+  if (typeof pdfMake.addVirtualFileSystem === "function") {
+    pdfMake.addVirtualFileSystem(vfs);
+  } else if (pdfMake.virtualfs?.storage) {
+    Object.assign(pdfMake.virtualfs.storage, vfs);
+  } else {
+    pdfMake.vfs = vfs;
+  }
+}
+
 async function getPdfMake() {
   const [pdfMakeMod, pdfFonts] = await Promise.all([
     import("pdfmake/build/pdfmake"),
     import("pdfmake/build/vfs_fonts"),
   ]);
-  const pdfMake = (pdfMakeMod.default ?? pdfMakeMod) as unknown as {
-    vfs: Record<string, string>;
-    createPdf: (doc: unknown) => { download: (name: string) => void };
-  };
+  const pdfMake = (pdfMakeMod.default ?? pdfMakeMod) as unknown as PdfMakeLike;
   const vfs = findVfs(pdfFonts);
   if (!vfs || Object.keys(vfs).length === 0) {
     throw new Error("pdfmake fonts failed to load (empty vfs)");
   }
-  pdfMake.vfs = vfs;
+  registerFonts(pdfMake, vfs);
   return pdfMake;
 }
 
