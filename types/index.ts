@@ -388,6 +388,7 @@ export interface TeamUser {
   email: string;
   role: RoleCode;
   status: UserStatus;
+  nationalId?: string;
   lastLoginAt?: string;
 }
 

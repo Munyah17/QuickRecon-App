@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Check, Ellipsis, Plus, ShieldCheck, X } from "lucide-react";
 import { toast } from "sonner";
@@ -84,7 +85,12 @@ export function UserManagement({
         cell: ({ row }) => (
           <span className="flex items-center gap-2.5">
             <AgentAvatar name={row.original.fullName} size="sm" />
-            <span className="font-medium">{row.original.fullName}</span>
+            <span className="flex flex-col">
+              <span className="font-medium">{row.original.fullName}</span>
+              {row.original.nationalId && (
+                <span className="tnum text-[11px] text-muted-foreground">{row.original.nationalId}</span>
+              )}
+            </span>
           </span>
         ),
       },
@@ -208,7 +214,9 @@ export function UserManagement({
               <AgentAvatar name={u.fullName} size="md" />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-[13.5px] font-semibold">{u.fullName}</p>
-                <p className="truncate text-[12px] text-muted-foreground">{u.email}</p>
+                <p className="truncate text-[12px] text-muted-foreground">
+                  {u.email}{u.nationalId ? ` · ${u.nationalId}` : ""}
+                </p>
               </div>
               <Badge variant="outline" className={`border-transparent text-[11px] ${ROLE_BADGE[u.role]}`}>
                 {roleLabel(u.role)}
@@ -314,10 +322,42 @@ export function UserManagement({
 }
 
 function UserActions({ user }: { user: TeamUser }) {
+  const router = useRouter();
   const [editOpen, setEditOpen] = React.useState(false);
   const [permsOpen, setPermsOpen] = React.useState(false);
   const [resetOpen, setResetOpen] = React.useState(false);
   const [suspendOpen, setSuspendOpen] = React.useState(false);
+  const [saving, setSaving] = React.useState(false);
+
+  // Edit dialog fields
+  const [editName, setEditName] = React.useState(user.fullName);
+  const [editEmail, setEditEmail] = React.useState(user.email);
+  const [editNationalId, setEditNationalId] = React.useState(user.nationalId ?? "");
+  const [editRole, setEditRole] = React.useState<RoleCode>(user.role);
+  // Permissions dialog role
+  const [permRole, setPermRole] = React.useState<RoleCode>(user.role);
+
+  async function patch(body: Record<string, unknown>, successMsg: string, close: () => void) {
+    setSaving(true);
+    try {
+      const res = await fetch("/api/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: user.id, ...body }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Update failed");
+      toast.success(successMsg);
+      close();
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Update failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const suspended = user.status === "suspended";
 
   return (
     <>
@@ -330,13 +370,12 @@ function UserActions({ user }: { user: TeamUser }) {
         <DropdownMenuContent align="end">
           <DropdownMenuItem onSelect={() => setEditOpen(true)}>Edit</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setPermsOpen(true)}>Manage Permissions</DropdownMenuItem>
-          <DropdownMenuItem onSelect={() => toast.info(`Activity log for ${user.fullName}`)}>View Activity</DropdownMenuItem>
           <DropdownMenuItem onSelect={() => setResetOpen(true)}>Reset Password</DropdownMenuItem>
           <DropdownMenuItem
-            className="text-destructive focus:text-destructive"
+            className={suspended ? "" : "text-destructive focus:text-destructive"}
             onSelect={() => setSuspendOpen(true)}
           >
-            Suspend
+            {suspended ? "Reactivate" : "Suspend"}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -351,15 +390,19 @@ function UserActions({ user }: { user: TeamUser }) {
           <div className="space-y-4 py-2">
             <div className="space-y-1.5">
               <Label htmlFor="edit-user-name">Full Name</Label>
-              <Input id="edit-user-name" defaultValue={user.fullName} />
+              <Input id="edit-user-name" value={editName} onChange={(e) => setEditName(e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="edit-user-email">Email</Label>
-              <Input id="edit-user-email" type="email" defaultValue={user.email} />
+              <Input id="edit-user-email" type="email" value={editEmail} onChange={(e) => setEditEmail(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-user-id">National ID / Passport</Label>
+              <Input id="edit-user-id" value={editNationalId} onChange={(e) => setEditNationalId(e.target.value)} />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="edit-user-role">Role</Label>
-              <Select defaultValue={user.role}>
+              <Select value={editRole} onValueChange={(v) => setEditRole(v as RoleCode)}>
                 <SelectTrigger id="edit-user-role">
                   <SelectValue />
                 </SelectTrigger>
@@ -372,9 +415,18 @@ function UserActions({ user }: { user: TeamUser }) {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setEditOpen(false)}>Cancel</Button>
-            <Button onClick={() => { toast.success(`User ${user.fullName} updated`); setEditOpen(false); }}>
-              Save Changes
+            <Button variant="outline" onClick={() => setEditOpen(false)} disabled={saving}>Cancel</Button>
+            <Button
+              disabled={saving}
+              onClick={() =>
+                patch(
+                  { fullName: editName, email: editEmail, nationalId: editNationalId, role: editRole },
+                  `User ${editName} updated`,
+                  () => setEditOpen(false)
+                )
+              }
+            >
+              {saving ? "Saving…" : "Save Changes"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -390,7 +442,7 @@ function UserActions({ user }: { user: TeamUser }) {
           <div className="space-y-3 py-2">
             <div className="space-y-1.5">
               <Label>Role</Label>
-              <Select defaultValue={user.role}>
+              <Select value={permRole} onValueChange={(v) => setPermRole(v as RoleCode)}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
@@ -402,9 +454,11 @@ function UserActions({ user }: { user: TeamUser }) {
               </Select>
             </div>
             <div className="rounded-lg border p-3">
-              <p className="mb-2 text-[12px] font-medium text-muted-foreground">Current Permissions</p>
+              <p className="mb-2 text-[12px] font-medium text-muted-foreground">
+                {permRole === user.role ? "Current" : "New"} Permissions
+              </p>
               <div className="flex flex-wrap gap-1.5">
-                {permissionsForRole(user.role).map((p) => (
+                {permissionsForRole(permRole).map((p) => (
                   <Badge key={p} variant="outline" className="text-[10.5px]">
                     {p}
                   </Badge>
@@ -413,9 +467,18 @@ function UserActions({ user }: { user: TeamUser }) {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setPermsOpen(false)}>Cancel</Button>
-            <Button onClick={() => { toast.success(`Permissions updated for ${user.fullName}`); setPermsOpen(false); }}>
-              Update Permissions
+            <Button variant="outline" onClick={() => setPermsOpen(false)} disabled={saving}>Cancel</Button>
+            <Button
+              disabled={saving || permRole === user.role}
+              onClick={() =>
+                patch(
+                  { role: permRole },
+                  `Permissions updated for ${user.fullName}`,
+                  () => setPermsOpen(false)
+                )
+              }
+            >
+              {saving ? "Updating…" : "Update Permissions"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -424,19 +487,31 @@ function UserActions({ user }: { user: TeamUser }) {
       {/* Reset Password Dialog */}
       <ResetPasswordDialog user={user} open={resetOpen} onOpenChange={setResetOpen} />
 
-      {/* Suspend Dialog */}
+      {/* Suspend / Reactivate Dialog */}
       <Dialog open={suspendOpen} onOpenChange={setSuspendOpen}>
         <DialogContent className="sm:max-w-[440px]">
           <DialogHeader>
-            <DialogTitle>Suspend User?</DialogTitle>
+            <DialogTitle>{suspended ? "Reactivate User?" : "Suspend User?"}</DialogTitle>
             <DialogDescription>
-              {user.fullName} will lose access immediately. This action is audit-logged.
+              {suspended
+                ? `${user.fullName} will regain access immediately.`
+                : `${user.fullName} will lose access immediately. This action is audit-logged.`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSuspendOpen(false)}>Cancel</Button>
-            <Button variant="destructive" onClick={() => { toast.success(`${user.fullName} suspended`); setSuspendOpen(false); }}>
-              Suspend User
+            <Button variant="outline" onClick={() => setSuspendOpen(false)} disabled={saving}>Cancel</Button>
+            <Button
+              variant={suspended ? "default" : "destructive"}
+              disabled={saving}
+              onClick={() =>
+                patch(
+                  { status: suspended ? "active" : "suspended" },
+                  suspended ? `${user.fullName} reactivated` : `${user.fullName} suspended`,
+                  () => setSuspendOpen(false)
+                )
+              }
+            >
+              {saving ? "Updating…" : suspended ? "Reactivate User" : "Suspend User"}
             </Button>
           </DialogFooter>
         </DialogContent>

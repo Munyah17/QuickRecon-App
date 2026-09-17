@@ -454,6 +454,7 @@ export async function getTeamUsers() {
       role: u.role,
       status: u.status,
       agentId: u.agent_id ?? undefined,
+      nationalId: u.national_id ?? undefined,
       lastLoginAt: u.last_login_at ?? undefined,
     }));
   }

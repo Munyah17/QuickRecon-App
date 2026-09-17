@@ -58,6 +58,9 @@ export async function POST(request: NextRequest) {
     email: email.trim().toLowerCase(),
     role,
     status: "active",
+    national_id: nationalId || null,
+    phone: phone || null,
+    location: location || null,
   });
   if (profileError) {
     await sb.auth.admin.deleteUser(userId);
@@ -109,7 +112,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { userId, email, password, role, status } = body ?? {};
+  const { userId, email, fullName, nationalId, phone, location, password, role, status } = body ?? {};
   if (!userId && !email) {
     return NextResponse.json({ error: "userId or email required" }, { status: 400 });
   }
@@ -135,14 +138,23 @@ export async function PATCH(request: NextRequest) {
     if (!uid) return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
-  if (password) {
-    const { error } = await sb.auth.admin.updateUserById(uid, { password });
+  const authUpdate: Record<string, unknown> = {};
+  if (password) authUpdate.password = password;
+  // `email` is the new address when userId was the lookup key.
+  if (userId && email) authUpdate.email = String(email).trim().toLowerCase();
+  if (Object.keys(authUpdate).length) {
+    const { error } = await sb.auth.admin.updateUserById(uid, authUpdate);
     if (error) return NextResponse.json({ error: error.message }, { status: 400 });
   }
 
   const profileUpdate: Record<string, unknown> = {};
+  if (fullName) profileUpdate.full_name = String(fullName).trim();
+  if (userId && email) profileUpdate.email = String(email).trim().toLowerCase();
   if (role) profileUpdate.role = role;
   if (status) profileUpdate.status = status;
+  if (nationalId !== undefined) profileUpdate.national_id = nationalId || null;
+  if (phone !== undefined) profileUpdate.phone = phone || null;
+  if (location !== undefined) profileUpdate.location = location || null;
   if (Object.keys(profileUpdate).length) {
     const { error } = await sb.from("profiles").update(profileUpdate).eq("id", uid);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
