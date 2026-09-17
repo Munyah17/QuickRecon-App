@@ -118,7 +118,7 @@ function MetricCard({
           )}
         </div>
         <p className="mt-3 text-[11.5px] text-muted-foreground">{label}</p>
-        <p className="tnum text-[20px] font-bold tracking-tight">{value}</p>
+        <p className="tnum text-[17px] font-bold tracking-tight">{value}</p>
       </CardContent>
     </Card>
   );
@@ -229,6 +229,10 @@ function AccountingTab() {
             <Button size="sm" className="h-8 gap-1.5 text-[12px]" onClick={() => setTxnDialog({ mode: "add" })}>
               <Plus className="size-3.5" aria-hidden /> Add Transaction
             </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="px-4 pb-4 sm:px-5">
+          <div className="mb-3 flex justify-end">
             <ExportButton
               filename="trial-balance"
               rows={transactions.length}
@@ -239,9 +243,7 @@ function AccountingTab() {
                 rows: transactions.map((t) => [t.id, t.txn_date, t.description, t.type, t.type === "expense" ? -Number(t.amount) : Number(t.amount)]),
               }}
             />
-          </CardAction>
-        </CardHeader>
-        <CardContent className="px-4 pb-4 sm:px-5">
+          </div>
           <div className="overflow-x-auto rounded-xl border">
             <table className="w-full text-[13px]">
               <thead>
