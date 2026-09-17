@@ -126,6 +126,28 @@ export function SubmissionsView({
     [submissions]
   );
 
+  const router = useRouter();
+
+  async function reviewSubmission(s: Submission, status: "completed" | "rejected") {
+    try {
+      const res = await fetch(`/api/submissions/${s.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Update failed");
+      toast.success(
+        status === "completed"
+          ? `Submission approved — ${s.agentName} notified.`
+          : `Submission rejected — ${s.agentName} notified.`
+      );
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not update submission");
+    }
+  }
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-1.5">
@@ -230,7 +252,7 @@ export function SubmissionsView({
                           title="Approve task?"
                           description={`"${s.title}" from ${s.agentName} will be marked completed. Both you and the agent will receive an email notification.`}
                           confirmLabel="Approve"
-                          onConfirm={() => toast.success(`Task approved. Email sent to ${s.agentName} and you.`)}
+                          onConfirm={() => reviewSubmission(s, "completed")}
                         />
                         <ConfirmDialog
                           trigger={
@@ -242,7 +264,7 @@ export function SubmissionsView({
                           description="The agent will be notified via email and may re-submit."
                           confirmLabel="Reject"
                           destructive
-                          onConfirm={() => toast.success(`Task rejected. Email sent to ${s.agentName}.`)}
+                          onConfirm={() => reviewSubmission(s, "rejected")}
                         />
                       </div>
                     ) : (
@@ -296,7 +318,7 @@ export function SubmissionsView({
                         title="Approve task?"
                         description={`"${s.title}" from ${s.agentName} will be marked completed. Both you and the agent will receive an email notification.`}
                         confirmLabel="Approve"
-                        onConfirm={() => toast.success(`Task approved. Email sent to ${s.agentName} and you.`)}
+                        onConfirm={() => reviewSubmission(s, "completed")}
                       />
                       <Button
                         variant="outline"
@@ -316,7 +338,7 @@ export function SubmissionsView({
                         description="The agent will be notified via email and may re-submit."
                         confirmLabel="Reject"
                         destructive
-                        onConfirm={() => toast.success(`Task rejected. Email sent to ${s.agentName}.`)}
+                        onConfirm={() => reviewSubmission(s, "rejected")}
                       />
                     </>
                   )}
