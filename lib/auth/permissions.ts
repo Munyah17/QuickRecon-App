@@ -106,6 +106,8 @@ export function permissionsForRole(role: RoleCode): Permission[] {
       return ASSISTANT_BASE;
     case "tech_support":
       return TECH_SUPPORT_BASE;
+    default:
+      return [];
   }
 }
 
@@ -117,7 +119,7 @@ export function roleLabel(role: RoleCode): string {
     assistant: "Assistant",
     tech_support: "Tech Support",
   };
-  return labels[role];
+  return labels[role] ?? role;
 }
 
 /** Convenience check used for UI hints. Server/RLS enforcement is authoritative. */

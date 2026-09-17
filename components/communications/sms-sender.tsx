@@ -36,15 +36,16 @@ export function SMSSender() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          recipients: includeAgents ? ["+263770000001", "+263770000002"] : phones,
+          recipients: phones,
+          includeAgents,
           message: message.trim(),
           senderId: "QuickRecon",
         }),
       });
       const data = await res.json();
       if (data.success) {
-        toast.success("SMS queued", {
-          description: `${data.sent} messages ${data.simulated ? "(simulated)" : "sent via Afrosoft"}`,
+        toast.success("SMS sent", {
+          description: `${data.sent} message${data.sent === 1 ? "" : "s"} sent via Afrosoft`,
         });
         setMessage("");
         setRecipients("");

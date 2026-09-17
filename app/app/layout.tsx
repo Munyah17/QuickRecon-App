@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
-import { getNotifications } from "@/lib/data";
+import { getNotifications, filterFieldNotifications } from "@/lib/data";
 import { isCompanyRole } from "@/lib/nav";
 import { AppShell } from "@/components/layout/app-shell";
 import { AIAssistant } from "@/components/shared/ai-assistant";
@@ -13,7 +13,12 @@ export default async function AppLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const session = await getSession();
+  // Notifications run concurrently with the session lookup — RLS scopes the
+  // rows via the auth cookie, so the query doesn't need the resolved session.
+  const [session, allNotifications] = await Promise.all([
+    getSession(),
+    getNotifications(false),
+  ]);
   if (!session) redirect("/login");
 
   // Agents/assistants only see modules their parent agent/account has enabled.
@@ -22,7 +27,9 @@ export default async function AppLayout({
       ? ALL_MODULES // resolved per-agent module access once backend is live
       : ALL_MODULES;
 
-  const notifications = await getNotifications(!isCompanyRole(session.user.role));
+  const notifications = isCompanyRole(session.user.role)
+    ? allNotifications
+    : filterFieldNotifications(allNotifications);
 
   return (
     <AppShell

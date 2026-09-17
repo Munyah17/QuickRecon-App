@@ -306,6 +306,18 @@ export function ReportDistribution({
             rows={filteredHistory.length}
             label="Export History"
             className="ml-auto"
+            title="QuickRecon — Distribution History"
+            data={{
+              columns: ["Period", "Module", "Recipients", "Channels", "Sent At", "Status"],
+              rows: filteredHistory.map((d) => [
+                formatPeriod(d.period),
+                moduleName(d.module),
+                d.recipientsCount,
+                d.channels.join(" + ").toUpperCase(),
+                formatDate(d.createdAt, "dd MMM yyyy HH:mm"),
+                d.status,
+              ]),
+            }}
           />
         </div>
         <Card className="gap-0 py-0 shadow-xs">

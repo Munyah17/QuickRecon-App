@@ -5,12 +5,14 @@ import { createServiceClient } from "@/lib/supabase/server";
 import {
   documentToCSV,
   documentsToWorkbook,
+  documentsToPDF,
   documentToHTML,
   documentToSMS,
   type AgentReconDocument,
 } from "@/lib/reconciliation/document";
 import { sendEmail, brandedEmail } from "@/lib/email/send";
 import { getWhatsAppProvider } from "@/lib/whatsapp/provider";
+import { moduleName } from "@/lib/format";
 
 export const runtime = "nodejs";
 
@@ -100,103 +102,98 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    // Fallback: rebuild a synthetic document for demo / when Supabase is not configured.
+    // Real-time mode: no synthetic fallback — the batch must exist.
     if (docs.length === 0) {
-      const { getAgentById } = await import("@/lib/data");
-      const agent = await getAgentById(agentId);
-      if (!agent) {
-        return NextResponse.json({ error: "Agent not found" }, { status: 404 });
-      }
-      const fallback: AgentReconDocument = {
-        agentId: agent.id,
-        agentName: agent.fullName,
-        module: "enpassent",
-        period: "2026-09",
-        currency: "ZWG",
-        generatedAt: new Date().toISOString(),
-        openingVariance: 0,
-        insurance: 125000,
-        premiumCover: 0,
-        commission: 0,
-        netInsurance: 125000,
-        zinara: 45000,
-        pds: 0,
-        totalExpected: 170000,
-        bankDeposits: {},
-        deposits: 150000,
-        adjustments: 0,
-        closingVariance: 20000,
-        closingPosition: 20000,
-        status: "warning",
-        transactions: [],
-        lines: [
-          { item: "Insurance", expected: 125000, actual: 125000, variance: 0 },
-          { item: "ZINARA", expected: 45000, actual: 45000, variance: 0 },
-          { item: "Deposits", expected: 150000, actual: 150000, variance: 0 },
-        ],
-        summaryText:
-          "A variance of ZWG 20,000 was detected. Please review the attached detail.",
-      };
-      docs = [fallback];
-      agentEmail = agent.email;
-      agentPhone = agent.phone;
+      return NextResponse.json(
+        { error: "No reconciliation documents found for this agent in this batch. Generate the batch first." },
+        { status: 404 }
+      );
+    }
+
+    // Group docs by module — Econet and Enpassent each get their own
+    // consolidated workbook + PDF, all attached to ONE email.
+    const byModule = new Map<string, AgentReconDocument[]>();
+    for (const d of docs) {
+      const key = d.module || "enpassent";
+      byModule.set(key, [...(byModule.get(key) ?? []), d]);
     }
 
     const doc = docs.find((d) => d.currency === "ZWG") ?? docs[0];
     const summary = documentToSMS(doc);
     const html = brandedEmail(documentToHTML(doc), doc.agentName);
+    const moduleList = [...byModule.keys()].map(moduleName).join(" + ");
     const text = [
       `Dear ${doc.agentName},`,
       ``,
-      `Your ${doc.period} reconciliation report is attached.`,
+      `Your ${doc.period} reconciliation reports are attached (${moduleList}).`,
+      `Each module includes an Excel workbook and a PDF copy.`,
       ``,
       ...docs.map((d) =>
-        `[${d.currency === "USD" ? "USD" : "ZiG"}] Insurance: ${d.insurance.toLocaleString()} | Zinara: ${d.zinara.toLocaleString()} | Expected: ${d.totalExpected.toLocaleString()} | Deposits: ${d.deposits.toLocaleString()} | Closing: ${d.closingVariance.toLocaleString()}`
+        `[${moduleName(d.module)} · ${d.currency === "USD" ? "USD" : "ZiG"}] Insurance: ${d.insurance.toLocaleString()} | Zinara: ${d.zinara.toLocaleString()} | Expected: ${d.totalExpected.toLocaleString()} | Deposits: ${d.deposits.toLocaleString()} | Closing: ${d.closingVariance.toLocaleString()}`
       ),
       ``,
       `Regards,`,
       `Kareem — QuickRecon App`,
       `Enpassent (Private) Limited, Harare, Zimbabwe`,
     ].join("\n");
-    const subject = `QuickRecon Reconciliation — ${doc.period}`;
+    const subject = `QuickRecon Reconciliation — ${doc.period} (${moduleList})`;
 
     const delivered: string[] = [];
     const failures: string[] = [];
 
     if (channels.includes("email") && agentEmail) {
-      const xlsx = await documentsToWorkbook(docs);
-      const result = await sendEmail({
-        to: agentEmail,
-        subject,
-        text,
-        html,
-        attachments: [
-          {
-            filename: `reconciliation-${doc.agentId}-${doc.period}.xlsx`,
-            content: xlsx,
-          },
-        ],
-      });
-      if (result.ok) delivered.push("email");
-      else failures.push("email");
+      try {
+        const attachments: { filename: string; content: Buffer }[] = [];
+        for (const [mod, modDocs] of byModule) {
+          const slug = mod.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "module";
+          attachments.push({
+            filename: `${slug}-reconciliation-${doc.agentId}-${doc.period}.xlsx`,
+            content: await documentsToWorkbook(modDocs),
+          });
+          attachments.push({
+            filename: `${slug}-reconciliation-${doc.agentId}-${doc.period}.pdf`,
+            content: await documentsToPDF(modDocs),
+          });
+        }
+        const result = await sendEmail({
+          to: agentEmail,
+          subject,
+          text,
+          html,
+          attachments,
+        });
+        if (result.ok) delivered.push("email");
+        else failures.push("email");
+      } catch {
+        failures.push("email");
+      }
     }
 
     if (channels.includes("whatsapp") && agentPhone) {
-      const csv = documentToCSV(doc);
       const wa = getWhatsAppProvider();
-      const result = await wa.sendDocument(agentPhone, {
-        buffer: Buffer.from(csv, "utf-8"),
-        fileName: `reconciliation-${doc.agentId}-${doc.period}.csv`,
-        caption: summary.slice(0, 240),
-      });
-      if (result.ok) delivered.push("whatsapp");
+      let waOk = false;
+      for (const [mod, modDocs] of byModule) {
+        const slug = mod.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "module";
+        const modDoc = modDocs.find((d) => d.currency === "ZWG") ?? modDocs[0];
+        const csv = documentToCSV(modDoc);
+        const result = await wa.sendDocument(agentPhone, {
+          buffer: Buffer.from(csv, "utf-8"),
+          fileName: `${slug}-reconciliation-${doc.agentId}-${doc.period}.csv`,
+          caption: `${moduleName(mod)} — ${documentToSMS(modDoc).slice(0, 200)}`,
+        });
+        waOk = waOk || result.ok;
+      }
+      if (waOk) delivered.push("whatsapp");
       else failures.push("whatsapp");
     }
 
     if (channels.includes("sms") && agentPhone) {
       const smsRes = await fetch(`${request.nextUrl.origin}/api/sms`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          cookie: request.headers.get("cookie") ?? "",
+        },
         body: JSON.stringify({
           recipients: [agentPhone],
           message: summary,

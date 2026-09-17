@@ -44,24 +44,36 @@ async function exportExcel(data: ExportData, filename: string) {
   XLSX.writeFile(wb, `${filename}.xlsx`);
 }
 
+/** Recursively locate the vfs font dictionary (keys end in .ttf) inside
+ * whatever interop shape the bundler gives vfs_fonts — default export,
+ * nested pdfMake.vfs, or the raw dictionary itself. */
+function findVfs(obj: unknown, depth = 0): Record<string, string> | null {
+  if (!obj || typeof obj !== "object" || depth > 4) return null;
+  const rec = obj as Record<string, unknown>;
+  if (Object.keys(rec).some((k) => k.endsWith(".ttf"))) {
+    return rec as Record<string, string>;
+  }
+  for (const v of Object.values(rec)) {
+    const found = findVfs(v, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
 async function getPdfMake() {
   const [pdfMakeMod, pdfFonts] = await Promise.all([
     import("pdfmake/build/pdfmake"),
     import("pdfmake/build/vfs_fonts"),
   ]);
-  const pdfMake = pdfMakeMod.default;
-  // vfs_fonts shape varies by bundler interop — try every known shape.
-  const f = pdfFonts as Record<string, unknown>;
-  const vfs =
-    (f.pdfMake as { vfs?: Record<string, string> } | undefined)?.vfs ??
-    (f.vfs as Record<string, string> | undefined) ??
-    (f.default as { vfs?: Record<string, string> } | undefined)?.vfs ??
-    (f.default as { pdfMake?: { vfs?: Record<string, string> } } | undefined)?.pdfMake?.vfs ??
-    {};
-  if (Object.keys(vfs).length === 0) {
+  const pdfMake = (pdfMakeMod.default ?? pdfMakeMod) as unknown as {
+    vfs: Record<string, string>;
+    createPdf: (doc: unknown) => { download: (name: string) => void };
+  };
+  const vfs = findVfs(pdfFonts);
+  if (!vfs || Object.keys(vfs).length === 0) {
     throw new Error("pdfmake fonts failed to load (empty vfs)");
   }
-  (pdfMake as unknown as { vfs: Record<string, string> }).vfs = vfs;
+  pdfMake.vfs = vfs;
   return pdfMake;
 }
 

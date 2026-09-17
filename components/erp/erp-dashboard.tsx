@@ -18,6 +18,8 @@ import {
   Printer,
   RefreshCcw,
   LoaderCircle,
+  Plus,
+  CloudUpload,
 } from "lucide-react";
 import { downloadPayslip, type Deduction } from "@/lib/erp/payslip";
 import { downloadCommissionStatement } from "@/lib/erp/commission-statement";
@@ -45,8 +47,11 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
-import { formatMoney } from "@/lib/format";
+import { formatMoney, formatDate } from "@/lib/format";
 import { ExportButton } from "@/components/shared/export-button";
+import { StatusBadge } from "@/components/shared/status-badge";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
 import { Ellipsis } from "lucide-react";
 import {
   DropdownMenu,
@@ -120,30 +125,121 @@ function MetricCard({
 }
 
 /* ─── Accounting ─── */
+interface ErpTxn {
+  id: string;
+  txn_date: string;
+  description: string;
+  type: "income" | "expense" | "transfer";
+  amount: number;
+}
+interface ErpRequisition {
+  id: string;
+  title: string;
+  requested_by: string;
+  department?: string | null;
+  amount?: number | null;
+  description?: string | null;
+  status: "pending" | "approved" | "rejected";
+  file_name?: string | null;
+  created_at: string;
+}
+
 function AccountingTab() {
-  const transactions = [
-    { id: "TXN-001", date: "2026-09-01", desc: "Insurance premiums collected", type: "income", amount: 458200 },
-    { id: "TXN-002", date: "2026-09-02", desc: "ZINARA fees remitted", type: "expense", amount: 125300 },
-    { id: "TXN-003", date: "2026-09-03", desc: "Agent commission — August", type: "expense", amount: 38700 },
-    { id: "TXN-004", date: "2026-09-05", desc: "Bank deposit — CBZ", type: "transfer", amount: 320000 },
-    { id: "TXN-005", date: "2026-09-07", desc: "Office supplies", type: "expense", amount: 4500 },
-    { id: "TXN-006", date: "2026-09-10", desc: "Insurance premiums collected", type: "income", amount: 392100 },
-    { id: "TXN-007", date: "2026-09-12", desc: "Fuel reimbursement", type: "expense", amount: 12000 },
-    { id: "TXN-008", date: "2026-09-14", desc: "Econet Moovah settlement", type: "income", amount: 187500 },
-  ];
+  const [transactions, setTransactions] = React.useState<ErpTxn[]>([]);
+  const [requisitions, setRequisitions] = React.useState<ErpRequisition[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [txnDialog, setTxnDialog] = React.useState<null | { mode: "add" } | { mode: "edit"; txn: ErpTxn }>(null);
+  const [reqOpen, setReqOpen] = React.useState(false);
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const [txRes, reqRes] = await Promise.all([
+        fetch("/api/erp/transactions"),
+        fetch("/api/erp/requisitions"),
+      ]);
+      if (txRes.ok) {
+        const d = await txRes.json();
+        setTransactions(d.transactions ?? []);
+      }
+      if (reqRes.ok) {
+        const d = await reqRes.json();
+        setRequisitions(d.requisitions ?? []);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  const revenue = transactions.filter((t) => t.type === "income").reduce((s, t) => s + Number(t.amount), 0);
+  const expenses = transactions.filter((t) => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0);
+  const pendingReqs = requisitions.filter((r) => r.status === "pending").length;
+
+  async function deleteTxn(id: string) {
+    const res = await fetch(`/api/erp/transactions/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      toast.error(d.error || "Delete failed");
+      return;
+    }
+    toast.success("Transaction deleted");
+    load();
+  }
+
+  async function reviewReq(id: string, status: "approved" | "rejected") {
+    const res = await fetch(`/api/erp/requisitions/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      toast.error(d.error || "Update failed");
+      return;
+    }
+    toast.success(`Requisition ${status}`);
+    load();
+  }
+
+  async function downloadReqFile(id: string) {
+    const res = await fetch(`/api/erp/requisitions/${id}`);
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || !d.url) {
+      toast.error(d.error || "No attachment");
+      return;
+    }
+    window.open(d.url, "_blank", "noopener");
+  }
 
   return (
     <div className="space-y-4">
       <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <MetricCard icon={DollarSign} label="Total Revenue" value={formatMoney(1037800)} trend="12.4%" trendUp />
-        <MetricCard icon={Banknote} label="Total Expenses" value={formatMoney(180500)} trend="3.2%" trendUp={false} />
-        <MetricCard icon={Calculator} label="Net Profit" value={formatMoney(857300)} trend="18.1%" trendUp />
-        <MetricCard icon={Receipt} label="Pending Invoices" value="14" />
+        <MetricCard icon={DollarSign} label="Total Revenue" value={formatMoney(revenue)} />
+        <MetricCard icon={Banknote} label="Total Expenses" value={formatMoney(expenses)} />
+        <MetricCard icon={Calculator} label="Net Profit" value={formatMoney(revenue - expenses)} />
+        <MetricCard icon={Receipt} label="Pending Requisitions" value={String(pendingReqs)} />
       </div>
 
       <Card className="gap-0 py-0 shadow-xs">
         <CardHeader className="px-4 pt-4 sm:px-5">
-          <CardTitle className="text-[14.5px] font-semibold">Recent Transactions</CardTitle>
+          <CardTitle className="text-[14.5px] font-semibold">Transactions</CardTitle>
+          <CardAction>
+            <Button size="sm" className="h-8 gap-1.5 text-[12px]" onClick={() => setTxnDialog({ mode: "add" })}>
+              <Plus className="size-3.5" aria-hidden /> Add Transaction
+            </Button>
+            <ExportButton
+              filename="trial-balance"
+              rows={transactions.length}
+              label="Export"
+              title="QuickRecon — Transactions"
+              data={{
+                columns: ["Txn ID", "Date", "Description", "Type", "Amount (ZiG)"],
+                rows: transactions.map((t) => [t.id, t.txn_date, t.description, t.type, t.type === "expense" ? -Number(t.amount) : Number(t.amount)]),
+              }}
+            />
+          </CardAction>
         </CardHeader>
         <CardContent className="px-4 pb-4 sm:px-5">
           <div className="overflow-x-auto rounded-xl border">
@@ -155,14 +251,21 @@ function AccountingTab() {
                   <th className="px-3 py-2.5">Description</th>
                   <th className="px-3 py-2.5">Type</th>
                   <th className="px-3 py-2.5 text-right">Amount (ZiG)</th>
+                  <th className="w-10 px-3 py-2.5"></th>
                 </tr>
               </thead>
               <tbody className="divide-y">
+                {loading && (
+                  <tr><td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">Loading…</td></tr>
+                )}
+                {!loading && transactions.length === 0 && (
+                  <tr><td colSpan={6} className="px-3 py-8 text-center text-muted-foreground">No transactions yet — add the first one.</td></tr>
+                )}
                 {transactions.map((t) => (
                   <tr key={t.id} className="hover:bg-surface-hover">
                     <td className="font-mono text-[12px] text-muted-foreground px-3 py-2.5">{t.id}</td>
-                    <td className="tnum px-3 py-2.5">{t.date}</td>
-                    <td className="px-3 py-2.5">{t.desc}</td>
+                    <td className="tnum px-3 py-2.5">{t.txn_date}</td>
+                    <td className="px-3 py-2.5">{t.description}</td>
                     <td className="px-3 py-2.5">
                       <Badge
                         variant="outline"
@@ -178,19 +281,283 @@ function AccountingTab() {
                       </Badge>
                     </td>
                     <td className={`tnum px-3 py-2.5 text-right font-medium ${t.type === "expense" ? "text-destructive" : ""}`}>
-                      {t.type === "expense" ? "-" : ""}{t.amount.toLocaleString()}
+                      {t.type === "expense" ? "-" : ""}{Number(t.amount).toLocaleString()}
+                    </td>
+                    <td className="px-3 py-2.5 text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon-sm" aria-label="Transaction actions">
+                            <Ellipsis className="size-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onSelect={() => setTxnDialog({ mode: "edit", txn: t })}>Edit</DropdownMenuItem>
+                          <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => deleteTxn(t.id)}>
+                            Delete
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
                     </td>
                   </tr>
                 ))}
               </tbody>
             </table>
           </div>
-          <div className="mt-3 flex justify-end">
-            <ExportButton filename="trial-balance" rows={transactions.length} label="Export Trial Balance" />
-          </div>
         </CardContent>
       </Card>
+
+      <Card className="gap-0 py-0 shadow-xs">
+        <CardHeader className="px-4 pt-4 sm:px-5">
+          <CardTitle className="text-[14.5px] font-semibold">Requisitions</CardTitle>
+          <CardAction>
+            <Button size="sm" className="h-8 gap-1.5 text-[12px]" onClick={() => setReqOpen(true)}>
+              <Plus className="size-3.5" aria-hidden /> New Requisition
+            </Button>
+          </CardAction>
+        </CardHeader>
+        <CardContent className="space-y-2.5 px-4 pb-4 sm:px-5">
+          {!loading && requisitions.length === 0 && (
+            <p className="rounded-xl border border-dashed py-8 text-center text-[13px] text-muted-foreground">
+              No requisitions yet.
+            </p>
+          )}
+          {requisitions.map((r) => (
+            <div key={r.id} className="flex flex-wrap items-center gap-3 rounded-xl border p-3.5">
+              <div className="min-w-[180px] flex-1">
+                <p className="text-[13.5px] font-semibold">{r.title}</p>
+                <p className="text-[12px] text-muted-foreground">
+                  {r.requested_by}{r.department ? ` · ${r.department}` : ""}
+                  {r.amount != null ? ` · ${formatMoney(Number(r.amount))}` : ""}
+                  {" · "}{formatDate(r.created_at, "dd MMM yyyy")}
+                </p>
+              </div>
+              {r.file_name && (
+                <Button variant="ghost" size="sm" className="h-8 gap-1.5 text-[12px]" onClick={() => downloadReqFile(r.id)}>
+                  <FileDown className="size-3.5" aria-hidden /> {r.file_name}
+                </Button>
+              )}
+              <StatusBadge status={r.status} />
+              {r.status === "pending" && (
+                <div className="flex items-center gap-1.5">
+                  <Button size="sm" variant="outline" className="h-8 text-[12px] text-success-foreground" onClick={() => reviewReq(r.id, "approved")}>
+                    Approve
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-8 text-[12px] text-destructive" onClick={() => reviewReq(r.id, "rejected")}>
+                    Reject
+                  </Button>
+                </div>
+              )}
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {txnDialog && (
+        <TransactionDialog
+          txn={txnDialog.mode === "edit" ? txnDialog.txn : null}
+          onClose={() => setTxnDialog(null)}
+          onSaved={() => { setTxnDialog(null); load(); }}
+        />
+      )}
+      <RequisitionDialog open={reqOpen} onOpenChange={setReqOpen} onSaved={load} />
     </div>
+  );
+}
+
+function TransactionDialog({
+  txn,
+  onClose,
+  onSaved,
+}: {
+  txn: ErpTxn | null;
+  onClose: () => void;
+  onSaved: () => void;
+}) {
+  const [date, setDate] = React.useState(txn?.txn_date ?? new Date().toISOString().slice(0, 10));
+  const [description, setDescription] = React.useState(txn?.description ?? "");
+  const [type, setType] = React.useState<string>(txn?.type ?? "expense");
+  const [amount, setAmount] = React.useState(txn ? String(txn.amount) : "");
+  const [saving, setSaving] = React.useState(false);
+
+  async function save() {
+    if (!date || !description.trim() || !amount) {
+      toast.error("Date, description and amount are required");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(txn ? `/api/erp/transactions/${txn.id}` : "/api/erp/transactions", {
+        method: txn ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date, description: description.trim(), type, amount: Number(amount) }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Save failed");
+      toast.success(txn ? "Transaction updated" : "Transaction added");
+      onSaved();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open onOpenChange={(v) => !v && onClose()}>
+      <DialogContent className="sm:max-w-[440px]">
+        <DialogHeader>
+          <DialogTitle>{txn ? "Edit Transaction" : "Add Transaction"}</DialogTitle>
+          <DialogDescription>Record an income, expense or transfer.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="txn-date">Date</Label>
+              <Input id="txn-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="txn-type">Type</Label>
+              <Select value={type} onValueChange={setType}>
+                <SelectTrigger id="txn-type"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="income">Income</SelectItem>
+                  <SelectItem value="expense">Expense</SelectItem>
+                  <SelectItem value="transfer">Transfer</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="txn-desc">Description</Label>
+            <Input id="txn-desc" value={description} onChange={(e) => setDescription(e.target.value)} placeholder="e.g. Office supplies" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="txn-amount">Amount (ZiG)</Label>
+            <Input id="txn-amount" type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={onClose} disabled={saving}>Cancel</Button>
+          <Button onClick={save} disabled={saving}>
+            {saving ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : null}
+            {txn ? "Save Changes" : "Add Transaction"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+const REQ_ACCEPT = ".pdf,.doc,.docx,.xls,.xlsx,.txt,.png,.jpg,.jpeg,.webp";
+
+function RequisitionDialog({
+  open,
+  onOpenChange,
+  onSaved,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onSaved: () => void;
+}) {
+  const [title, setTitle] = React.useState("");
+  const [requestedBy, setRequestedBy] = React.useState("");
+  const [department, setDepartment] = React.useState("");
+  const [amount, setAmount] = React.useState("");
+  const [description, setDescription] = React.useState("");
+  const [file, setFile] = React.useState<File | null>(null);
+  const [saving, setSaving] = React.useState(false);
+  const fileRef = React.useRef<HTMLInputElement>(null);
+
+  async function submit() {
+    if (!title.trim()) {
+      toast.error("Requisition title is required");
+      return;
+    }
+    setSaving(true);
+    try {
+      const form = new FormData();
+      form.set("title", title.trim());
+      if (requestedBy.trim()) form.set("requestedBy", requestedBy.trim());
+      if (department.trim()) form.set("department", department.trim());
+      if (amount) form.set("amount", amount);
+      if (description.trim()) form.set("description", description.trim());
+      if (file) form.set("file", file);
+      const res = await fetch("/api/erp/requisitions", { method: "POST", body: form });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Submit failed");
+      toast.success("Requisition submitted");
+      setTitle(""); setRequestedBy(""); setDepartment(""); setAmount(""); setDescription(""); setFile(null);
+      onOpenChange(false);
+      onSaved();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Submit failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[520px]">
+        <DialogHeader>
+          <DialogTitle>New Requisition</DialogTitle>
+          <DialogDescription>
+            Submit a purchase or expense requisition. Attach a supporting document
+            (pdf, docx, xlsx, txt, png, jpeg, jpg, webp — up to 25MB).
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="req-title">Title <span className="text-destructive">*</span></Label>
+            <Input id="req-title" value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. New POS terminals" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="req-by">Requested By</Label>
+              <Input id="req-by" value={requestedBy} onChange={(e) => setRequestedBy(e.target.value)} placeholder="Your name" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="req-dept">Department</Label>
+              <Input id="req-dept" value={department} onChange={(e) => setDepartment(e.target.value)} placeholder="e.g. Operations" />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="req-amount">Amount (ZiG)</Label>
+            <Input id="req-amount" type="number" min="0" step="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="req-desc">Justification</Label>
+            <Textarea id="req-desc" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} placeholder="Why is this needed?" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Attachment</Label>
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="flex w-full flex-col items-center gap-1.5 rounded-xl border-2 border-dashed px-4 py-5 text-[13px] text-muted-foreground hover:border-primary/50 hover:bg-primary-soft/30"
+            >
+              <CloudUpload className="size-5 text-primary" aria-hidden />
+              {file ? file.name : "Tap to attach a document"}
+              <span className="text-[11px]">pdf, docx, xlsx, txt, png, jpeg, jpg, webp — up to 25MB</span>
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept={REQ_ACCEPT}
+              className="hidden"
+              onChange={(e) => setFile(e.target.files?.[0] ?? null)}
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
+          <Button onClick={submit} disabled={saving}>
+            {saving ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : null}
+            Submit Requisition
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -207,7 +574,7 @@ interface AgentRow {
 }
 
 function HRTab() {
-  const [hrSubTab, setHrSubTab] = React.useState<"executive" | "agents">("executive");
+  const [hrSubTab, setHrSubTab] = React.useState<"executive" | "agents" | "records">("executive");
   const [payTarget, setPayTarget] = React.useState<StaffRow | null>(null);
 
   // Deduction toggles — Super Admin controls which apply.
@@ -285,10 +652,25 @@ function HRTab() {
         >
           Agents ({agents.length})
         </button>
+        <button
+          onClick={() => setHrSubTab("records")}
+          className={`h-8 rounded-full px-4 text-[12.5px] font-medium transition-colors ${hrSubTab === "records" ? "bg-card text-primary shadow-sm" : "text-muted-foreground"}`}
+        >
+          Records
+        </button>
       </div>
 
+      {hrSubTab === "records" && (
+        <HRRecordsPanel
+          staff={[
+            ...executiveStaff.map((e) => ({ id: e.id, name: e.name })),
+            ...agents.map((a) => ({ id: a.id, name: a.name })),
+          ]}
+        />
+      )}
+
       {/* Deduction config (staff only) */}
-      {!isAgents && (
+      {hrSubTab === "executive" && (
         <Card className="gap-0 py-0 shadow-xs">
           <CardHeader className="px-4 pt-4 sm:px-5">
             <CardTitle className="text-[14.5px] font-semibold">Payroll Deductions</CardTitle>
@@ -324,13 +706,28 @@ function HRTab() {
         </Card>
       )}
 
+      {hrSubTab !== "records" && (
       <Card className="gap-0 py-0 shadow-xs">
         <CardHeader className="px-4 pt-4 sm:px-5">
           <CardTitle className="text-[14.5px] font-semibold">
             {hrSubTab === "executive" ? "Executive Staff Directory" : "Agents Directory"}
           </CardTitle>
           <CardAction>
-            <ExportButton filename={`hr-${hrSubTab}`} rows={isAgents ? agents.length : executiveStaff.length} label="Export" />
+            <ExportButton
+              filename={`hr-${hrSubTab}`}
+              rows={isAgents ? agents.length : executiveStaff.length}
+              label="Export"
+              title={isAgents ? "QuickRecon — Agents Directory" : "QuickRecon — Executive Staff Directory"}
+              data={isAgents
+                ? {
+                    columns: ["ID", "Name", "Role", "Province", "Phone", "Email", "Commission", "Bonus", "Float Assigned", "Float Balance", "Sales", "Status"],
+                    rows: agents.map((a) => [a.id, a.name, a.role, a.province, a.phone, a.email, a.commission, a.bonus, a.floatAssigned, a.floatBalance, a.sales, a.status]),
+                  }
+                : {
+                    columns: ["ID", "Name", "Role", "Department", "Phone", "Email", "Salary", "Status"],
+                    rows: executiveStaff.map((e) => [e.id, e.name, e.role, e.dept, e.phone, e.email, e.salary, e.status]),
+                  }}
+            />
           </CardAction>
         </CardHeader>
         <CardContent className="px-4 pb-4 sm:px-5">
@@ -431,6 +828,7 @@ function HRTab() {
           </div>
         </CardContent>
       </Card>
+      )}
 
       {/* Payslip preview dialog — shows real deductions before download */}
       {payTarget && (
@@ -441,6 +839,377 @@ function HRTab() {
         />
       )}
     </div>
+  );
+}
+
+/* ─── HR Records (welfare, leave, loans, sick notes, timecards, banking, KYC) ─── */
+interface HrRecord {
+  id: string;
+  type: "welfare" | "leave" | "loan" | "sick_note" | "timecard" | "banking" | "kyc";
+  staff_id: string;
+  staff_name: string;
+  payload: Record<string, string | number | undefined>;
+  status: "pending" | "approved" | "rejected" | "active" | "closed";
+  created_at: string;
+}
+
+const HR_TYPES: { value: HrRecord["type"]; label: string }[] = [
+  { value: "welfare", label: "Welfare" },
+  { value: "leave", label: "Leave" },
+  { value: "loan", label: "Loan" },
+  { value: "sick_note", label: "Sick Note" },
+  { value: "timecard", label: "Timecard" },
+  { value: "banking", label: "Banking Details" },
+  { value: "kyc", label: "KYC" },
+];
+
+/** Human-readable summary of a record's payload. */
+function hrSummary(r: HrRecord): string {
+  const p = r.payload;
+  switch (r.type) {
+    case "welfare":
+      return [p.benefit, p.amount ? formatMoney(Number(p.amount)) : null, p.notes].filter(Boolean).join(" · ");
+    case "leave":
+      return [p.leaveType, p.from && p.to ? `${p.from} → ${p.to}` : null, p.days ? `${p.days} days` : null, p.reason].filter(Boolean).join(" · ");
+    case "loan":
+      return [p.amount ? formatMoney(Number(p.amount)) : null, p.installments ? `${p.installments} installments` : null, p.monthly ? `${formatMoney(Number(p.monthly))}/mo` : null, p.reason].filter(Boolean).join(" · ");
+    case "sick_note":
+      return [p.from && p.to ? `${p.from} → ${p.to}` : null, p.days ? `${p.days} days` : null, p.clinic, p.notes].filter(Boolean).join(" · ");
+    case "timecard":
+      return [p.date, p.clockIn && p.clockOut ? `${p.clockIn}–${p.clockOut}` : null, p.hours ? `${p.hours}h` : null].filter(Boolean).join(" · ");
+    case "banking":
+      return [p.bank, p.accountName, p.accountNo ? `Acc ${p.accountNo}` : null, p.branch, p.ecocash].filter(Boolean).join(" · ");
+    case "kyc":
+      return [p.idNumber ? `ID ${p.idNumber}` : null, p.address, p.nextOfKin ? `NOK: ${p.nextOfKin}` : null, p.nextOfKinPhone].filter(Boolean).join(" · ");
+    default:
+      return "";
+  }
+}
+
+function HRRecordsPanel({ staff }: { staff: { id: string; name: string }[] }) {
+  const [records, setRecords] = React.useState<HrRecord[]>([]);
+  const [loading, setLoading] = React.useState(true);
+  const [typeFilter, setTypeFilter] = React.useState<"all" | HrRecord["type"]>("all");
+  const [createOpen, setCreateOpen] = React.useState(false);
+
+  const load = React.useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetch("/api/hr/records");
+      if (res.ok) {
+        const d = await res.json();
+        setRecords(d.records ?? []);
+      }
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => { load(); }, [load]);
+
+  const shown = typeFilter === "all" ? records : records.filter((r) => r.type === typeFilter);
+
+  async function setStatus(id: string, status: HrRecord["status"]) {
+    const res = await fetch(`/api/hr/records/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status }),
+    });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      toast.error(d.error || "Update failed");
+      return;
+    }
+    toast.success(`Record ${status}`);
+    load();
+  }
+
+  async function remove(id: string) {
+    const res = await fetch(`/api/hr/records/${id}`, { method: "DELETE" });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      toast.error(d.error || "Delete failed");
+      return;
+    }
+    toast.success("Record deleted");
+    load();
+  }
+
+  return (
+    <Card className="gap-0 py-0 shadow-xs">
+      <CardHeader className="px-4 pt-4 sm:px-5">
+        <CardTitle className="text-[14.5px] font-semibold">HR Records</CardTitle>
+        <CardAction>
+          <Button size="sm" className="h-8 gap-1.5 text-[12px]" onClick={() => setCreateOpen(true)}>
+            <Plus className="size-3.5" aria-hidden /> New Record
+          </Button>
+          <ExportButton
+            filename="hr-records"
+            rows={shown.length}
+            label="Export"
+            title="QuickRecon — HR Records"
+            data={{
+              columns: ["ID", "Type", "Staff", "Details", "Status", "Created"],
+              rows: shown.map((r) => [r.id, HR_TYPES.find((t) => t.value === r.type)?.label ?? r.type, `${r.staff_name} (${r.staff_id})`, hrSummary(r), r.status, r.created_at.slice(0, 10)]),
+            }}
+          />
+        </CardAction>
+      </CardHeader>
+      <CardContent className="px-4 pb-4 sm:px-5">
+        <div className="mb-3 flex items-center gap-1.5 overflow-x-auto">
+          {([{ value: "all" as const, label: "All" }, ...HR_TYPES]).map((t) => (
+            <button
+              key={t.value}
+              onClick={() => setTypeFilter(t.value)}
+              className={
+                typeFilter === t.value
+                  ? "h-8 shrink-0 rounded-full bg-primary px-3.5 text-[12px] font-semibold text-primary-foreground"
+                  : "h-8 shrink-0 rounded-full border bg-card px-3.5 text-[12px] font-medium text-muted-foreground"
+              }
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {loading ? (
+          <p className="py-8 text-center text-[13px] text-muted-foreground">Loading…</p>
+        ) : shown.length === 0 ? (
+          <p className="rounded-xl border border-dashed py-8 text-center text-[13px] text-muted-foreground">
+            No {typeFilter === "all" ? "" : `${HR_TYPES.find((t) => t.value === typeFilter)?.label.toLowerCase()} `}records yet.
+          </p>
+        ) : (
+          <div className="space-y-2.5">
+            {shown.map((r) => (
+              <div key={r.id} className="flex flex-wrap items-center gap-3 rounded-xl border p-3.5">
+                <div className="min-w-[200px] flex-1">
+                  <p className="text-[13.5px] font-semibold">
+                    {HR_TYPES.find((t) => t.value === r.type)?.label} — {r.staff_name}
+                  </p>
+                  <p className="text-[12px] text-muted-foreground">
+                    {r.staff_id} · {hrSummary(r) || "—"} · {formatDate(r.created_at, "dd MMM yyyy")}
+                  </p>
+                </div>
+                <StatusBadge status={r.status} />
+                <div className="flex items-center gap-1.5">
+                  {r.status === "pending" && (
+                    <>
+                      <Button size="sm" variant="outline" className="h-8 text-[12px] text-success-foreground" onClick={() => setStatus(r.id, "approved")}>
+                        Approve
+                      </Button>
+                      <Button size="sm" variant="ghost" className="h-8 text-[12px] text-destructive" onClick={() => setStatus(r.id, "rejected")}>
+                        Reject
+                      </Button>
+                    </>
+                  )}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon-sm" aria-label="Record actions">
+                        <Ellipsis className="size-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      {r.status !== "active" && (
+                        <DropdownMenuItem onSelect={() => setStatus(r.id, "active")}>Mark Active</DropdownMenuItem>
+                      )}
+                      {r.status !== "closed" && (
+                        <DropdownMenuItem onSelect={() => setStatus(r.id, "closed")}>Mark Closed</DropdownMenuItem>
+                      )}
+                      <DropdownMenuItem className="text-destructive focus:text-destructive" onSelect={() => remove(r.id)}>
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </CardContent>
+      <HRRecordDialog open={createOpen} onOpenChange={setCreateOpen} staff={staff} onSaved={load} />
+    </Card>
+  );
+}
+
+function HRRecordDialog({
+  open,
+  onOpenChange,
+  staff,
+  onSaved,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  staff: { id: string; name: string }[];
+  onSaved: () => void;
+}) {
+  const [type, setType] = React.useState<HrRecord["type"]>("leave");
+  const [staffId, setStaffId] = React.useState("");
+  const [fields, setFields] = React.useState<Record<string, string>>({});
+  const [saving, setSaving] = React.useState(false);
+
+  const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+    setFields((f) => ({ ...f, [k]: e.target.value }));
+
+  const FIELD = ({ k, label, type: t = "text", placeholder }: { k: string; label: string; type?: string; placeholder?: string }) => (
+    <div className="space-y-1.5">
+      <Label className="text-[12.5px]">{label}</Label>
+      <Input type={t} value={fields[k] ?? ""} onChange={set(k)} placeholder={placeholder} className="h-9 bg-card" />
+    </div>
+  );
+
+  async function submit() {
+    if (!staffId) { toast.error("Select a staff member"); return; }
+    const member = staff.find((s) => s.id === staffId);
+    setSaving(true);
+    try {
+      const res = await fetch("/api/hr/records", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          type,
+          staffId,
+          staffName: member?.name ?? staffId,
+          payload: Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== "")),
+        }),
+      });
+      const d = await res.json();
+      if (!res.ok) throw new Error(d.error || "Save failed");
+      toast.success("Record saved");
+      setFields({});
+      setStaffId("");
+      onOpenChange(false);
+      onSaved();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[520px]">
+        <DialogHeader>
+          <DialogTitle>New HR Record</DialogTitle>
+          <DialogDescription>Welfare, leave, loans, sick notes, timecards, banking details and KYC.</DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-[12.5px]">Record Type</Label>
+              <Select value={type} onValueChange={(v) => { setType(v as HrRecord["type"]); setFields({}); }}>
+                <SelectTrigger className="h-9 bg-card"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {HR_TYPES.map((t) => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[12.5px]">Staff Member <span className="text-destructive">*</span></Label>
+              <Select value={staffId} onValueChange={setStaffId}>
+                <SelectTrigger className="h-9 bg-card"><SelectValue placeholder="Select" /></SelectTrigger>
+                <SelectContent>
+                  {staff.map((s) => <SelectItem key={s.id} value={s.id}>{s.name} ({s.id})</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {type === "welfare" && (
+            <>
+              <FIELD k="benefit" label="Benefit" placeholder="e.g. Medical aid, funeral cover" />
+              <FIELD k="amount" label="Amount (ZiG)" type="number" />
+              <FIELD k="notes" label="Notes" />
+            </>
+          )}
+          {type === "leave" && (
+            <>
+              <div className="space-y-1.5">
+                <Label className="text-[12.5px]">Leave Type</Label>
+                <Select value={fields.leaveType ?? "annual"} onValueChange={(v) => setFields((f) => ({ ...f, leaveType: v }))}>
+                  <SelectTrigger className="h-9 bg-card"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="annual">Annual</SelectItem>
+                    <SelectItem value="sick">Sick</SelectItem>
+                    <SelectItem value="maternity">Maternity / Paternity</SelectItem>
+                    <SelectItem value="unpaid">Unpaid</SelectItem>
+                    <SelectItem value="compassionate">Compassionate</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <FIELD k="from" label="From" type="date" />
+                <FIELD k="to" label="To" type="date" />
+                <FIELD k="days" label="Days" type="number" />
+              </div>
+              <FIELD k="reason" label="Reason" />
+            </>
+          )}
+          {type === "loan" && (
+            <>
+              <div className="grid grid-cols-3 gap-3">
+                <FIELD k="amount" label="Amount (ZiG)" type="number" />
+                <FIELD k="installments" label="Installments" type="number" />
+                <FIELD k="monthly" label="Monthly (ZiG)" type="number" />
+              </div>
+              <FIELD k="reason" label="Reason" />
+            </>
+          )}
+          {type === "sick_note" && (
+            <>
+              <div className="grid grid-cols-3 gap-3">
+                <FIELD k="from" label="From" type="date" />
+                <FIELD k="to" label="To" type="date" />
+                <FIELD k="days" label="Days" type="number" />
+              </div>
+              <FIELD k="clinic" label="Clinic / Doctor" />
+              <FIELD k="notes" label="Notes" />
+            </>
+          )}
+          {type === "timecard" && (
+            <div className="grid grid-cols-2 gap-3">
+              <FIELD k="date" label="Date" type="date" />
+              <FIELD k="hours" label="Hours" type="number" />
+              <FIELD k="clockIn" label="Clock In" type="time" />
+              <FIELD k="clockOut" label="Clock Out" type="time" />
+            </div>
+          )}
+          {type === "banking" && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <FIELD k="bank" label="Bank" placeholder="e.g. CBZ" />
+                <FIELD k="branch" label="Branch" />
+              </div>
+              <FIELD k="accountName" label="Account Name" />
+              <div className="grid grid-cols-2 gap-3">
+                <FIELD k="accountNo" label="Account Number" />
+                <FIELD k="ecocash" label="EcoCash Number" />
+              </div>
+            </>
+          )}
+          {type === "kyc" && (
+            <>
+              <div className="grid grid-cols-2 gap-3">
+                <FIELD k="idNumber" label="National ID" />
+                <FIELD k="passport" label="Passport No." />
+              </div>
+              <FIELD k="address" label="Residential Address" />
+              <div className="grid grid-cols-2 gap-3">
+                <FIELD k="nextOfKin" label="Next of Kin" />
+                <FIELD k="nextOfKinPhone" label="NOK Phone" />
+              </div>
+            </>
+          )}
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>Cancel</Button>
+          <Button onClick={submit} disabled={saving}>
+            {saving ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : null}
+            Save Record
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -621,7 +1390,16 @@ function SalesTab() {
         <CardHeader className="px-4 pt-4 sm:px-5">
           <CardTitle className="text-[14.5px] font-semibold">Sales by Region</CardTitle>
           <CardAction>
-            <ExportButton filename="sales-export" rows={salesData.length} label="Export" />
+            <ExportButton
+              filename="sales-export"
+              rows={salesData.length}
+              label="Export"
+              title="QuickRecon — Sales by Region"
+              data={{
+                columns: ["Region", "Lead Agent", "Policies", "Revenue (ZiG)", "Growth"],
+                rows: salesData.map((s) => [s.region, s.agent, s.policies, s.revenue, s.growth]),
+              }}
+            />
           </CardAction>
         </CardHeader>
         <CardContent className="px-4 pb-4 sm:px-5">
@@ -1084,6 +1862,11 @@ interface BizDocRow {
   id: string;
   kind: "invoice" | "quotation";
   client: string;
+  clientContact?: string;
+  clientAddress?: string;
+  clientEmail?: string;
+  clientPhone?: string;
+  poNumber?: string;
   amount: number;
   date: string;
   due?: string;
@@ -1091,15 +1874,19 @@ interface BizDocRow {
   status: "paid" | "pending" | "overdue" | "draft" | "accepted" | "declined";
   lines: DocLine[];
   currency: Currency;
+  discountPct?: number;
+  vatRate?: number;
+  amountPaid?: number;
+  notes?: string;
 }
 
 function InvoicesTab() {
   const [docs, setDocs] = React.useState<BizDocRow[]>([
-    { id: "INV-2026-001", kind: "invoice", client: "Econet Wireless", amount: 187500, date: "2026-09-01", due: "2026-09-15", status: "paid", lines: [{ description: "Reconciliation services — August 2026", qty: 1, unitPrice: 187500 }], currency: "ZWG" },
-    { id: "INV-2026-002", kind: "invoice", client: "ZINARA Harare", amount: 45200, date: "2026-09-03", due: "2026-09-17", status: "pending", lines: [{ description: "ZINARA reconciliation module", qty: 1, unitPrice: 45200 }], currency: "ZWG" },
-    { id: "INV-2026-003", kind: "invoice", client: "CBZ Bank", amount: 92000, date: "2026-09-05", due: "2026-09-19", status: "pending", lines: [{ description: "Agent network reconciliation", qty: 1, unitPrice: 92000 }], currency: "ZWG" },
-    { id: "INV-2026-004", kind: "invoice", client: "Mutare Motors", amount: 18500, date: "2026-09-07", due: "2026-09-21", status: "overdue", lines: [{ description: "Monthly reconciliation", qty: 1, unitPrice: 18500 }], currency: "ZWG" },
-    { id: "QT-2026-001", kind: "quotation", client: "Bulawayo Insurers", amount: 64000, date: "2026-09-10", validUntil: "2026-09-30", status: "pending", lines: [{ description: "Q4 reconciliation setup", qty: 1, unitPrice: 64000 }], currency: "ZWG" },
+    { id: "INV-2026-001", kind: "invoice", client: "Econet Wireless", clientContact: "T. Makoni", clientAddress: "Econet Park, Borrowdale, Harare", clientEmail: "accounts@econet.co.zw", clientPhone: "+263 77 222 0000", poNumber: "PO-ECO-4471", amount: 187500, date: "2026-09-01", due: "2026-09-15", status: "paid", vatRate: 0.155, amountPaid: 187500, notes: "Settlement via RTGS — reference INV-2026-001.", lines: [{ code: "SVC-REC", description: "Reconciliation services — August 2026", qty: 1, unit: "svc", unitPrice: 187500 }], currency: "ZWG" },
+    { id: "INV-2026-002", kind: "invoice", client: "ZINARA Harare", clientContact: "Procurement Dept", clientAddress: "Runhare House, Harare", clientEmail: "procurement@zinara.co.zw", amount: 45200, date: "2026-09-03", due: "2026-09-17", status: "pending", vatRate: 0.155, lines: [{ code: "MOD-ZIN", description: "ZINARA reconciliation module", qty: 1, unit: "svc", unitPrice: 45200 }], currency: "ZWG" },
+    { id: "INV-2026-003", kind: "invoice", client: "CBZ Bank", clientEmail: "vendor.payables@cbz.co.zw", amount: 92000, date: "2026-09-05", due: "2026-09-19", status: "pending", vatRate: 0.155, lines: [{ code: "SVC-AGT", description: "Agent network reconciliation", qty: 1, unit: "svc", unitPrice: 92000 }], currency: "ZWG" },
+    { id: "INV-2026-004", kind: "invoice", client: "Mutare Motors", clientPhone: "+263 20 64 321", amount: 18500, date: "2026-09-07", due: "2026-09-21", status: "overdue", vatRate: 0.155, notes: "Second reminder sent 2026-09-22.", lines: [{ description: "Monthly reconciliation", qty: 1, unit: "mo", unitPrice: 18500 }], currency: "ZWG" },
+    { id: "QT-2026-001", kind: "quotation", client: "Bulawayo Insurers", clientContact: "R. Nkomo", clientEmail: "rnkomo@byo-insurers.co.zw", amount: 64000, date: "2026-09-10", validUntil: "2026-09-30", status: "pending", vatRate: 0.155, discountPct: 5, notes: "Includes onboarding of 12 agents.", lines: [{ code: "SETUP-Q4", description: "Q4 reconciliation setup", qty: 1, unit: "svc", unitPrice: 64000 }], currency: "ZWG" },
   ]);
   const [createOpen, setCreateOpen] = React.useState<"invoice" | "quotation" | null>(null);
   const [docTab, setDocTab] = React.useState<"invoice" | "quotation">("invoice");
@@ -1117,13 +1904,22 @@ function InvoicesTab() {
       await downloadBusinessDoc({
         kind: d.kind,
         number: d.id,
+        status: d.status,
         client: d.client,
+        clientContact: d.clientContact,
+        clientAddress: d.clientAddress,
+        clientEmail: d.clientEmail,
+        clientPhone: d.clientPhone,
+        poNumber: d.poNumber,
         issueDate: d.date,
         dueDate: d.due,
         validUntil: d.validUntil,
         currency: d.currency,
         lines: d.lines,
-        vatRate: 0.155,
+        discountPct: d.discountPct,
+        vatRate: d.vatRate ?? 0.155,
+        amountPaid: d.amountPaid,
+        notes: d.notes,
       });
       toast.success(`${d.kind === "invoice" ? "Invoice" : "Quotation"} downloaded`, { description: `${d.id}.pdf` });
     } catch (err) {
@@ -1172,7 +1968,16 @@ function InvoicesTab() {
               ))}
             </div>
             <div className="flex items-center gap-2">
-              <ExportButton filename={`${docTab}-export`} rows={shown.length} label="Export" />
+              <ExportButton
+                filename={`${docTab}-export`}
+                rows={shown.length}
+                label="Export"
+                title={docTab === "invoice" ? "QuickRecon — Invoices" : "QuickRecon — Quotations"}
+                data={{
+                  columns: [docTab === "invoice" ? "Invoice #" : "Quote #", "Client", "Amount", "Currency", "Issued", docTab === "invoice" ? "Due" : "Valid Until", "Status"],
+                  rows: shown.map((d) => [d.id, d.client, d.amount, d.currency, d.date, d.due ?? d.validUntil ?? "", d.status]),
+                }}
+              />
               <Button className="h-9 gap-1.5 text-[13px]" onClick={() => setCreateOpen(docTab)}>
                 <FileText className="size-4" aria-hidden /> New {docTab === "invoice" ? "Invoice" : "Quotation"}
               </Button>
@@ -1261,9 +2066,24 @@ function BizDocDialog({
   onCreate: (d: BizDocRow) => void;
 }) {
   const [client, setClient] = React.useState("");
+  const [clientContact, setClientContact] = React.useState("");
+  const [clientEmail, setClientEmail] = React.useState("");
+  const [clientPhone, setClientPhone] = React.useState("");
+  const [clientAddress, setClientAddress] = React.useState("");
+  const [poNumber, setPoNumber] = React.useState("");
   const [currency, setCurrency] = React.useState<Currency>("ZWG");
-  const [lines, setLines] = React.useState<DocLine[]>([{ description: "", qty: 1, unitPrice: 0 }]);
-  const total = lines.reduce((s, l) => s + l.qty * l.unitPrice, 0);
+  const [discountPct, setDiscountPct] = React.useState("");
+  const [applyVat, setApplyVat] = React.useState(true);
+  const [notes, setNotes] = React.useState("");
+  const [lines, setLines] = React.useState<DocLine[]>([{ description: "", qty: 1, unit: "svc", unitPrice: 0 }]);
+
+  const lineNet = (l: DocLine) => l.qty * l.unitPrice * (1 - (l.discountPct ?? 0) / 100);
+  const subtotal = lines.reduce((s, l) => s + lineNet(l), 0);
+  const discount = (parseFloat(discountPct) || 0) / 100 * subtotal;
+  const vat = applyVat ? 0.155 * (subtotal - discount) : 0;
+  const total = subtotal - discount + vat;
+  const sym = currency === "ZWG" ? "ZiG" : "USD";
+  const fmt = (v: number) => `${sym} ${v.toLocaleString("en-ZW", { minimumFractionDigits: 2 })}`;
 
   function updateLine(i: number, field: keyof DocLine, v: string | number) {
     setLines((ls) => ls.map((l, j) => (j === i ? { ...l, [field]: v } : l)));
@@ -1277,7 +2097,12 @@ function BizDocDialog({
     onCreate({
       id,
       kind,
-      client,
+      client: client.trim(),
+      clientContact: clientContact.trim() || undefined,
+      clientAddress: clientAddress.trim() || undefined,
+      clientEmail: clientEmail.trim() || undefined,
+      clientPhone: clientPhone.trim() || undefined,
+      poNumber: poNumber.trim() || undefined,
       amount: total,
       date: new Date().toISOString().slice(0, 10),
       due: kind === "invoice" ? new Date(Date.now() + 14 * 86400e3).toISOString().slice(0, 10) : undefined,
@@ -1285,21 +2110,49 @@ function BizDocDialog({
       status: "draft",
       lines,
       currency,
+      discountPct: parseFloat(discountPct) || undefined,
+      vatRate: applyVat ? 0.155 : undefined,
+      notes: notes.trim() || undefined,
     });
   }
 
   return (
     <Dialog open onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[560px]">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[640px]">
         <DialogHeader>
           <DialogTitle>New {kind === "invoice" ? "Invoice" : "Quotation"}</DialogTitle>
-          <DialogDescription>Build line items — the PDF is generated on save.</DialogDescription>
+          <DialogDescription>
+            Full document — client details, line items with codes & discounts,
+            VAT, terms and signature blocks are included in the PDF.
+          </DialogDescription>
         </DialogHeader>
-        <div className="space-y-3">
+        <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label className="text-[12.5px]">Client</Label>
+              <Label className="text-[12.5px]">Client <span className="text-destructive">*</span></Label>
               <Input value={client} onChange={(e) => setClient(e.target.value)} placeholder="Client name" className="h-9 bg-card" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[12.5px]">Contact Person</Label>
+              <Input value={clientContact} onChange={(e) => setClientContact(e.target.value)} placeholder="Attn: name" className="h-9 bg-card" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[12.5px]">Client Email</Label>
+              <Input type="email" value={clientEmail} onChange={(e) => setClientEmail(e.target.value)} placeholder="accounts@client.co.zw" className="h-9 bg-card" />
+            </div>
+            <div className="space-y-1.5">
+              <Label className="text-[12.5px]">Client Phone</Label>
+              <Input value={clientPhone} onChange={(e) => setClientPhone(e.target.value)} placeholder="+263 …" className="h-9 bg-card" />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label className="text-[12.5px]">Client Address</Label>
+            <Input value={clientAddress} onChange={(e) => setClientAddress(e.target.value)} placeholder="Street, suburb, city" className="h-9 bg-card" />
+          </div>
+          <div className="grid grid-cols-3 gap-3">
+            <div className="space-y-1.5">
+              <Label className="text-[12.5px]">{kind === "invoice" ? "PO / Reference" : "Reference"}</Label>
+              <Input value={poNumber} onChange={(e) => setPoNumber(e.target.value)} placeholder="Optional" className="h-9 bg-card" />
             </div>
             <div className="space-y-1.5">
               <Label className="text-[12.5px]">Currency</Label>
@@ -1311,26 +2164,53 @@ function BizDocDialog({
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-1.5">
+              <Label className="text-[12.5px]">Discount %</Label>
+              <Input type="number" min={0} max={100} step="0.5" value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} placeholder="0" className="h-9 bg-card" />
+            </div>
           </div>
+
           <div className="space-y-2">
             <Label className="text-[12.5px]">Line Items</Label>
+            <div className="grid grid-cols-[70px_1fr_52px_56px_88px_56px_28px] gap-1.5 text-[10.5px] font-semibold text-muted-foreground uppercase">
+              <span>Code</span><span>Description</span><span>Qty</span><span>Unit</span><span>Price</span><span>Disc%</span><span></span>
+            </div>
             {lines.map((l, i) => (
-              <div key={i} className="grid grid-cols-[1fr_60px_100px_32px] items-center gap-2">
-                <Input value={l.description} onChange={(e) => updateLine(i, "description", e.target.value)} placeholder="Description" className="h-8.5 bg-card text-[12.5px]" />
-                <Input type="number" min={1} value={l.qty} onChange={(e) => updateLine(i, "qty", parseInt(e.target.value) || 1)} className="h-8.5 bg-card text-[12.5px]" />
-                <Input type="number" min={0} step="0.01" value={l.unitPrice} onChange={(e) => updateLine(i, "unitPrice", parseFloat(e.target.value) || 0)} placeholder="Price" className="h-8.5 bg-card text-[12.5px]" />
+              <div key={i} className="grid grid-cols-[70px_1fr_52px_56px_88px_56px_28px] items-center gap-1.5">
+                <Input value={l.code ?? ""} onChange={(e) => updateLine(i, "code", e.target.value)} placeholder="SKU" className="h-8.5 bg-card text-[12px]" />
+                <Input value={l.description} onChange={(e) => updateLine(i, "description", e.target.value)} placeholder="Description" className="h-8.5 bg-card text-[12px]" />
+                <Input type="number" min={1} value={l.qty} onChange={(e) => updateLine(i, "qty", parseInt(e.target.value) || 1)} className="h-8.5 bg-card text-[12px]" />
+                <Input value={l.unit ?? ""} onChange={(e) => updateLine(i, "unit", e.target.value)} placeholder="svc" className="h-8.5 bg-card text-[12px]" />
+                <Input type="number" min={0} step="0.01" value={l.unitPrice} onChange={(e) => updateLine(i, "unitPrice", parseFloat(e.target.value) || 0)} placeholder="0.00" className="h-8.5 bg-card text-[12px]" />
+                <Input type="number" min={0} max={100} value={l.discountPct ?? ""} onChange={(e) => updateLine(i, "discountPct", parseFloat(e.target.value) || 0)} placeholder="0" className="h-8.5 bg-card text-[12px]" />
                 <Button variant="ghost" size="icon-sm" onClick={() => setLines((ls) => ls.filter((_, j) => j !== i))} disabled={lines.length === 1} aria-label="Remove line">
                   ×
                 </Button>
               </div>
             ))}
-            <Button variant="outline" size="sm" className="h-8 gap-1 text-[12px]" onClick={() => setLines((ls) => [...ls, { description: "", qty: 1, unitPrice: 0 }])}>
+            <Button variant="outline" size="sm" className="h-8 gap-1 text-[12px]" onClick={() => setLines((ls) => [...ls, { description: "", qty: 1, unit: "svc", unitPrice: 0 }])}>
               + Add line
             </Button>
           </div>
-          <div className="flex justify-between border-t pt-2 text-[13.5px] font-bold">
-            <span>Total</span>
-            <span className="tnum">{currency === "ZWG" ? "ZiG" : "USD"} {total.toLocaleString("en-ZW", { minimumFractionDigits: 2 })}</span>
+
+          <div className="flex items-center justify-between rounded-lg border p-3">
+            <div>
+              <p className="text-[12.5px] font-medium">Apply VAT (15.5%)</p>
+              <p className="text-[11px] text-muted-foreground">ZIMRA rate — added after discount.</p>
+            </div>
+            <Switch checked={applyVat} onCheckedChange={setApplyVat} aria-label="Apply VAT" />
+          </div>
+
+          <div className="space-y-1.5">
+            <Label className="text-[12.5px]">Notes</Label>
+            <Textarea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. Settlement via RTGS — quote the invoice number." className="bg-card text-[12.5px]" />
+          </div>
+
+          <div className="space-y-1 rounded-lg bg-muted/60 p-3 text-[12.5px]">
+            <div className="flex justify-between"><span className="text-muted-foreground">Subtotal</span><span className="tnum">{fmt(subtotal)}</span></div>
+            {discount > 0 && <div className="flex justify-between text-destructive"><span>Discount ({discountPct}%)</span><span className="tnum">-{fmt(discount)}</span></div>}
+            {applyVat && <div className="flex justify-between"><span className="text-muted-foreground">VAT (15.5%)</span><span className="tnum">{fmt(vat)}</span></div>}
+            <div className="flex justify-between border-t pt-1.5 text-[14px] font-bold"><span>Total</span><span className="tnum">{fmt(total)}</span></div>
           </div>
         </div>
         <DialogFooter>

@@ -465,6 +465,161 @@ export async function documentToXLSX(doc: AgentReconDocument): Promise<Buffer> {
   return documentsToWorkbook([doc]);
 }
 
+/** Recursively locate the vfs font dictionary (keys end in .ttf) inside
+ * whatever interop shape the bundler gives vfs_fonts. */
+function findVfs(obj: unknown, depth = 0): Record<string, string> | null {
+  if (!obj || typeof obj !== "object" || depth > 4) return null;
+  const rec = obj as Record<string, unknown>;
+  if (Object.keys(rec).some((k) => k.endsWith(".ttf"))) {
+    return rec as Record<string, string>;
+  }
+  for (const v of Object.values(rec)) {
+    const found = findVfs(v, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+interface PdfMakeLike {
+  vfs: Record<string, string>;
+  createPdf: (def: unknown) => { getBuffer: (cb: (b: Uint8Array) => void) => void };
+}
+
+/**
+ * Server-side PDF of the consolidated revenue report — one section per
+ * currency document (USD + ZiG), matching the workbook Summary layout.
+ * Used for email attachments.
+ */
+export async function documentsToPDF(docs: AgentReconDocument[]): Promise<Buffer> {
+  if (docs.length === 0) throw new Error("No documents to render");
+  const [pdfMakeMod, fontsMod] = await Promise.all([
+    import("pdfmake/build/pdfmake"),
+    import("pdfmake/build/vfs_fonts"),
+  ]);
+  const pdfMake = ((pdfMakeMod as { default?: unknown }).default ?? pdfMakeMod) as PdfMakeLike;
+  const vfs = findVfs(fontsMod);
+  if (!vfs) throw new Error("pdfmake fonts failed to load (empty vfs)");
+  pdfMake.vfs = vfs;
+
+  const primary = docs[0];
+  const statusLabel = (d: AgentReconDocument) =>
+    d.status === "success" ? "RECONCILED" : d.status === "warning" ? "VARIANCE — REVIEW" : "ATTENTION REQUIRED";
+  const statusColor = (d: AgentReconDocument) =>
+    d.status === "success" ? "#16a34a" : d.status === "warning" ? "#d97706" : "#dc2626";
+
+  const content: object[] = [
+    {
+      columns: [
+        {
+          stack: [
+            { text: "QuickRecon App", fontSize: 16, bold: true, color: "#0f2b4c" },
+            { text: "Agents. Reconciliation. Growth.", fontSize: 8, color: "#6b7280" },
+          ],
+        },
+        {
+          stack: [
+            { text: "CONSOLIDATED REVENUE REPORT", fontSize: 11, bold: true, alignment: "right", color: "#2563eb" },
+            { text: `${primary.module} · Period ${primary.period}`, fontSize: 8, alignment: "right", color: "#6b7280", margin: [0, 2, 0, 0] },
+          ],
+        },
+      ],
+    },
+    { canvas: [{ type: "line", x1: 0, y1: 0, x2: 770, y2: 0, lineColor: "#2563eb", lineWidth: 2 }], margin: [0, 10, 0, 10] },
+    { text: `Agent: ${primary.agentName} (${primary.agentId})`, fontSize: 10, bold: true, margin: [0, 0, 0, 8] },
+  ];
+
+  docs.forEach((doc, i) => {
+    const bankCols = Object.keys(doc.bankDeposits);
+    const header = [
+      "Opening Var", "Insurance", "Premium Cover", "Commission", "Net Insurance",
+      "ZINARA", "PDS", "Total Expected", ...bankCols, "Alterations", "Closing Var",
+    ];
+    const values = [
+      doc.openingVariance, doc.insurance, doc.premiumCover, doc.commission,
+      doc.netInsurance, doc.zinara, doc.pds, doc.totalExpected,
+      ...bankCols.map((b) => doc.bankDeposits[b]),
+      doc.adjustments, doc.closingVariance,
+    ].map((v) => (v === 0 ? "" : v.toLocaleString("en-ZW", { minimumFractionDigits: 2 })));
+
+    content.push(
+      {
+        columns: [
+          { text: doc.currency === "USD" ? "USD" : "ZiG", fontSize: 13, bold: true, color: "#0f2b4c" },
+          { text: statusLabel(doc), fontSize: 9, bold: true, color: statusColor(doc), alignment: "right" },
+        ],
+        margin: [0, i === 0 ? 0 : 14, 0, 4],
+      },
+      {
+        table: {
+          headerRows: 1,
+          widths: header.map(() => "auto"),
+          body: [
+            header.map((h) => ({ text: h, fontSize: 6.5, bold: true, color: "#ffffff", fillColor: "#0f2b4c" })),
+            values.map((v) => ({ text: v, fontSize: 7, alignment: "right", color: "#111827" })),
+          ],
+        },
+        layout: { hLineWidth: () => 0.5, vLineWidth: () => 0.5, hLineColor: "#e5e7eb", vLineColor: "#e5e7eb" },
+      },
+      { text: doc.summaryText, fontSize: 8, color: "#6b7280", margin: [0, 4, 0, 0] },
+    );
+
+    if (doc.transactions.length > 0) {
+      content.push(
+        { text: "Transaction Detail", fontSize: 9, bold: true, color: "#0f2b4c", margin: [0, 10, 0, 3] },
+        {
+          table: {
+            headerRows: 1,
+            widths: ["auto", "*", "auto", "auto", "auto", "*"],
+            body: [
+              ["Date", "Agent", "Amount", "USD", "Bank/Account", "Narration"].map((h) => ({
+                text: h, fontSize: 7, bold: true, color: "#374151", fillColor: "#f3f4f6",
+              })),
+              ...doc.transactions.map((t) => [
+                { text: t.date ?? "", fontSize: 7 },
+                { text: t.agentName, fontSize: 7 },
+                { text: t.amount.toLocaleString(), fontSize: 7, alignment: "right" as const },
+                { text: t.usdAmount != null ? t.usdAmount.toLocaleString() : "", fontSize: 7, alignment: "right" as const },
+                { text: t.bankAccount ?? "", fontSize: 7 },
+                { text: t.narration ?? "", fontSize: 7 },
+              ]),
+            ],
+          },
+          layout: { hLineWidth: () => 0.5, vLineWidth: () => 0, hLineColor: "#e5e7eb" },
+        },
+      );
+    }
+  });
+
+  content.push({
+    text: `Confidential — intended for ${primary.agentName} only. Generated ${new Date().toLocaleString("en-ZW")}.`,
+    fontSize: 7,
+    color: "#9ca3af",
+    margin: [0, 16, 0, 0],
+  });
+
+  const docDef = {
+    pageSize: "A4",
+    pageOrientation: "landscape",
+    pageMargins: [28, 36, 28, 40],
+    footer: (page: number, pages: number) => ({
+      text: `QuickRecon App — consolidated revenue report · Page ${page} of ${pages}`,
+      alignment: "center",
+      fontSize: 7,
+      color: "#6b7280",
+      margin: [0, 10, 0, 0],
+    }),
+    content,
+  };
+
+  return new Promise<Buffer>((resolve, reject) => {
+    try {
+      pdfMake.createPdf(docDef).getBuffer((buf: Uint8Array) => resolve(Buffer.from(buf)));
+    } catch (e) {
+      reject(e);
+    }
+  });
+}
+
 /**
  * Produces a plain-text summary suitable for SMS/WhatsApp or email body.
  */

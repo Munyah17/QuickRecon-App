@@ -61,7 +61,7 @@ export async function getAgents() {
       .from("agents")
       .select("*, agent_modules(module, enabled), booths:booths(count), assistants:assistants(count)")
       .order("full_name", { ascending: true });
-    if (data?.length) return data.map(mapAgent);
+    return (data ?? []).map(mapAgent);
   }
   return MOCK_AGENTS;
 }
@@ -78,19 +78,18 @@ export async function getBoothById(id: string) {
       .select("*, booth_modules(module), assistants:assistants(count)")
       .eq("id", id)
       .maybeSingle();
-    if (data) {
-      return {
-        id: data.id,
-        agentId: data.agent_id,
-        name: data.name,
-        location: data.location ?? "",
-        province: data.province ?? "",
-        status: data.status,
-        modules: (data.booth_modules ?? []).map((m: any) => m.module),
-        assistantsCount: data.assistants?.[0]?.count ?? 0,
-        createdAt: data.created_at,
-      };
-    }
+    if (!data) return null;
+    return {
+      id: data.id,
+      agentId: data.agent_id,
+      name: data.name,
+      location: data.location ?? "",
+      province: data.province ?? "",
+      status: data.status,
+      modules: (data.booth_modules ?? []).map((m: any) => m.module),
+      assistantsCount: data.assistants?.[0]?.count ?? 0,
+      createdAt: data.created_at,
+    };
   }
   return MOCK_BOOTHS.find((b) => b.id === id) ?? null;
 }
@@ -103,19 +102,17 @@ export async function getBooths(agentId?: string) {
       .select("*, booth_modules(module), assistants:assistants(count)");
     if (agentId) q = q.eq("agent_id", agentId);
     const { data } = await q.order("name");
-    if (data?.length) {
-      return data.map((b: any) => ({
-        id: b.id,
-        agentId: b.agent_id,
-        name: b.name,
-        location: b.location ?? "",
-        province: b.province ?? "",
-        status: b.status,
-        modules: (b.booth_modules ?? []).map((m: any) => m.module),
-        assistantsCount: b.assistants?.[0]?.count ?? 0,
-        createdAt: b.created_at,
-      }));
-    }
+    return (data ?? []).map((b: any) => ({
+      id: b.id,
+      agentId: b.agent_id,
+      name: b.name,
+      location: b.location ?? "",
+      province: b.province ?? "",
+      status: b.status,
+      modules: (b.booth_modules ?? []).map((m: any) => m.module),
+      assistantsCount: b.assistants?.[0]?.count ?? 0,
+      createdAt: b.created_at,
+    }));
   }
   return agentId
     ? MOCK_BOOTHS.filter((b) => b.agentId === agentId)
@@ -128,20 +125,18 @@ export async function getAssistants(agentId?: string) {
     let q = supabase.from("assistants").select("*, booths(name)");
     if (agentId) q = q.eq("agent_id", agentId);
     const { data } = await q.order("full_name");
-    if (data?.length) {
-      return data.map((a: any) => ({
-        id: a.id,
-        agentId: a.agent_id,
-        boothId: a.booth_id ?? undefined,
-        boothName: a.booths?.name ?? undefined,
-        fullName: a.full_name,
-        email: a.email ?? "",
-        phone: a.phone ?? "",
-        status: a.status,
-        requestedPermissions: a.requested_permissions ?? [],
-        createdAt: a.created_at,
-      }));
-    }
+    return (data ?? []).map((a: any) => ({
+      id: a.id,
+      agentId: a.agent_id,
+      boothId: a.booth_id ?? undefined,
+      boothName: a.booths?.name ?? undefined,
+      fullName: a.full_name,
+      email: a.email ?? "",
+      phone: a.phone ?? "",
+      status: a.status,
+      requestedPermissions: a.requested_permissions ?? [],
+      createdAt: a.created_at,
+    }));
   }
   return agentId
     ? MOCK_ASSISTANTS.filter((a) => a.agentId === agentId)
@@ -180,7 +175,7 @@ export async function getReconciliations(opts: {
     if (opts.module && opts.module !== "all") q = q.eq("module", opts.module);
     if (opts.period) q = q.eq("period", opts.period);
     const { data } = await q.order("period", { ascending: false });
-    if (data?.length) return data.map(mapRecon);
+    return (data ?? []).map(mapRecon);
   }
   let rows = MOCK_RECONCILIATIONS;
   if (opts.agentId) rows = rows.filter((r) => r.agentId === opts.agentId);
@@ -198,7 +193,7 @@ export async function getReconciliationById(id: string) {
       .select("*, agents(full_name)")
       .eq("id", id)
       .maybeSingle();
-    if (data) return mapRecon(data);
+    return data ? mapRecon(data) : null;
   }
   return MOCK_RECONCILIATIONS.find((r) => r.id === id) ?? null;
 }
@@ -210,16 +205,14 @@ export async function getReconciliationLines(id: string) {
       .from("reconciliation_lines")
       .select("*")
       .eq("reconciliation_id", id);
-    if (data?.length) {
-      return data.map((l: any) => ({
-        item: l.item,
-        category: l.category,
-        expected: Number(l.expected),
-        actual: Number(l.actual),
-        variance: Number(l.variance),
-        status: l.status,
-      }));
-    }
+    return (data ?? []).map((l: any) => ({
+      item: l.item,
+      category: l.category,
+      expected: Number(l.expected),
+      actual: Number(l.actual),
+      variance: Number(l.variance),
+      status: l.status,
+    }));
   }
   return MOCK_RECON_LINES[id] ?? MOCK_RECON_LINES["RCN-2608-001"];
 }
@@ -267,6 +260,29 @@ export async function getReconciliationDocuments(batchId?: string) {
 }
 
 export async function getExceptions(batchId?: string) {
+  const supabase = await db();
+  if (supabase) {
+    let q = supabase
+      .from("reconciliation_exceptions")
+      .select("*, agents(full_name)")
+      .order("created_at", { ascending: false });
+    if (batchId) q = q.eq("import_batch_id", batchId);
+    const { data } = await q;
+    return (data ?? []).map((e: any) => ({
+      id: e.id,
+      batchId: e.import_batch_id ?? e.batch_id ?? "",
+      type: e.type,
+      severity: e.severity,
+      module: e.module,
+      agentId: e.agent_id ?? undefined,
+      agentName: e.agents?.full_name ?? undefined,
+      sourceRef: e.source_ref ?? undefined,
+      description: e.description,
+      status: e.status,
+      resolution: e.resolution ?? undefined,
+      createdAt: e.created_at,
+    }));
+  }
   return batchId
     ? MOCK_EXCEPTIONS.filter((e) => e.batchId === batchId)
     : MOCK_EXCEPTIONS;
@@ -279,21 +295,19 @@ export async function getImportBatches() {
       .from("import_batches")
       .select("*")
       .order("created_at", { ascending: false });
-    if (data?.length) {
-      return data.map((b: any) => ({
-        id: b.id,
-        fileName: b.file_name,
-        fileSizeBytes: Number(b.file_size ?? 0),
-        module: b.module,
-        period: b.period,
-        status: b.status,
-        uploadedAt: b.created_at,
-        uploadedBy: b.uploaded_by,
-        worksheets: [],
-        rowCount: 0,
-        checksum: b.checksum ?? "",
-      }));
-    }
+    return (data ?? []).map((b: any) => ({
+      id: b.id,
+      fileName: b.file_name,
+      fileSizeBytes: Number(b.file_size ?? 0),
+      module: b.module,
+      period: b.period,
+      status: b.status,
+      uploadedAt: b.created_at,
+      uploadedBy: b.uploaded_by,
+      worksheets: [],
+      rowCount: 0,
+      checksum: b.checksum ?? "",
+    }));
   }
   return MOCK_IMPORTS;
 }
@@ -302,32 +316,66 @@ export async function getImportBatch(id: string) {
   const supabase = await db();
   if (supabase) {
     const { data } = await supabase.from("import_batches").select("*").eq("id", id).maybeSingle();
-    if (data) {
-      return {
-        id: data.id,
-        fileName: data.file_name,
-        fileSizeBytes: Number(data.file_size ?? 0),
-        module: data.module,
-        period: data.period,
-        status: data.status,
-        uploadedAt: data.created_at,
-        uploadedBy: data.uploaded_by,
-        worksheets: [],
-        rowCount: 0,
-        checksum: data.checksum ?? "",
-      };
-    }
+    if (!data) return null;
+    return {
+      id: data.id,
+      fileName: data.file_name,
+      fileSizeBytes: Number(data.file_size ?? 0),
+      module: data.module,
+      period: data.period,
+      status: data.status,
+      uploadedAt: data.created_at,
+      uploadedBy: data.uploaded_by,
+      worksheets: [],
+      rowCount: 0,
+      checksum: data.checksum ?? "",
+    };
   }
   return MOCK_IMPORTS.find((b) => b.id === id) ?? null;
 }
 
 export async function getReports(agentId?: string) {
+  const supabase = await db();
+  if (supabase) {
+    let q = supabase.from("reports").select("*").order("created_at", { ascending: false });
+    if (agentId) q = q.eq("agent_id", agentId);
+    const { data } = await q;
+    return (data ?? []).map((r: any) => ({
+      id: String(r.id),
+      agentId: r.agent_id,
+      reconId: r.reconciliation_id ?? undefined,
+      type: r.type,
+      title: r.title,
+      module: r.module,
+      period: r.period,
+      format: (r.storage_path?.split(".").pop() === "xlsx" ? "xlsx" : "pdf") as "pdf" | "xlsx",
+      sizeLabel: "—",
+      status: "available" as const,
+      submittedAt: r.created_at,
+    }));
+  }
   return agentId
     ? MOCK_REPORTS.filter((r) => r.agentId === agentId)
     : MOCK_REPORTS;
 }
 
 export async function getDistributions() {
+  const supabase = await db();
+  if (supabase) {
+    const { data } = await supabase
+      .from("distribution_jobs")
+      .select("*, distribution_recipients(count)")
+      .order("created_at", { ascending: false });
+    return (data ?? []).map((d: any) => ({
+      id: d.id,
+      period: d.period,
+      module: d.module,
+      recipientsCount: d.distribution_recipients?.[0]?.count ?? 0,
+      channels: d.channels ?? [],
+      status: d.status,
+      createdAt: d.created_at,
+    }));
+  }
   return MOCK_DISTRIBUTIONS;
 }
 
@@ -337,20 +385,18 @@ export async function getSubmissions(agentId?: string) {
     let q = supabase.from("submissions").select("*, agents(full_name)");
     if (agentId) q = q.eq("agent_id", agentId);
     const { data } = await q.order("created_at", { ascending: false });
-    if (data?.length) {
-      return data.map((s: any) => ({
-        id: s.id,
-        agentId: s.agent_id,
-        agentName: s.agents?.full_name ?? s.agent_id,
-        module: s.module,
-        type: s.type,
-        title: s.title,
-        description: s.description ?? undefined,
-        status: s.status,
-        submittedAt: s.created_at,
-        reviewerComment: s.reviewer_comment ?? undefined,
-      }));
-    }
+    return (data ?? []).map((s: any) => ({
+      id: s.id,
+      agentId: s.agent_id,
+      agentName: s.agents?.full_name ?? s.agent_id,
+      module: s.module,
+      type: s.type,
+      title: s.title,
+      description: s.description ?? undefined,
+      status: s.status,
+      submittedAt: s.created_at,
+      reviewerComment: s.reviewer_comment ?? undefined,
+    }));
   }
   return agentId
     ? MOCK_SUBMISSIONS.filter((s) => s.agentId === agentId)
@@ -363,18 +409,16 @@ export async function getTickets(agentId?: string) {
     let q = supabase.from("support_tickets").select("*, agents(full_name)");
     if (agentId) q = q.eq("agent_id", agentId);
     const { data } = await q.order("created_at", { ascending: false });
-    if (data?.length) {
-      return data.map((t: any) => ({
-        id: t.id,
-        agentId: t.agent_id ?? "",
-        agentName: t.agents?.full_name ?? "",
-        module: t.module ?? "general",
-        category: t.category,
-        subject: t.subject,
-        status: t.status,
-        createdAt: t.created_at,
-      }));
-    }
+    return (data ?? []).map((t: any) => ({
+      id: t.id,
+      agentId: t.agent_id ?? "",
+      agentName: t.agents?.full_name ?? "",
+      module: t.module ?? "general",
+      category: t.category,
+      subject: t.subject,
+      status: t.status,
+      createdAt: t.created_at,
+    }));
   }
   return agentId
     ? MOCK_TICKETS.filter((t) => t.agentId === agentId)
@@ -383,6 +427,10 @@ export async function getTickets(agentId?: string) {
 
 export async function getTransactions(agentId?: string) {
   void agentId;
+  // No transactions table exists yet — return empty in real mode rather
+  // than fabricated rows. Mocks remain for preview mode only.
+  const supabase = await db();
+  if (supabase) return [] as typeof MOCK_TRANSACTIONS;
   return MOCK_TRANSACTIONS;
 }
 
@@ -390,9 +438,7 @@ export async function getIdentityAliases() {
   const supabase = await db();
   if (supabase) {
     const { data } = await supabase.from("agent_external_ids").select("*");
-    if (data?.length) {
-      return data.map((r: any) => ({ agentId: r.agent_id, scheme: r.scheme, value: r.value }));
-    }
+    return (data ?? []).map((r: any) => ({ agentId: r.agent_id, scheme: r.scheme, value: r.value }));
   }
   return MOCK_EXTERNAL_IDS;
 }
@@ -401,22 +447,37 @@ export async function getTeamUsers() {
   const supabase = await db();
   if (supabase) {
     const { data } = await supabase.from("profiles").select("*").order("full_name");
-    if (data?.length) {
-      return data.map((u: any) => ({
-        id: u.id,
-        fullName: u.full_name,
-        email: u.email,
-        role: u.role,
-        status: u.status,
-        agentId: u.agent_id ?? undefined,
-        lastLoginAt: u.last_login_at ?? undefined,
-      }));
-    }
+    return (data ?? []).map((u: any) => ({
+      id: u.id,
+      fullName: u.full_name,
+      email: u.email,
+      role: u.role,
+      status: u.status,
+      agentId: u.agent_id ?? undefined,
+      lastLoginAt: u.last_login_at ?? undefined,
+    }));
   }
   return MOCK_TEAM_USERS;
 }
 
 export async function getPendingApprovals() {
+  const supabase = await db();
+  if (supabase) {
+    const { data } = await supabase
+      .from("assistants")
+      .select("*, agents(full_name), booths(name)")
+      .eq("status", "pending")
+      .order("created_at", { ascending: false });
+    return (data ?? []).map((a: any) => ({
+      id: a.id,
+      kind: "assistant" as const,
+      name: a.full_name,
+      email: a.email ?? undefined,
+      detail: `Assistant — ${a.booths?.name ?? "unassigned booth"}`,
+      requestedBy: a.agents?.full_name ?? a.agent_id,
+      requestedAt: a.created_at,
+    }));
+  }
   return MOCK_PENDING_APPROVALS;
 }
 
@@ -424,7 +485,30 @@ export async function getPendingApprovals() {
 const FIELD_ACTIVITY_KINDS = new Set(["report", "submission", "assistant"]);
 const FIELD_NOTIFICATION_KINDS = new Set(["report", "assistant", "profile", "submission"]);
 
+/** Filter a notification list down to the kinds field users may see. */
+export function filterFieldNotifications<T extends { kind: string }>(rows: T[]): T[] {
+  return rows.filter((n) => FIELD_NOTIFICATION_KINDS.has(n.kind));
+}
+
 export async function getNotifications(fieldUser = false) {
+  const supabase = await db();
+  if (supabase) {
+    // RLS already scopes rows to the signed-in user.
+    const { data } = await supabase
+      .from("notifications")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(50);
+    const rows = (data ?? []).map((n: any) => ({
+      id: String(n.id),
+      title: n.title,
+      body: n.body ?? "",
+      read: n.read,
+      at: n.created_at,
+      kind: n.kind,
+    }));
+    return fieldUser ? rows.filter((n) => FIELD_NOTIFICATION_KINDS.has(n.kind)) : rows;
+  }
   if (fieldUser) {
     return MOCK_NOTIFICATIONS.filter((n) => FIELD_NOTIFICATION_KINDS.has(n.kind));
   }
@@ -432,24 +516,90 @@ export async function getNotifications(fieldUser = false) {
 }
 
 export async function getActivities(fieldUser = false) {
+  const supabase = await db();
+  if (supabase) {
+    const { data } = await supabase
+      .from("audit_logs")
+      .select("*")
+      .order("created_at", { ascending: false })
+      .limit(30);
+    const rows = (data ?? []).map((a: any) => ({
+      id: String(a.id),
+      kind: a.entity ?? "profile",
+      title: a.action,
+      description: a.entity_id ?? "",
+      at: a.created_at,
+      module: a.module ?? undefined,
+    }));
+    return fieldUser ? rows.filter((a) => FIELD_ACTIVITY_KINDS.has(a.kind)) : rows;
+  }
   if (fieldUser) {
     return MOCK_ACTIVITIES.filter((a) => FIELD_ACTIVITY_KINDS.has(a.kind));
   }
   return MOCK_ACTIVITIES;
 }
 
-/** Super Admin dashboard rollup numbers. */
+/** Task Management — RLS scopes rows to company roles and the assignee. */
+export async function getTasks() {
+  const supabase = await db();
+  if (!supabase) return [] as import("@/types").Task[];
+  const { data } = await supabase
+    .from("tasks")
+    .select("*")
+    .order("created_at", { ascending: false });
+  return (data ?? []).map((t: any) => ({
+    id: t.id,
+    title: t.title,
+    description: t.description ?? undefined,
+    priority: t.priority,
+    status: t.status,
+    dueDate: t.due_date ?? undefined,
+    assigneeType: t.assignee_type,
+    assigneeId: t.assignee_id,
+    assigneeName: t.assignee_name,
+    assigneePhone: t.assignee_phone ?? undefined,
+    assigneeEmail: t.assignee_email ?? undefined,
+    shared: t.shared,
+    milestones: Array.isArray(t.milestones) ? t.milestones : [],
+    createdBy: t.created_by ?? undefined,
+    createdAt: t.created_at,
+    completedAt: t.completed_at ?? undefined,
+  }));
+}
+
+/** Super Admin dashboard rollup numbers — computed from live tables. */
 export async function getAdminDashboardSummary() {
   const agents = await getAgents();
-  const total = 248;
-  const active = 236;
+  const supabase = await db();
+
+  const total = agents.length;
+  const active = agents.filter((a) => a.status === "active").length;
+
+  let reconciledAgents = 0;
+  let pendingIssues = 0;
+  if (supabase) {
+    const [{ data: recons }, { count: openExc }] = await Promise.all([
+      supabase.from("reconciliations").select("agent_id, status"),
+      supabase
+        .from("reconciliation_exceptions")
+        .select("id", { count: "exact", head: true })
+        .eq("status", "open"),
+    ]);
+    reconciledAgents = new Set(
+      (recons ?? [])
+        .filter((r: any) => r.status === "reconciled" || r.status === "published")
+        .map((r: any) => r.agent_id)
+    ).size;
+    pendingIssues = openExc ?? 0;
+  }
+
   return {
     totalAgents: total,
     activeAgents: active,
-    reconciledAgents: 222,
-    pendingIssues: 14,
-    activePct: Math.round((active / total) * 100),
-    reconciledPct: 90,
+    reconciledAgents,
+    pendingIssues,
+    activePct: total ? Math.round((active / total) * 100) : 0,
+    reconciledPct: total ? Math.round((reconciledAgents / total) * 100) : 0,
     agentRows: agents,
   };
 }

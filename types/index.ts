@@ -400,3 +400,33 @@ export interface PendingApproval {
   requestedBy?: string;
   requestedAt: string;
 }
+
+export interface TaskMilestone {
+  id: string;
+  title: string;
+  done: boolean;
+  doneAt?: string;
+}
+
+export type TaskStatus = "pending" | "in_progress" | "completed";
+export type TaskPriority = "low" | "normal" | "high" | "urgent";
+
+export interface Task {
+  id: string;
+  title: string;
+  description?: string;
+  priority: TaskPriority;
+  status: TaskStatus;
+  dueDate?: string;
+  assigneeType: "agent" | "staff";
+  assigneeId: string;
+  assigneeName: string;
+  assigneePhone?: string;
+  assigneeEmail?: string;
+  /** Shared tasks are visible only to super_admin/admin and the assignee. */
+  shared: boolean;
+  milestones: TaskMilestone[];
+  createdBy?: string;
+  createdAt: string;
+  completedAt?: string;
+}

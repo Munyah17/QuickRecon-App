@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import {
   FileText,
   CloudUpload,
@@ -15,12 +16,20 @@ import {
   UserPlus,
   Send,
   ShieldCheck,
+  ListTodo,
+  Trash2,
+  Share2,
+  CircleCheck,
+  LoaderCircle,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Progress } from "@/components/ui/progress";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
@@ -40,7 +49,7 @@ import {
 import { StatusBadge } from "@/components/shared/status-badge";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { formatDate } from "@/lib/format";
-import type { Submission, SubmissionType } from "@/types";
+import type { Submission, SubmissionType, Task, TaskMilestone } from "@/types";
 
 const TYPE_META: Record<SubmissionType, { label: string; icon: React.ComponentType<{ className?: string }>; tone: string }> = {
   monthly_field_report: { label: "Report", icon: FileText, tone: "bg-primary-soft text-primary" },
@@ -81,13 +90,22 @@ function StatTile({ label, value }: { label: string; value: number }) {
 
 export function SubmissionsView({
   submissions,
+  tasks,
+  agents,
+  staff,
   isCompanyUser,
+  isAdmin,
   startOpen = false,
 }: {
   submissions: Submission[];
+  tasks: Task[];
+  agents: { id: string; fullName: string }[];
+  staff: { id: string; fullName: string }[];
   isCompanyUser: boolean;
+  isAdmin: boolean;
   startOpen?: boolean;
 }) {
+  const [view, setView] = React.useState<"tasks" | "submissions">("tasks");
   const [tab, setTab] = React.useState<(typeof TABS)[number]>("all");
   const [open, setOpen] = React.useState(startOpen);
   const [assignOpen, setAssignOpen] = React.useState(false);
@@ -110,6 +128,32 @@ export function SubmissionsView({
 
   return (
     <div className="space-y-4">
+      <div className="flex items-center gap-1.5">
+        {(["tasks", "submissions"] as const).map((v) => (
+          <button
+            key={v}
+            onClick={() => setView(v)}
+            className={
+              view === v
+                ? "h-8 rounded-full bg-primary px-3.5 text-[12px] font-semibold text-primary-foreground"
+                : "h-8 rounded-full border bg-card px-3.5 text-[12px] font-medium text-muted-foreground"
+            }
+          >
+            {v === "tasks" ? "Tasks" : "Submissions"}
+          </button>
+        ))}
+      </div>
+
+      {view === "tasks" ? (
+        <TasksPanel
+          tasks={tasks}
+          agents={agents}
+          staff={staff}
+          isCompanyUser={isCompanyUser}
+          isAdmin={isAdmin}
+        />
+      ) : (
+        <>
       {!isCompanyUser && (
         <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
           <StatTile label="Total Submissions" value={counts.total} />
@@ -120,11 +164,6 @@ export function SubmissionsView({
       )}
 
       <div className="flex flex-wrap items-center gap-2">
-        {isCompanyUser && (
-          <Button className="h-10 gap-2 text-[13.5px]" onClick={() => setAssignOpen(true)}>
-            <UserPlus className="size-4" aria-hidden /> Assign Task
-          </Button>
-        )}
         {!isCompanyUser && (
           <>
             <Button className="h-10 w-full gap-2 text-[13.5px] lg:w-auto" onClick={() => setOpen(true)}>
@@ -132,9 +171,6 @@ export function SubmissionsView({
             </Button>
             <NewSubmissionDialog open={open} onOpenChange={setOpen} />
           </>
-        )}
-        {isCompanyUser && (
-          <AssignTaskDialog open={assignOpen} onOpenChange={setAssignOpen} />
         )}
       </div>
 
@@ -300,6 +336,8 @@ export function SubmissionsView({
           </p>
         )}
       </div>
+        </>
+      )}
 
       {followUpTask && (
         <FollowUpDialog
@@ -312,62 +350,358 @@ export function SubmissionsView({
   );
 }
 
+/** Task list with milestone tracking — visible tasks are already scoped by
+ * RLS server-side; the shared flag is additionally filtered client-side for
+ * non-admin company roles. */
+function TasksPanel({
+  tasks,
+  agents,
+  staff,
+  isCompanyUser,
+  isAdmin,
+}: {
+  tasks: Task[];
+  agents: { id: string; fullName: string }[];
+  staff: { id: string; fullName: string }[];
+  isCompanyUser: boolean;
+  isAdmin: boolean;
+}) {
+  const [assignOpen, setAssignOpen] = React.useState(false);
+  const [filter, setFilter] = React.useState<"all" | "pending" | "in_progress" | "completed">("all");
+
+  const visible = React.useMemo(
+    () => tasks.filter((t) => isAdmin || !t.shared),
+    [tasks, isAdmin]
+  );
+  const filtered =
+    filter === "all" ? visible : visible.filter((t) => t.status === filter);
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        {isCompanyUser && (
+          <Button className="h-10 gap-2 text-[13.5px]" onClick={() => setAssignOpen(true)}>
+            <UserPlus className="size-4" aria-hidden /> Assign Task
+          </Button>
+        )}
+        <div className="flex items-center gap-1.5 overflow-x-auto">
+          {(["all", "pending", "in_progress", "completed"] as const).map((f) => {
+            const count = f === "all" ? visible.length : visible.filter((t) => t.status === f).length;
+            return (
+              <button
+                key={f}
+                onClick={() => setFilter(f)}
+                className={
+                  filter === f
+                    ? "h-8 shrink-0 rounded-full bg-primary px-3.5 text-[12px] font-semibold text-primary-foreground"
+                    : "h-8 shrink-0 rounded-full border bg-card px-3.5 text-[12px] font-medium text-muted-foreground"
+                }
+              >
+                {f === "all" ? `All (${count})` : f === "in_progress" ? `In Progress (${count})` : `${f[0].toUpperCase() + f.slice(1)} (${count})`}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {filtered.length === 0 ? (
+        <p className="rounded-xl border border-dashed py-10 text-center text-[13px] text-muted-foreground">
+          {filter === "all" ? "No tasks assigned yet." : `No ${filter.replace("_", " ")} tasks.`}
+        </p>
+      ) : (
+        <div className="grid gap-3 lg:grid-cols-2">
+          {filtered.map((t) => (
+            <TaskCard key={t.id} task={t} />
+          ))}
+        </div>
+      )}
+
+      {isCompanyUser && (
+        <AssignTaskDialog
+          open={assignOpen}
+          onOpenChange={setAssignOpen}
+          agents={agents}
+          staff={staff}
+        />
+      )}
+    </div>
+  );
+}
+
+const PRIORITY_TONE: Record<string, string> = {
+  urgent: "text-destructive",
+  high: "text-warning-foreground",
+  normal: "text-muted-foreground",
+  low: "text-muted-foreground",
+};
+
+function TaskCard({ task }: { task: Task }) {
+  const router = useRouter();
+  const [busy, setBusy] = React.useState<string | null>(null);
+  const done = task.milestones.filter((m) => m.done).length;
+  const total = task.milestones.length;
+  const pct = total
+    ? Math.round((done / total) * 100)
+    : task.status === "completed"
+      ? 100
+      : 0;
+
+  async function toggleMilestone(m: TaskMilestone) {
+    setBusy(m.id);
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ milestoneId: m.id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Update failed");
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not update milestone");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function markComplete() {
+    setBusy("complete");
+    try {
+      const res = await fetch(`/api/tasks/${task.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "completed" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Update failed");
+      toast.success("Task completed", {
+        description: "Assignee notified via SMS and WhatsApp.",
+      });
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not complete task");
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  return (
+    <Card className="gap-0 py-0 shadow-xs">
+      <CardContent className="space-y-3 p-4">
+        <div className="flex items-start justify-between gap-2">
+          <div className="min-w-0">
+            <p className="flex items-center gap-1.5 text-[13.5px] font-semibold">
+              <span className="truncate">{task.title}</span>
+              {task.shared && (
+                <Share2 className="size-3.5 shrink-0 text-muted-foreground" aria-label="Shared task — admins only" />
+              )}
+            </p>
+            <p className="mt-0.5 text-[12px] text-muted-foreground">
+              {task.assigneeName} · {task.assigneeType === "agent" ? "Agent" : "Staff"}
+              {task.dueDate ? ` · Due ${formatDate(task.dueDate, "dd MMM yyyy")}` : ""}
+            </p>
+          </div>
+          <StatusBadge status={task.status} />
+        </div>
+
+        {task.description ? (
+          <p className="text-[12.5px] leading-5 text-muted-foreground">{task.description}</p>
+        ) : null}
+
+        {total > 0 && (
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-[11.5px] text-muted-foreground">
+              <span className="flex items-center gap-1">
+                <ListTodo className="size-3.5" aria-hidden /> Milestones
+              </span>
+              <span className="tnum">{done}/{total} · {pct}%</span>
+            </div>
+            <Progress value={pct} className="h-1.5" />
+            <ul className="space-y-1.5">
+              {task.milestones.map((m) => (
+                <li key={m.id} className="flex items-center gap-2.5">
+                  <Checkbox
+                    id={`${task.id}-${m.id}`}
+                    checked={m.done}
+                    disabled={busy === m.id || task.status === "completed"}
+                    onCheckedChange={() => toggleMilestone(m)}
+                  />
+                  <label
+                    htmlFor={`${task.id}-${m.id}`}
+                    className={`text-[12.5px] ${m.done ? "text-muted-foreground line-through" : ""}`}
+                  >
+                    {m.title}
+                  </label>
+                  {busy === m.id && (
+                    <LoaderCircle className="size-3.5 animate-spin text-muted-foreground" aria-hidden />
+                  )}
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between pt-1">
+          <span className={`text-[11px] font-semibold tracking-wide uppercase ${PRIORITY_TONE[task.priority] ?? "text-muted-foreground"}`}>
+            {task.priority}
+          </span>
+          {task.status !== "completed" ? (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 text-[12px]"
+              disabled={busy === "complete"}
+              onClick={markComplete}
+            >
+              {busy === "complete" ? (
+                <LoaderCircle className="size-3.5 animate-spin" aria-hidden />
+              ) : (
+                <CircleCheck className="size-3.5" aria-hidden />
+              )}
+              Mark Complete
+            </Button>
+          ) : (
+            task.completedAt && (
+              <span className="text-[11.5px] text-muted-foreground">
+                Completed {formatDate(task.completedAt, "dd MMM yyyy")}
+              </span>
+            )
+          )}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 function AssignTaskDialog({
   open,
   onOpenChange,
+  agents,
+  staff,
 }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  agents: { id: string; fullName: string }[];
+  staff: { id: string; fullName: string }[];
 }) {
-  const [agentName, setAgentName] = React.useState("");
+  const router = useRouter();
+  const [assigneeType, setAssigneeType] = React.useState<"agent" | "staff">("agent");
+  const [assigneeId, setAssigneeId] = React.useState("");
   const [title, setTitle] = React.useState("");
   const [description, setDescription] = React.useState("");
   const [priority, setPriority] = React.useState("normal");
   const [dueDate, setDueDate] = React.useState("");
+  const [shared, setShared] = React.useState(false);
+  const [milestones, setMilestones] = React.useState<string[]>([
+    "Milestone 1",
+    "Milestone 2",
+    "Milestone 3",
+    "Milestone 4",
+    "Milestone 5",
+  ]);
+  const [saving, setSaving] = React.useState(false);
 
-  function assign() {
-    if (!agentName || !title) {
-      toast.error("Please select an agent and provide a task title");
-      return;
-    }
-    toast.success(`Task assigned to ${agentName}`, {
-      description: `Email notification sent to ${agentName}.`,
-    });
-    setAgentName("");
+  const options = assigneeType === "agent" ? agents : staff;
+
+  function reset() {
+    setAssigneeType("agent");
+    setAssigneeId("");
     setTitle("");
     setDescription("");
     setPriority("normal");
     setDueDate("");
-    onOpenChange(false);
+    setShared(false);
+    setMilestones(["Milestone 1", "Milestone 2", "Milestone 3", "Milestone 4", "Milestone 5"]);
+  }
+
+  async function assign() {
+    if (!assigneeId || !title.trim()) {
+      toast.error("Select an assignee and provide a task title");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/tasks", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title: title.trim(),
+          description: description.trim() || undefined,
+          priority,
+          dueDate: dueDate || undefined,
+          assigneeType,
+          assigneeId,
+          shared,
+          milestones: milestones
+            .filter((m) => m.trim())
+            .map((t) => ({ title: t.trim() })),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to assign task");
+      toast.success("Task assigned", {
+        description: data.whatsappSent
+          ? "Assignee notified on WhatsApp."
+          : "Saved — WhatsApp notification could not be sent (no phone on record or provider not configured).",
+      });
+      reset();
+      onOpenChange(false);
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to assign task");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[520px]">
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[560px]">
         <DialogHeader>
-          <DialogTitle>Assign Task to Agent</DialogTitle>
+          <DialogTitle>Assign Task</DialogTitle>
           <DialogDescription>
-            Create a task and assign it to an agent. They will receive an email
-            notification immediately.
+            Assign to a staff member or agent. The assignee is notified on
+            WhatsApp immediately.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
-          <div className="space-y-1.5">
-            <Label htmlFor="assign-agent">
-              Agent <span className="text-destructive">*</span>
-            </Label>
-            <Select value={agentName} onValueChange={setAgentName}>
-              <SelectTrigger id="assign-agent">
-                <SelectValue placeholder="Select an agent" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="Musa Zhou">Musa Zhou (AGT-000184)</SelectItem>
-                <SelectItem value="Tendai Moyo">Tendai Moyo (AGT-000185)</SelectItem>
-                <SelectItem value="Rumbi Chiweshe">Rumbi Chiweshe (AGT-000186)</SelectItem>
-                <SelectItem value="Nyanga Dube">Nyanga Dube (AGT-000187)</SelectItem>
-              </SelectContent>
-            </Select>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Assign To</Label>
+              <Select
+                value={assigneeType}
+                onValueChange={(v) => {
+                  setAssigneeType(v as "agent" | "staff");
+                  setAssigneeId("");
+                }}
+              >
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="agent">Agent</SelectItem>
+                  <SelectItem value="staff">Staff Member</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div className="space-y-1.5">
+              <Label>
+                {assigneeType === "agent" ? "Agent" : "Staff Member"}{" "}
+                <span className="text-destructive">*</span>
+              </Label>
+              <Select value={assigneeId} onValueChange={setAssigneeId}>
+                <SelectTrigger>
+                  <SelectValue placeholder={`Select ${assigneeType}`} />
+                </SelectTrigger>
+                <SelectContent>
+                  {options.map((o) => (
+                    <SelectItem key={o.id} value={o.id}>
+                      {o.fullName} ({o.id})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
+
           <div className="space-y-1.5">
             <Label htmlFor="assign-title">
               Task Title <span className="text-destructive">*</span>
@@ -384,7 +718,7 @@ function AssignTaskDialog({
             <Textarea
               id="assign-desc"
               rows={3}
-              placeholder="Provide detailed instructions for the agent…"
+              placeholder="Provide detailed instructions…"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
             />
@@ -393,9 +727,7 @@ function AssignTaskDialog({
             <div className="space-y-1.5">
               <Label htmlFor="assign-priority">Priority</Label>
               <Select value={priority} onValueChange={setPriority}>
-                <SelectTrigger id="assign-priority">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger id="assign-priority"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="low">Low</SelectItem>
                   <SelectItem value="normal">Normal</SelectItem>
@@ -414,11 +746,70 @@ function AssignTaskDialog({
               />
             </div>
           </div>
+
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label>Milestones</Label>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                className="h-7 gap-1 text-[12px]"
+                onClick={() => setMilestones((m) => [...m, `Milestone ${m.length + 1}`])}
+              >
+                <Plus className="size-3.5" aria-hidden /> Add
+              </Button>
+            </div>
+            <div className="space-y-1.5">
+              {milestones.map((m, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <span className="tnum w-5 text-right text-[11px] text-muted-foreground">{i + 1}.</span>
+                  <Input
+                    value={m}
+                    onChange={(e) =>
+                      setMilestones((ms) => ms.map((x, j) => (j === i ? e.target.value : x)))
+                    }
+                    className="h-8 text-[12.5px]"
+                  />
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Remove milestone"
+                    disabled={milestones.length <= 1}
+                    onClick={() => setMilestones((ms) => ms.filter((_, j) => j !== i))}
+                  >
+                    <Trash2 className="size-3.5" />
+                  </Button>
+                </div>
+              ))}
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              The assignee ticks off each milestone; admins are notified on every completion.
+            </p>
+          </div>
+
+          <div className="flex items-center justify-between rounded-lg border p-3">
+            <div>
+              <p className="text-[12.5px] font-medium">Shared task</p>
+              <p className="text-[11px] text-muted-foreground">
+                Only Super Admins, Admins and the assignee can see this task.
+              </p>
+            </div>
+            <Switch checked={shared} onCheckedChange={setShared} aria-label="Shared task" />
+          </div>
         </div>
         <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-          <Button onClick={assign}>
-            <Send className="size-4" aria-hidden /> Assign & Notify
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+            Cancel
+          </Button>
+          <Button onClick={assign} disabled={saving}>
+            {saving ? (
+              <LoaderCircle className="size-4 animate-spin" aria-hidden />
+            ) : (
+              <Send className="size-4" aria-hidden />
+            )}
+            Assign & Notify
           </Button>
         </DialogFooter>
       </DialogContent>
