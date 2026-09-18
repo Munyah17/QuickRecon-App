@@ -58,8 +58,10 @@ export function ExportButton({
         toast.success(`Exported as ${FORMAT_LABELS[format]}`, {
           description: `${data.rows.length} records → ${filename}.${EXT[format]}`,
         });
-      } catch {
-        toast.error("Export failed", { description: "Could not generate the file." });
+      } catch (err) {
+        toast.error("Export failed", {
+          description: err instanceof Error ? err.message : "Could not generate the file.",
+        });
       } finally {
         setBusy(false);
       }

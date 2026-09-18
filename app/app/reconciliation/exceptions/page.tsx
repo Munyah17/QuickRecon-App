@@ -1,15 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { ArrowLeft, CheckCircle2 } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { getExceptions } from "@/lib/data";
 import { isCompanyRole } from "@/lib/nav";
 import { PageHeader } from "@/components/layout/page-header";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/shared/status-badge";
-import { Button } from "@/components/ui/button";
-import { ConfirmDialog } from "@/components/shared/confirm-dialog";
+import { ExceptionActions } from "@/components/reconciliation/exception-actions";
 import { formatDate, moduleName } from "@/lib/format";
 
 export const metadata: Metadata = { title: "Alarm" };
@@ -69,32 +68,7 @@ export default async function ExceptionsPage() {
               </p>
 
               {e.status !== "resolved" && e.status !== "ignored" && (
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <ConfirmDialog
-                    trigger={
-                      <Button size="sm" className="h-8 gap-1.5 text-[12px]">
-                        <CheckCircle2 className="size-3.5" aria-hidden /> Resolve
-                      </Button>
-                    }
-                    title="Resolve alarm?"
-                    description="Mark as resolved after correcting the mapping or variance. The resolution is audit-logged."
-                    confirmLabel="Resolve"
-                  />
-                  <Button size="sm" variant="outline" className="h-8 text-[12px]">
-                    Investigate
-                  </Button>
-                  <ConfirmDialog
-                    trigger={
-                      <Button size="sm" variant="ghost" className="h-8 text-[12px] text-muted-foreground">
-                        Ignore with reason…
-                      </Button>
-                    }
-                    title="Ignore alarm?"
-                    description="Ignoring always requires a written reason and is permanent in the audit trail."
-                    confirmLabel="Ignore"
-                    destructive
-                  />
-                </div>
+                <ExceptionActions id={String(e.id)} />
               )}
               {e.resolution && (
                 <p className="mt-2 rounded-lg bg-muted px-3 py-2 text-[12px] text-muted-foreground">

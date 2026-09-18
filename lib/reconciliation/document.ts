@@ -481,6 +481,78 @@ export async function documentToXLSX(doc: AgentReconDocument): Promise<Buffer> {
   return documentsToWorkbook([doc]);
 }
 
+/**
+ * Batch workbook — one Summary sheet listing every agent in the client's
+ * Consolidated-A column order, two rows per agent (USD + ZiG, zero-filled).
+ * Used by the Breakdowns "Export All" action so the downloaded file matches
+ * the real report format instead of a generic flat table.
+ */
+export async function batchToWorkbook(docs: AgentReconDocument[]): Promise<Buffer> {
+  if (docs.length === 0) throw new Error("No documents to render");
+  const ExcelJS = await import("exceljs");
+  const wb = new ExcelJS.default.Workbook();
+  wb.creator = "QuickRecon App";
+  wb.created = new Date();
+
+  const NAVY = "FF0F2B4C", BORDER = "FFE5E7EB";
+  const thin = { style: "thin" as const, color: { argb: BORDER } };
+  const box = { top: thin, left: thin, bottom: thin, right: thin };
+  const fill = (argb: string) => ({ type: "pattern" as const, pattern: "solid" as const, fgColor: { argb } });
+
+  // Union of every bank channel used — canonical order first, extras after.
+  const allBanks = new Set<string>();
+  for (const d of docs) Object.keys(d.bankDeposits).forEach((b) => allBanks.add(b));
+  const bankCols = [
+    ...SUMMARY_BANK_COLS,
+    ...[...allBanks].filter((b) => !SUMMARY_BANK_COLS.includes(b as (typeof SUMMARY_BANK_COLS)[number])),
+  ];
+
+  const ws = wb.addWorksheet("Summary");
+  ws.addRow([
+    "Currency", "Agent Name", "Opening Variance", "Insurance", "Premium Cover",
+    "Commission", "Net Insurance", "ZINARA", "Insurance PDS", "ZINARA PDS",
+    "Total Expected", ...bankCols, "Alterations", "Closing Variance",
+  ]);
+
+  // Group by agent (first-seen order); emit USD then ZiG per agent.
+  const byAgent = new Map<string, { name: string; usd?: AgentReconDocument; zig?: AgentReconDocument }>();
+  for (const d of docs) {
+    const g = byAgent.get(d.agentId) ?? { name: d.agentName };
+    if (d.currency === "USD") g.usd = d; else g.zig = d;
+    byAgent.set(d.agentId, g);
+  }
+  const sRow = (d: AgentReconDocument | undefined, cur: "USD" | "ZiG", name: string) => [
+    cur, d?.agentName ?? name, d?.openingVariance ?? 0,
+    d?.insurance ?? 0, d?.premiumCover ?? 0, d?.commission ?? 0,
+    d?.netInsurance ?? 0, d?.zinara ?? 0, d?.insurancePds ?? d?.pds ?? 0,
+    d?.zinaraPds ?? 0, d?.totalExpected ?? 0,
+    ...bankCols.map((b) => d?.bankDeposits[b] ?? 0),
+    d?.adjustments ?? 0, d?.closingVariance ?? 0,
+  ];
+  for (const g of byAgent.values()) {
+    ws.addRow(sRow(g.usd, "USD", g.name));
+    ws.addRow(sRow(g.zig, "ZiG", g.name));
+  }
+
+  ws.getRow(1).eachCell((c) => {
+    c.font = { bold: true, size: 9, color: { argb: "FFFFFFFF" } };
+    c.fill = fill(NAVY);
+    c.border = box;
+    c.alignment = { vertical: "middle", wrapText: true };
+  });
+  ws.getRow(1).height = 28;
+  for (let r = 2; r <= ws.rowCount; r++) {
+    ws.getRow(r).eachCell((c) => {
+      c.border = box;
+      if (typeof c.value === "number") c.numFmt = "#,##0.00";
+    });
+    ws.getRow(r).height = 20;
+  }
+  ws.columns.forEach((c, i) => (c.width = i === 1 ? 24 : i === 0 ? 9 : 13));
+
+  return Buffer.from(await wb.xlsx.writeBuffer());
+}
+
 /** Recursively locate the vfs font dictionary (keys end in .ttf) inside
  * whatever interop shape the bundler gives vfs_fonts. */
 function findVfs(obj: unknown, depth = 0): Record<string, string> | null {
@@ -516,7 +588,16 @@ export async function documentsToPDF(docs: AgentReconDocument[]): Promise<Buffer
     import("pdfmake/build/pdfmake"),
     import("pdfmake/build/vfs_fonts"),
   ]);
-  const pdfMake = ((pdfMakeMod as { default?: unknown }).default ?? pdfMakeMod) as PdfMakeLike;
+  // Unwrap nested .default/.pdfMake layers until createPdf is exposed.
+  let pdfMake: PdfMakeLike | undefined;
+  let cur = pdfMakeMod as Record<string, unknown> | undefined;
+  for (let i = 0; i < 6 && cur; i++) {
+    if (typeof (cur as unknown as PdfMakeLike).createPdf === "function") { pdfMake = cur as unknown as PdfMakeLike; break; }
+    const next = (cur.default ?? cur.pdfMake) as Record<string, unknown> | undefined;
+    if (!next || next === cur) break;
+    cur = next;
+  }
+  if (!pdfMake) throw new Error("pdfmake failed to load (createPdf not found)");
   const vfs = findVfs(fontsMod);
   if (!vfs) throw new Error("pdfmake fonts failed to load (empty vfs)");
   // pdfmake 0.3.x stores fonts in virtualfs.storage (older versions used .vfs)
@@ -524,9 +605,8 @@ export async function documentsToPDF(docs: AgentReconDocument[]): Promise<Buffer
     pdfMake.addVirtualFileSystem(vfs);
   } else if (pdfMake.virtualfs?.storage) {
     Object.assign(pdfMake.virtualfs.storage, vfs);
-  } else {
-    pdfMake.vfs = vfs;
   }
+  pdfMake.vfs = { ...(pdfMake.vfs ?? {}), ...vfs };
 
   const primary = docs[0];
   const statusLabel = (d: AgentReconDocument) =>

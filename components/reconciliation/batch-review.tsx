@@ -7,7 +7,6 @@ import {
   Ellipsis,
   Eye,
   BadgeCheck,
-  Download,
   RotateCcw,
   ShieldCheck,
   TriangleAlert,
@@ -163,26 +162,44 @@ export function BatchReview({ rows }: { rows: Reconciliation[] }) {
     return { total, success, warning, attention };
   }, [scoped]);
 
+  // Totals grouped per currency — never sum USD and ZiG into one figure.
   const fin = React.useMemo(() => {
-    const sum = (k: keyof Reconciliation) =>
-      scoped.reduce((s, r) => s + (r[k] as number), 0);
-    return {
-      insurance: sum("insurance"),
-      zinara: sum("zinara"),
-      deposits: sum("deposits"),
-      adjustments: sum("adjustments"),
-      closing: sum("closingPosition"),
-      currency: (scoped[0]?.currency ?? "ZWG") as Reconciliation["currency"],
-    };
+    const byCur = new Map<
+      Reconciliation["currency"],
+      { insurance: number; zinara: number; deposits: number; adjustments: number; closing: number }
+    >();
+    for (const r of scoped) {
+      const t =
+        byCur.get(r.currency) ??
+        { insurance: 0, zinara: 0, deposits: 0, adjustments: 0, closing: 0 };
+      t.insurance += r.insurance;
+      t.zinara += r.zinara;
+      t.deposits += r.deposits;
+      t.adjustments += r.adjustments;
+      t.closing += r.closingPosition;
+      byCur.set(r.currency, t);
+    }
+    return byCur;
   }, [scoped]);
 
+  // Currency columns in a fixed order — USD first, then ZiG (matches the workbook).
+  const finCurrencies = React.useMemo(
+    () => (["USD", "ZWG"] as const).filter((c) => fin.has(c)),
+    [fin]
+  );
+
   const modules = React.useMemo(() => {
-    const byModule = new Map<string, { agents: number; insurance: number; deposits: number }>();
+    const byModule = new Map<
+      string,
+      { agents: number; byCur: Map<Reconciliation["currency"], { insurance: number; deposits: number }> }
+    >();
     for (const r of scoped) {
-      const m = byModule.get(r.module) ?? { agents: 0, insurance: 0, deposits: 0 };
+      const m = byModule.get(r.module) ?? { agents: 0, byCur: new Map() };
       m.agents += 1;
-      m.insurance += r.insurance;
-      m.deposits += r.deposits;
+      const t = m.byCur.get(r.currency) ?? { insurance: 0, deposits: 0 };
+      t.insurance += r.insurance;
+      t.deposits += r.deposits;
+      m.byCur.set(r.currency, t);
       byModule.set(r.module, m);
     }
     return [...byModule.entries()];
@@ -259,11 +276,12 @@ export function BatchReview({ rows }: { rows: Reconciliation[] }) {
       },
       {
         accessorKey: "insurance",
-        header: "Insurance (ZiG)",
+        header: "Insurance",
         cell: ({ row }) => (
           <EditableCell
             id={row.original.id}
             value={row.original.insurance}
+            currency={row.original.currency}
             field="insurance"
             editing={editingCell}
             editValue={editValue}
@@ -276,11 +294,12 @@ export function BatchReview({ rows }: { rows: Reconciliation[] }) {
       },
       {
         accessorKey: "zinara",
-        header: "ZINARA (ZiG)",
+        header: "ZINARA",
         cell: ({ row }) => (
           <EditableCell
             id={row.original.id}
             value={row.original.zinara}
+            currency={row.original.currency}
             field="zinara"
             editing={editingCell}
             editValue={editValue}
@@ -293,11 +312,12 @@ export function BatchReview({ rows }: { rows: Reconciliation[] }) {
       },
       {
         accessorKey: "deposits",
-        header: "Deposits (ZiG)",
+        header: "Deposits",
         cell: ({ row }) => (
           <EditableCell
             id={row.original.id}
             value={row.original.deposits}
+            currency={row.original.currency}
             field="deposits"
             editing={editingCell}
             editValue={editValue}
@@ -377,29 +397,50 @@ export function BatchReview({ rows }: { rows: Reconciliation[] }) {
         <Card className="gap-0 py-0 shadow-xs">
           <CardContent className="p-4 sm:p-5">
             <p className="text-[13.5px] font-semibold">Batch Financial Summary</p>
-            <div className="mt-3 space-y-2 text-[12.5px]">
-              {(
-                [
-                  ["Total Insurance", fin.insurance],
-                  ["Total ZINARA", fin.zinara],
-                  ["Total Deposits", fin.deposits],
-                  ["Adjustments", fin.adjustments],
-                ] as const
-              ).map(([label, v]) => (
-                <div key={label} className="flex items-center justify-between">
-                  <span className="text-muted-foreground">{label}</span>
-                  <MoneyValue amount={v} currency={fin.currency} className="font-medium" />
-                </div>
-              ))}
-              <div className="flex items-center justify-between border-t pt-2">
-                <span className="font-medium">Net Position</span>
-                <MoneyValue
-                  amount={fin.closing}
-                  currency={fin.currency}
-                  className={`font-bold ${fin.closing < 0 ? "text-destructive" : ""}`}
-                />
-              </div>
-            </div>
+            {finCurrencies.length === 0 ? (
+              <p className="mt-3 text-[12.5px] text-muted-foreground">No reconciliations in scope.</p>
+            ) : (
+              <table className="mt-3 w-full text-[12.5px]">
+                <thead>
+                  <tr className="text-[10.5px] font-bold uppercase tracking-wide text-muted-foreground">
+                    <th className="pb-1 text-left font-semibold"></th>
+                    {finCurrencies.map((c) => (
+                      <th key={c} className="pb-1 text-right">{c === "ZWG" ? "ZiG" : c}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(
+                    [
+                      ["Total Insurance", "insurance"],
+                      ["Total ZINARA", "zinara"],
+                      ["Total Deposits", "deposits"],
+                      ["Adjustments", "adjustments"],
+                    ] as const
+                  ).map(([label, key]) => (
+                    <tr key={label} className="border-t">
+                      <td className="py-1.5 text-muted-foreground">{label}</td>
+                      {finCurrencies.map((c) => (
+                        <td key={c} className="tnum py-1.5 text-right font-medium">
+                          <MoneyValue amount={fin.get(c)![key]} currency={c} />
+                        </td>
+                      ))}
+                    </tr>
+                  ))}
+                  <tr className="border-t">
+                    <td className="py-1.5 font-semibold">Net Position</td>
+                    {finCurrencies.map((c) => (
+                      <td
+                        key={c}
+                        className={`tnum py-1.5 text-right font-bold ${fin.get(c)!.closing < 0 ? "text-destructive" : ""}`}
+                      >
+                        <MoneyValue amount={fin.get(c)!.closing} currency={c} />
+                      </td>
+                    ))}
+                  </tr>
+                </tbody>
+              </table>
+            )}
           </CardContent>
         </Card>
 
@@ -413,13 +454,19 @@ export function BatchReview({ rows }: { rows: Reconciliation[] }) {
                     <span className="font-medium">{moduleName(mod)}</span>
                     <span className="text-muted-foreground">{m.agents} agent{m.agents === 1 ? "" : "s"}</span>
                   </div>
-                  <div className="mt-1.5 flex items-center justify-between text-[11.5px] text-muted-foreground">
-                    <span>
-                      Insurance <MoneyValue amount={m.insurance} currency={fin.currency} className="font-semibold text-foreground" />
-                    </span>
-                    <span>
-                      Deposits <MoneyValue amount={m.deposits} currency={fin.currency} className="font-semibold text-foreground" />
-                    </span>
+                  <div className="mt-1.5 space-y-1">
+                    {(["USD", "ZWG"] as const)
+                      .filter((c) => m.byCur.has(c))
+                      .map((c) => (
+                        <div key={c} className="flex items-center justify-between gap-2 text-[11.5px] text-muted-foreground">
+                          <span className="shrink-0 font-bold uppercase tracking-wide">{c === "ZWG" ? "ZiG" : c}</span>
+                          <span className="tnum text-right">
+                            Ins <MoneyValue amount={m.byCur.get(c)!.insurance} currency={c} className="font-semibold text-foreground" />
+                            <span className="mx-1 text-muted-foreground/60">·</span>
+                            Dep <MoneyValue amount={m.byCur.get(c)!.deposits} currency={c} className="font-semibold text-foreground" />
+                          </span>
+                        </div>
+                      ))}
                   </div>
                 </div>
               ))}
@@ -661,6 +708,7 @@ function ReconMobileCard({ r }: { r: Reconciliation }) {
 function EditableCell({
   id,
   value,
+  currency,
   field,
   editing,
   editValue,
@@ -671,6 +719,7 @@ function EditableCell({
 }: {
   id: string;
   value: number;
+  currency: Reconciliation["currency"];
   field: string;
   editing: { id: string; key: string } | null;
   editValue: string;
@@ -704,7 +753,7 @@ function EditableCell({
       className="group tnum block w-full text-right text-[13px] hover:text-primary"
       title="Click to edit"
     >
-      {value.toLocaleString()}
+      <MoneyValue amount={value} currency={currency} />
       <Pencil className="ml-1.5 inline size-3 opacity-0 group-hover:opacity-50" aria-hidden />
     </button>
   );

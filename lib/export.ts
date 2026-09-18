@@ -77,9 +77,28 @@ function registerFonts(pdfMake: PdfMakeLike, vfs: Record<string, string>) {
     pdfMake.addVirtualFileSystem(vfs);
   } else if (pdfMake.virtualfs?.storage) {
     Object.assign(pdfMake.virtualfs.storage, vfs);
-  } else {
-    pdfMake.vfs = vfs;
   }
+  // Always mirror into .vfs — some pdfmake code paths still read it directly.
+  pdfMake.vfs = { ...(pdfMake.vfs ?? {}), ...vfs };
+}
+
+/**
+ * Unwrap the module namespace until we find the object exposing createPdf.
+ * Bundlers (Turbopack/webpack) can nest the real export under several
+ * `.default` / `.pdfMake` layers — a single `mod.default ?? mod` unwrap is
+ * not enough and leaves createPdf undefined, which breaks every PDF export.
+ */
+function resolvePdfMake(mod: unknown): PdfMakeLike {
+  let cur = mod as Record<string, unknown> | null | undefined;
+  for (let i = 0; i < 6; i++) {
+    if (cur && typeof (cur as unknown as PdfMakeLike).createPdf === "function") {
+      return cur as unknown as PdfMakeLike;
+    }
+    const next = (cur?.default ?? cur?.pdfMake) as Record<string, unknown> | undefined;
+    if (!next || next === cur) break;
+    cur = next;
+  }
+  throw new Error("pdfmake failed to load (createPdf not found)");
 }
 
 async function getPdfMake() {
@@ -87,7 +106,7 @@ async function getPdfMake() {
     import("pdfmake/build/pdfmake"),
     import("pdfmake/build/vfs_fonts"),
   ]);
-  const pdfMake = (pdfMakeMod.default ?? pdfMakeMod) as unknown as PdfMakeLike;
+  const pdfMake = resolvePdfMake(pdfMakeMod);
   const vfs = findVfs(pdfFonts);
   if (!vfs || Object.keys(vfs).length === 0) {
     throw new Error("pdfmake fonts failed to load (empty vfs)");

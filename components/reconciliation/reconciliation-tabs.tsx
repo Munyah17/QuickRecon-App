@@ -182,7 +182,9 @@ function EditableCell({
 
 /* ─── Breakdowns: one agent per row, full consolidated columns ─── */
 function BreakdownsView({ rows, canEdit }: { rows: Reconciliation[]; canEdit?: boolean }) {
+  const { module } = useWorkspace();
   const [query, setQuery] = React.useState("");
+  const [downloading, setDownloading] = React.useState<string | null>(null);
   const filtered = React.useMemo(
     () =>
       rows.filter(
@@ -193,6 +195,26 @@ function BreakdownsView({ rows, canEdit }: { rows: Reconciliation[]; canEdit?: b
     [rows, query]
   );
 
+  async function download(url: string, fname: string, key: string) {
+    setDownloading(key);
+    try {
+      await downloadFromApi(url, fname);
+      toast.success("Download started", { description: fname });
+    } catch (e) {
+      toast.error("Download failed", {
+        description: e instanceof Error ? e.message : "Could not generate the file.",
+      });
+    } finally {
+      setDownloading(null);
+    }
+  }
+
+  // Batch export — every agent in the Consolidated-A summary layout, scoped
+  // to the active module so it matches what's on screen.
+  const allUrl =
+    `/api/reconciliation/download?agentId=all&format=xlsx` +
+    (module !== "all" ? `&module=${encodeURIComponent(module)}` : "");
+
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -202,14 +224,15 @@ function BreakdownsView({ rows, canEdit }: { rows: Reconciliation[]; canEdit?: b
           placeholder="Search agent by name or ID…"
           className="h-9 max-w-xs bg-card text-[13px]"
         />
-        <ExportButton
-          filename="reconciliation-breakdowns"
-          label="Export All Breakdowns"
-          data={{
-            columns: ["Agent", "ID", "Module", "Period", "Opening", "Insurance", "ZINARA", "Deposits", "Adjustments", "Closing", "Status"],
-            rows: filtered.map((r) => [r.agentName, r.agentId, moduleName(r.module), r.period, r.openingPosition, r.insurance, r.zinara, r.deposits, r.adjustments, r.closingPosition, r.status]),
-          }}
-        />
+        <Button
+          variant="outline"
+          className="h-9 gap-1.5 text-[13px]"
+          disabled={downloading === "all"}
+          onClick={() => download(allUrl, "reconciliation-breakdowns.xlsx", "all")}
+        >
+          <Download className="size-4" aria-hidden />
+          {downloading === "all" ? "Preparing…" : "Export All Breakdowns"}
+        </Button>
       </div>
 
       <Card className="gap-0 py-0 shadow-xs">
@@ -251,22 +274,22 @@ function BreakdownsView({ rows, canEdit }: { rows: Reconciliation[]; canEdit?: b
                     <EditableCell reconId={r.id} field="closing_position" value={r.closingPosition} currency={r.currency} canEdit={canEdit} bold />
                     <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
                     <td className="px-4 py-3 text-right">
-                      <ExportButton
-                        filename={`recon-${r.agentId}-${r.period}`}
-                        label=""
-                        className="h-8"
-                        data={{
-                          columns: ["Field", "Value"],
-                          rows: [
-                            ["Agent", r.agentName], ["Agent ID", r.agentId], ["Module", moduleName(r.module)],
-                            ["Period", formatPeriod(r.period)], ["Currency", r.currency],
-                            ["Opening Position", r.openingPosition], ["Insurance", r.insurance],
-                            ["ZINARA", r.zinara], ["Deposits", r.deposits],
-                            ["Adjustments", r.adjustments], ["Closing Position", r.closingPosition],
-                            ["Status", r.status], ["Version", r.version],
-                          ],
-                        }}
-                      />
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        className="h-8 gap-1 text-[12px]"
+                        title="Download Consolidated-A workbook"
+                        disabled={downloading === r.id}
+                        onClick={() =>
+                          download(
+                            `/api/reconciliation/download?agentId=${encodeURIComponent(r.agentId)}&period=${encodeURIComponent(r.period)}&format=xlsx`,
+                            `recon-${r.agentId}-${r.period}.xlsx`,
+                            r.id
+                          )
+                        }
+                      >
+                        <Download className="size-3.5" aria-hidden />
+                      </Button>
                     </td>
                   </tr>
                 ))}
