@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import {
   ArrowLeft,
   Ellipsis,
@@ -30,6 +32,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { AgentAvatar } from "@/components/shared/agent-avatar";
@@ -88,6 +100,7 @@ export function AgentProfile({
 }) {
   const canManage = isCompanyRole(viewer.role);
   const [modules, setModules] = React.useState(agent.modules);
+  const [editOpen, setEditOpen] = React.useState(false);
   const m = agent.metrics;
 
   return (
@@ -104,7 +117,7 @@ export function AgentProfile({
         </Link>
         {canManage && (
           <div className="flex shrink-0 items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-1.5 text-[12.5px]">
+            <Button variant="outline" size="sm" className="gap-1.5 text-[12.5px]" onClick={() => setEditOpen(true)}>
               <UserPen className="size-3.5" aria-hidden />
               <span className="hidden sm:inline">Edit Profile</span>
               <span className="sm:hidden">Edit</span>
@@ -364,7 +377,137 @@ export function AgentProfile({
           </Tabs>
         </div>
       </div>
+
+      {canManage && (
+        <EditAgentDialog
+          agent={agent}
+          open={editOpen}
+          onOpenChange={setEditOpen}
+        />
+      )}
     </div>
+  );
+}
+
+/** Edit agent profile fields — persists via PATCH /api/agents/[id]. */
+function EditAgentDialog({
+  agent,
+  open,
+  onOpenChange,
+}: {
+  agent: Agent;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const router = useRouter();
+  const [saving, setSaving] = React.useState(false);
+  const [form, setForm] = React.useState({
+    fullName: agent.fullName,
+    email: agent.email,
+    phone: agent.phone ?? "",
+    province: agent.province ?? "",
+    location: agent.location ?? "",
+    nationalId: agent.nationalId ?? "",
+    icecashId: agent.iceCashId ?? "",
+  });
+
+  // Re-seed the form whenever a different agent / fresh data is opened.
+  React.useEffect(() => {
+    if (open) {
+      setForm({
+        fullName: agent.fullName,
+        email: agent.email,
+        phone: agent.phone ?? "",
+        province: agent.province ?? "",
+        location: agent.location ?? "",
+        nationalId: agent.nationalId ?? "",
+        icecashId: agent.iceCashId ?? "",
+      });
+    }
+  }, [open, agent]);
+
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    setForm((f) => ({ ...f, [k]: e.target.value }));
+
+  async function save() {
+    if (!form.fullName.trim() || !form.email.trim()) {
+      toast.error("Name and email are required");
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/agents/${agent.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          fullName: form.fullName.trim(),
+          email: form.email.trim(),
+          phone: form.phone.trim(),
+          province: form.province.trim(),
+          location: form.location.trim(),
+          nationalId: form.nationalId.trim(),
+          icecashId: form.icecashId.trim(),
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || "Update failed");
+      toast.success("Agent profile updated");
+      onOpenChange(false);
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not update agent");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-[480px]">
+        <DialogHeader>
+          <DialogTitle>Edit Agent Profile</DialogTitle>
+          <DialogDescription>Update {agent.fullName}&apos;s details ({agent.id}).</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-3 py-2 sm:grid-cols-2">
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="ea-name">Full Name <span className="text-destructive">*</span></Label>
+            <Input id="ea-name" value={form.fullName} onChange={set("fullName")} />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="ea-email">Email <span className="text-destructive">*</span></Label>
+            <Input id="ea-email" type="email" value={form.email} onChange={set("email")} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ea-phone">Phone</Label>
+            <Input id="ea-phone" value={form.phone} onChange={set("phone")} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ea-nid">ID / Passport</Label>
+            <Input id="ea-nid" value={form.nationalId} onChange={set("nationalId")} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ea-province">Province</Label>
+            <Input id="ea-province" value={form.province} onChange={set("province")} />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ea-location">Location</Label>
+            <Input id="ea-location" value={form.location} onChange={set("location")} />
+          </div>
+          <div className="space-y-1.5 sm:col-span-2">
+            <Label htmlFor="ea-icecash">IceCash ID</Label>
+            <Input id="ea-icecash" value={form.icecashId} onChange={set("icecashId")} />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
+            Cancel
+          </Button>
+          <Button onClick={save} disabled={saving}>
+            {saving ? "Saving…" : "Save Changes"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
