@@ -74,3 +74,27 @@ export async function PATCH(
 
   return NextResponse.json({ ok: true });
 }
+
+/**
+ * DELETE /api/agents/[id]
+ * Company staff remove an agent record. Service client after a role check,
+ * matching the PATCH handler above.
+ */
+export async function DELETE(
+  _request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!isCompanyRole(session.user.role)) {
+    return NextResponse.json({ error: "Only company staff can remove agents" }, { status: 403 });
+  }
+
+  const { id } = await params;
+  const service = await createServiceClient();
+  if (!service) return NextResponse.json({ error: "Database not configured" }, { status: 503 });
+
+  const { error } = await service.from("agents").delete().eq("id", id);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}

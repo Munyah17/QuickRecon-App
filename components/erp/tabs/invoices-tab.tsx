@@ -56,7 +56,7 @@ interface BizDocRow {
   date: string;
   due?: string;
   validUntil?: string;
-  status: "paid" | "pending" | "overdue" | "draft" | "accepted" | "declined";
+  status: "paid" | "pending" | "overdue" | "draft" | "sent" | "accepted" | "declined";
   lines: DocLine[];
   currency: Currency;
   discountPct?: number;
@@ -66,15 +66,67 @@ interface BizDocRow {
 }
 
 export default function InvoicesTab() {
-  const [docs, setDocs] = React.useState<BizDocRow[]>([
-    { id: "INV-2026-001", kind: "invoice", client: "Econet Wireless", clientContact: "T. Makoni", clientAddress: "Econet Park, Borrowdale, Harare", clientEmail: "accounts@econet.co.zw", clientPhone: "+263 77 222 0000", poNumber: "PO-ECO-4471", amount: 187500, date: "2026-09-01", due: "2026-09-15", status: "paid", vatRate: 0.155, amountPaid: 187500, notes: "Settlement via RTGS — reference INV-2026-001.", lines: [{ code: "SVC-REC", description: "Reconciliation services — August 2026", qty: 1, unit: "svc", unitPrice: 187500 }], currency: "ZWG" },
-    { id: "INV-2026-002", kind: "invoice", client: "ZINARA Harare", clientContact: "Procurement Dept", clientAddress: "Runhare House, Harare", clientEmail: "procurement@zinara.co.zw", amount: 45200, date: "2026-09-03", due: "2026-09-17", status: "pending", vatRate: 0.155, lines: [{ code: "MOD-ZIN", description: "ZINARA reconciliation module", qty: 1, unit: "svc", unitPrice: 45200 }], currency: "ZWG" },
-    { id: "INV-2026-003", kind: "invoice", client: "CBZ Bank", clientEmail: "vendor.payables@cbz.co.zw", amount: 92000, date: "2026-09-05", due: "2026-09-19", status: "pending", vatRate: 0.155, lines: [{ code: "SVC-AGT", description: "Agent network reconciliation", qty: 1, unit: "svc", unitPrice: 92000 }], currency: "ZWG" },
-    { id: "INV-2026-004", kind: "invoice", client: "Mutare Motors", clientPhone: "+263 20 64 321", amount: 18500, date: "2026-09-07", due: "2026-09-21", status: "overdue", vatRate: 0.155, notes: "Second reminder sent 2026-09-22.", lines: [{ description: "Monthly reconciliation", qty: 1, unit: "mo", unitPrice: 18500 }], currency: "ZWG" },
-    { id: "QT-2026-001", kind: "quotation", client: "Bulawayo Insurers", clientContact: "R. Nkomo", clientEmail: "rnkomo@byo-insurers.co.zw", amount: 64000, date: "2026-09-10", validUntil: "2026-09-30", status: "pending", vatRate: 0.155, discountPct: 5, notes: "Includes onboarding of 12 agents.", lines: [{ code: "SETUP-Q4", description: "Q4 reconciliation setup", qty: 1, unit: "svc", unitPrice: 64000 }], currency: "ZWG" },
-  ]);
+  const [docs, setDocs] = React.useState<BizDocRow[]>([]);
+  const [loading, setLoading] = React.useState(true);
   const [createOpen, setCreateOpen] = React.useState<"invoice" | "quotation" | null>(null);
   const [docTab, setDocTab] = React.useState<"invoice" | "quotation">("invoice");
+
+  // Map a snake_case erp_documents row to the UI's BizDocRow shape.
+  const toRow = (r: Record<string, unknown>): BizDocRow => ({
+    id: String(r.id),
+    kind: r.kind as BizDocRow["kind"],
+    client: String(r.client ?? ""),
+    clientContact: (r.client_contact as string) ?? undefined,
+    clientAddress: (r.client_address as string) ?? undefined,
+    clientEmail: (r.client_email as string) ?? undefined,
+    clientPhone: (r.client_phone as string) ?? undefined,
+    poNumber: (r.po_number as string) ?? undefined,
+    amount: Number(r.amount) || 0,
+    date: String(r.doc_date ?? ""),
+    due: (r.due_date as string) ?? undefined,
+    validUntil: (r.valid_until as string) ?? undefined,
+    status: r.status as BizDocRow["status"],
+    lines: (r.lines as DocLine[]) ?? [],
+    currency: (r.currency as Currency) ?? "ZWG",
+    discountPct: r.discount_pct != null ? Number(r.discount_pct) : undefined,
+    vatRate: r.vat_rate != null ? Number(r.vat_rate) : undefined,
+    amountPaid: r.amount_paid != null ? Number(r.amount_paid) : undefined,
+    notes: (r.notes as string) ?? undefined,
+  });
+
+  const load = React.useCallback(async () => {
+    try {
+      const res = await fetch("/api/erp/documents");
+      const d = (await res.json().catch(() => ({}))) as { documents?: Record<string, unknown>[]; error?: string };
+      if (!res.ok) throw new Error(d.error ?? "Load failed");
+      setDocs((d.documents ?? []).map(toRow));
+    } catch (e) {
+      toast.error("Could not load documents", { description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    queueMicrotask(() => { void load(); });
+  }, [load]);
+
+  /** Persist a document status change (sent / accepted / paid / …). */
+  async function setDocStatus(id: string, status: BizDocRow["status"], label: string) {
+    try {
+      const res = await fetch(`/api/erp/documents/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      const d = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(d.error ?? "Update failed");
+      setDocs((all) => all.map((x) => (x.id === id ? { ...x, status } : x)));
+      toast.success(`${id} ${label}`);
+    } catch (e) {
+      toast.error("Update failed", { description: e instanceof Error ? e.message : undefined });
+    }
+  }
 
   const invoices = docs.filter((d) => d.kind === "invoice");
   const quotes = docs.filter((d) => d.kind === "quotation");
@@ -117,6 +169,7 @@ export default function InvoicesTab() {
       paid: "border-transparent bg-success-soft text-success-foreground",
       accepted: "border-transparent bg-success-soft text-success-foreground",
       pending: "border-transparent bg-warning-soft text-warning-foreground",
+      sent: "border-transparent bg-primary-soft text-primary",
       overdue: "border-transparent bg-destructive-soft text-destructive",
       declined: "border-transparent bg-destructive-soft text-destructive",
       draft: "border-transparent bg-muted text-muted-foreground",
@@ -182,7 +235,19 @@ export default function InvoicesTab() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {shown.map((d) => (
+                {loading ? (
+                  <tr>
+                    <td colSpan={7} className="px-3 py-8 text-center text-[13px] text-muted-foreground">
+                      Loading documents…
+                    </td>
+                  </tr>
+                ) : shown.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-3 py-8 text-center text-[13px] text-muted-foreground">
+                      No {docTab === "invoice" ? "invoices" : "quotations"} yet — create one above.
+                    </td>
+                  </tr>
+                ) : shown.map((d) => (
                   <tr key={d.id} className="hover:bg-surface-hover">
                     <td className="font-mono text-[12px] px-3 py-2.5">{d.id}</td>
                     <td className="px-3 py-2.5 font-medium">{d.client}</td>
@@ -201,16 +266,18 @@ export default function InvoicesTab() {
                           <DropdownMenuItem onSelect={() => downloadDoc(d)}>
                             Download PDF
                           </DropdownMenuItem>
-                          <DropdownMenuItem onSelect={() => toast.success(`${d.id} marked as sent`, { description: `Delivered to ${d.client}` })}>
-                            Mark Sent
-                          </DropdownMenuItem>
-                          {d.kind === "quotation" && d.status === "pending" && (
-                            <DropdownMenuItem onSelect={() => setDocs((all) => all.map((x) => x.id === d.id ? { ...x, status: "accepted" as const } : x))}>
+                          {(d.status === "draft" || d.status === "pending") && (
+                            <DropdownMenuItem onSelect={() => setDocStatus(d.id, "sent", `marked as sent — delivered to ${d.client}`)}>
+                              Mark Sent
+                            </DropdownMenuItem>
+                          )}
+                          {d.kind === "quotation" && (d.status === "pending" || d.status === "sent") && (
+                            <DropdownMenuItem onSelect={() => setDocStatus(d.id, "accepted", "marked as accepted")}>
                               Mark Accepted
                             </DropdownMenuItem>
                           )}
-                          {d.kind === "invoice" && d.status === "pending" && (
-                            <DropdownMenuItem onSelect={() => setDocs((all) => all.map((x) => x.id === d.id ? { ...x, status: "paid" as const } : x))}>
+                          {d.kind === "invoice" && (d.status === "pending" || d.status === "sent" || d.status === "overdue") && (
+                            <DropdownMenuItem onSelect={() => setDocStatus(d.id, "paid", "marked as paid")}>
                               Mark Paid
                             </DropdownMenuItem>
                           )}
@@ -229,10 +296,22 @@ export default function InvoicesTab() {
         <BizDocDialog
           kind={createOpen}
           onClose={() => setCreateOpen(null)}
-          onCreate={(d) => {
-            setDocs((all) => [d, ...all]);
-            setCreateOpen(null);
-            toast.success(`${d.kind === "invoice" ? "Invoice" : "Quotation"} created`, { description: `${d.id} · ${d.client}` });
+          onCreate={async (payload) => {
+            try {
+              const res = await fetch("/api/erp/documents", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              });
+              const d = (await res.json().catch(() => ({}))) as { document?: Record<string, unknown>; error?: string };
+              if (!res.ok || !d.document) throw new Error(d.error ?? "Create failed");
+              const row = toRow(d.document);
+              setDocs((all) => [row, ...all]);
+              setCreateOpen(null);
+              toast.success(`${row.kind === "invoice" ? "Invoice" : "Quotation"} created`, { description: `${row.id} · ${row.client}` });
+            } catch (e) {
+              toast.error("Create failed", { description: e instanceof Error ? e.message : undefined });
+            }
           }}
         />
       )}
@@ -248,7 +327,7 @@ function BizDocDialog({
 }: {
   kind: "invoice" | "quotation";
   onClose: () => void;
-  onCreate: (d: BizDocRow) => void;
+  onCreate: (d: Omit<BizDocRow, "id">) => void | Promise<void>;
 }) {
   const [client, setClient] = React.useState("");
   const [clientContact, setClientContact] = React.useState("");
@@ -277,10 +356,7 @@ function BizDocDialog({
   function create() {
     if (!client.trim()) { toast.error("Client name required"); return; }
     if (lines.some((l) => !l.description.trim())) { toast.error("All line items need a description"); return; }
-    const prefix = kind === "invoice" ? "INV" : "QT";
-    const id = `${prefix}-2026-${String(Math.floor(Math.random() * 900) + 100)}`;
     onCreate({
-      id,
       kind,
       client: client.trim(),
       clientContact: clientContact.trim() || undefined,

@@ -73,10 +73,13 @@ function findVfs(obj: unknown, depth = 0): Record<string, string> | null {
 
 /** Register fonts — pdfmake 0.3.x uses virtualfs.storage, older versions .vfs. */
 function registerFonts(pdfMake: PdfMakeLike, vfs: Record<string, string>) {
+  // The vfs import is a module namespace object (null prototype) — pdfmake
+  // calls vfs.hasOwnProperty() internally, so always hand it a plain copy.
+  const plain = { ...vfs };
   if (typeof pdfMake.addVirtualFileSystem === "function") {
-    pdfMake.addVirtualFileSystem(vfs);
+    pdfMake.addVirtualFileSystem(plain);
   } else if (pdfMake.virtualfs?.storage) {
-    Object.assign(pdfMake.virtualfs.storage, vfs);
+    Object.assign(pdfMake.virtualfs.storage, plain);
   }
   // Always mirror into .vfs — some pdfmake code paths still read it directly.
   pdfMake.vfs = { ...(pdfMake.vfs ?? {}), ...vfs };

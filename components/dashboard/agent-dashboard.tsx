@@ -88,9 +88,11 @@ export function AgentDashboard({
             <PeriodSelector />
           </div>
         </div>
-        <div className="hidden flex-wrap items-center gap-2 lg:flex">
-          <Button variant="outline" className="h-9 gap-1.5 text-[13px]">
-            <Download className="size-4" aria-hidden /> Download Report
+        <div className="flex flex-wrap items-center gap-2">
+          <Button variant="outline" className="h-9 gap-1.5 text-[13px]" asChild>
+            <Link href="/app/reports">
+              <Download className="size-4" aria-hidden /> Download Report
+            </Link>
           </Button>
           <Button className="h-9 gap-1.5 text-[13px]" asChild>
             <Link href="/app/submissions?new=1">
@@ -100,8 +102,8 @@ export function AgentDashboard({
         </div>
       </div>
 
-      {/* Financial metrics — 2x2 on mobile, 4 across on desktop */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      {/* Financial metrics — 2x2 on phones, 4 across from md up */}
+      <div className="grid grid-cols-2 gap-3 sm:gap-4 md:grid-cols-4">
         <MetricCard
           label="Total Insurance"
           value={<MoneyValue amount={m?.totalInsurance ?? 0} currency={m?.currency} />}

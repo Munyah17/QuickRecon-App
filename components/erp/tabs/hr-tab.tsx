@@ -42,32 +42,29 @@ import { toast } from "sonner";
 import { formatMoney, formatDate } from "@/lib/format";
 import { ExportButton } from "@/components/shared/export-button";
 import { StatusBadge } from "@/components/shared/status-badge";
+import { PaymentMethodsEditor } from "@/components/shared/payment-methods-editor";
 import { MetricCard } from "../shared";
 
 interface StaffRow {
   id: string;
   name: string;
-  role: string;
-  dept: string;
+  role: string;   // job_title
+  dept: string;   // department
   salary: number;
   status: string;
   phone: string;
   email: string;
-  loan?: { label: string; amount: number; balance: number };
 }
 interface AgentRow {
   id: string;
-  name: string;
-  role: "Agent" | "Assistant";
-  commission: number;
-  bonus: number;
+  name: string;   // full_name
+  province: string;
   status: string;
   phone: string;
   email: string;
-  province: string;
-  floatAssigned: number;
-  floatBalance: number;
-  sales: number;
+  commission: number; // real — summed from reconciliation_documents
+  deposits: number;   // real — summed from reconciliation_documents
+  closing: number;    // real — summed closing_position
 }
 
 export default function HRTab() {
@@ -85,33 +82,42 @@ export default function HRTab() {
   });
   const [customDed, setCustomDed] = React.useState<Deduction[]>([]);
 
-  const [executiveStaff, setExecutiveStaff] = React.useState<StaffRow[]>([
-    { id: "EMP-001", name: "Munyah Griezmann", role: "CTO", dept: "Executive", salary: 65000, status: "active", phone: "+263 77 123 4567", email: "munyamuzvidziwa19@gmail.com" },
-    { id: "EMP-002", name: "Tererai Chiweshe", role: "Chief Operations Officer", dept: "Executive", salary: 48000, status: "active", phone: "+263 77 234 5678", email: "tererai@quickrecon.co.zw" },
-    { id: "EMP-003", name: "Rumbi Chiweshe", role: "Chief Financial Officer", dept: "Executive", salary: 45000, status: "active", phone: "+263 77 345 6789", email: "rumbi@quickrecon.co.zw" },
-    { id: "EMP-004", name: "Tafadzwa Ncube", role: "Chief Technology Officer", dept: "Executive", salary: 42000, status: "active", phone: "+263 77 456 7890", email: "tafadzwa@quickrecon.co.zw" },
-    { id: "EMP-005", name: "Farai Mlambo", role: "Underwriting Manager", dept: "Underwriting", salary: 35000, status: "active", phone: "+263 77 567 8901", email: "farai@quickrecon.co.zw" },
-    { id: "EMP-006", name: "Nyasha Dube", role: "Claims Manager", dept: "Claims", salary: 32000, status: "active", phone: "+263 77 678 9012", email: "nyasha@quickrecon.co.zw" },
-    { id: "EMP-007", name: "Tariro Moyo", role: "Risk Manager", dept: "Risk", salary: 30000, status: "active", phone: "+263 77 789 0123", email: "tariro@quickrecon.co.zw" },
-    { id: "EMP-008", name: "Kudzai Sibanda", role: "Risk Assessor", dept: "Risk", salary: 25000, status: "active", phone: "+263 77 890 1234", email: "kudzai@quickrecon.co.zw" },
-    { id: "EMP-009", name: "Chipo Mhondoro", role: "Accountant", dept: "Finance", salary: 28000, status: "active", phone: "+263 77 901 2345", email: "chipo@quickrecon.co.zw" },
-    { id: "EMP-010", name: "Tendai Support", role: "Tech Support", dept: "IT", salary: 22000, status: "active", phone: "+263 77 012 3456", email: "tendai@quickrecon.co.zw", loan: { label: "Staff loan", amount: 1200, balance: 8400 } },
-    { id: "EMP-011", name: "Rumbi Taruvinga", role: "Clerk", dept: "Operations", salary: 18000, status: "active", phone: "+263 77 123 4567", email: "rumbi.t@quickrecon.co.zw" },
-    { id: "EMP-012", name: "Tinashe Kamwendo", role: "Insurer", dept: "Insurance", salary: 24000, status: "on_leave", phone: "+263 77 234 5678", email: "tinashe@quickrecon.co.zw" },
-  ]);
+  // Live directories — loaded from the DB, every mutation persists.
+  const [executiveStaff, setExecutiveStaff] = React.useState<StaffRow[]>([]);
+  const [agents, setAgents] = React.useState<AgentRow[]>([]);
+  const [dirLoading, setDirLoading] = React.useState(true);
 
-  // Agents are independent contractors — commission + bonus, no salary,
-  // no department. They manage float, sales and clients.
-  const [agents, setAgents] = React.useState<AgentRow[]>([
-    { id: "AGT-001", name: "Musa Zhou", role: "Agent", commission: 42800, bonus: 5000, status: "active", phone: "+263 78 111 2222", email: "musa.zhou@quickrecon.co.zw", province: "Harare", floatAssigned: 50000, floatBalance: 8200, sales: 142 },
-    { id: "AGT-002", name: "Tendai Moyo", role: "Agent", commission: 39200, bonus: 0, status: "suspended", phone: "+263 78 222 3333", email: "tendai.moyo@quickrecon.co.zw", province: "Bulawayo", floatAssigned: 40000, floatBalance: 12000, sales: 98 },
-    { id: "AGT-003", name: "Rumbi Chiweshe", role: "Agent", commission: 30400, bonus: 3200, status: "active", phone: "+263 78 333 4444", email: "rumbi.c@quickrecon.co.zw", province: "Mutare", floatAssigned: 35000, floatBalance: 4300, sales: 76 },
-    { id: "AGT-004", name: "Nyanga Dube", role: "Agent", commission: 21600, bonus: 1500, status: "active", phone: "+263 78 444 5555", email: "nyanga.d@quickrecon.co.zw", province: "Gweru", floatAssigned: 30000, floatBalance: 2100, sales: 54 },
-    { id: "AGT-005", name: "Farai Mlambo", role: "Agent", commission: 16400, bonus: 2000, status: "active", phone: "+263 78 555 6666", email: "farai.m@quickrecon.co.zw", province: "Masvingo", floatAssigned: 25000, floatBalance: 9800, sales: 41 },
-    { id: "AGT-006", name: "Simbarashe Dube", role: "Assistant", commission: 9600, bonus: 0, status: "active", phone: "+263 78 666 7777", email: "simba.d@quickrecon.co.zw", province: "Harare", floatAssigned: 15000, floatBalance: 3200, sales: 28 },
-    { id: "AGT-007", name: "Patricia Chirwa", role: "Agent", commission: 35600, bonus: 4500, status: "active", phone: "+263 78 777 8888", email: "patricia.c@quickrecon.co.zw", province: "Mutare", floatAssigned: 45000, floatBalance: 6100, sales: 88 },
-    { id: "AGT-008", name: "Blessing Ndlovu", role: "Agent", commission: 0, bonus: 0, status: "inactive", phone: "+263 78 888 9999", email: "blessing.n@quickrecon.co.zw", province: "Bulawayo", floatAssigned: 0, floatBalance: 0, sales: 0 },
-  ]);
+  const loadDirectory = React.useCallback(async () => {
+    try {
+      const [s, a] = await Promise.all([
+        fetch("/api/staff").then((r) => r.json()),
+        fetch("/api/agents").then((r) => r.json()),
+      ]);
+      setExecutiveStaff(
+        (s.staff ?? []).map((r: Record<string, unknown>) => ({
+          id: String(r.id), name: String(r.full_name ?? ""), role: String(r.job_title ?? ""),
+          dept: String(r.department ?? ""), salary: Number(r.salary) || 0,
+          status: String(r.status ?? "active"), phone: String(r.phone ?? ""), email: String(r.email ?? ""),
+        }))
+      );
+      setAgents(
+        (a.agents ?? []).map((r: Record<string, unknown>) => ({
+          id: String(r.id), name: String(r.full_name ?? ""), province: String(r.province ?? ""),
+          status: String(r.status ?? "active"), phone: String(r.phone ?? ""), email: String(r.email ?? ""),
+          commission: Number(r.commission) || 0, deposits: Number(r.deposits) || 0,
+          closing: Number(r.closing_position) || 0,
+        }))
+      );
+    } catch {
+      toast.error("Could not load directory", { description: "Check your connection and refresh." });
+    } finally {
+      setDirLoading(false);
+    }
+  }, []);
+
+  React.useEffect(() => {
+    queueMicrotask(() => { void loadDirectory(); });
+  }, [loadDirectory]);
 
   // Directory row being edited — shared dialog for staff + agents.
   const [editRow, setEditRow] = React.useState<
@@ -120,29 +126,57 @@ export default function HRTab() {
     | null
   >(null);
 
-  function toggleRowStatus(kind: "staff" | "agent", id: string) {
-    const flip = (s: string) => (s === "active" ? "suspended" : "active");
-    if (kind === "staff") {
-      setExecutiveStaff((rows) => rows.map((r) => (r.id === id ? { ...r, status: flip(r.status) } : r)));
-    } else {
-      setAgents((rows) => rows.map((r) => (r.id === id ? { ...r, status: flip(r.status) } : r)));
+  async function toggleRowStatus(kind: "staff" | "agent", id: string) {
+    const cur = (kind === "staff" ? executiveStaff : agents).find((r) => r.id === id);
+    const next = cur?.status === "active" ? "suspended" : "active";
+    try {
+      const res = await fetch(`/api/${kind === "staff" ? "staff" : "agents"}/${encodeURIComponent(id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: next }),
+      });
+      const d = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(d.error ?? "Update failed");
+      if (kind === "staff") setExecutiveStaff((rs) => rs.map((r) => (r.id === id ? { ...r, status: next } : r)));
+      else setAgents((rs) => rs.map((r) => (r.id === id ? { ...r, status: next } : r)));
+      toast.success(`${id} ${next}`);
+    } catch (e) {
+      toast.error("Update failed", { description: e instanceof Error ? e.message : undefined });
     }
-    toast.success(`${id} status updated`);
   }
 
-  function deleteRow(kind: "staff" | "agent", id: string) {
-    if (kind === "staff") setExecutiveStaff((rows) => rows.filter((r) => r.id !== id));
-    else setAgents((rows) => rows.filter((r) => r.id !== id));
-    toast.success(`${id} removed`);
+  async function deleteRow(kind: "staff" | "agent", id: string) {
+    try {
+      const res = await fetch(`/api/${kind === "staff" ? "staff" : "agents"}/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const d = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(d.error ?? "Delete failed");
+      if (kind === "staff") setExecutiveStaff((rs) => rs.filter((r) => r.id !== id));
+      else setAgents((rs) => rs.filter((r) => r.id !== id));
+      toast.success(`${id} removed`);
+    } catch (e) {
+      toast.error("Delete failed", { description: e instanceof Error ? e.message : undefined });
+    }
   }
 
-  function saveRow(kind: "staff" | "agent", updated: StaffRow | AgentRow) {
-    if (kind === "staff") {
-      setExecutiveStaff((rows) => rows.map((r) => (r.id === updated.id ? (updated as StaffRow) : r)));
-    } else {
-      setAgents((rows) => rows.map((r) => (r.id === updated.id ? (updated as AgentRow) : r)));
+  async function saveRow(kind: "staff" | "agent", updated: StaffRow | AgentRow) {
+    const payload =
+      kind === "staff"
+        ? { fullName: updated.name, jobTitle: (updated as StaffRow).role, department: (updated as StaffRow).dept, phone: updated.phone, email: updated.email, salary: (updated as StaffRow).salary }
+        : { fullName: updated.name, province: (updated as AgentRow).province, phone: updated.phone, email: updated.email };
+    try {
+      const res = await fetch(`/api/${kind === "staff" ? "staff" : "agents"}/${encodeURIComponent(updated.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const d = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(d.error ?? "Save failed");
+      if (kind === "staff") setExecutiveStaff((rs) => rs.map((r) => (r.id === updated.id ? (updated as StaffRow) : r)));
+      else setAgents((rs) => rs.map((r) => (r.id === updated.id ? (updated as AgentRow) : r)));
+      toast.success(`${updated.id} updated`);
+    } catch (e) {
+      toast.error("Save failed", { description: e instanceof Error ? e.message : undefined });
     }
-    toast.success(`${updated.id} updated`);
   }
 
   const isAgents = hrSubTab === "agents";
@@ -164,7 +198,7 @@ export default function HRTab() {
         <MetricCard icon={Users} label="Executive Staff" value={String(executiveStaff.length)} />
         <MetricCard icon={Users} label="Agents" value={String(agents.length)} />
         <MetricCard icon={DollarSign} label="Staff Payroll" value={formatMoney(executiveStaff.reduce((s, e) => s + e.salary, 0))} />
-        <MetricCard icon={Banknote} label="Agent Payouts (Comm + Bonus)" value={formatMoney(agents.reduce((s, a) => s + a.commission + a.bonus, 0))} />
+        <MetricCard icon={Banknote} label="Agent Commission" value={formatMoney(agents.reduce((s, a) => s + a.commission, 0))} />
       </div>
 
       {/* Sub-tabs: Executive Staff vs Agents */}
@@ -251,8 +285,8 @@ export default function HRTab() {
               title={isAgents ? "QuickRecon — Agents Directory" : "QuickRecon — Executive Staff Directory"}
               data={isAgents
                 ? {
-                    columns: ["ID", "Name", "Role", "Province", "Phone", "Email", "Commission", "Bonus", "Float Assigned", "Float Balance", "Sales", "Status"],
-                    rows: agents.map((a) => [a.id, a.name, a.role, a.province, a.phone, a.email, a.commission, a.bonus, a.floatAssigned, a.floatBalance, a.sales, a.status]),
+                    columns: ["ID", "Name", "Province", "Phone", "Email", "Deposits", "Commission", "Closing Position", "Status"],
+                    rows: agents.map((a) => [a.id, a.name, a.province, a.phone, a.email, a.deposits, a.commission, a.closing, a.status]),
                   }
                 : {
                     columns: ["ID", "Name", "Role", "Department", "Phone", "Email", "Salary", "Status"],
@@ -266,17 +300,16 @@ export default function HRTab() {
                 <tr className="border-b bg-muted/50 text-left text-[11.5px] font-semibold text-muted-foreground uppercase">
                   <th className="px-3 py-2.5">ID</th>
                   <th className="px-3 py-2.5">Name</th>
-                  <th className="px-3 py-2.5">Role</th>
                   {isAgents ? (
                     <>
                       <th className="px-3 py-2.5">Province</th>
-                      <th className="px-3 py-2.5 text-right">Float</th>
+                      <th className="px-3 py-2.5 text-right">Deposits</th>
                       <th className="px-3 py-2.5 text-right">Commission</th>
-                      <th className="px-3 py-2.5 text-right">Bonus</th>
-                      <th className="px-3 py-2.5 text-right">Total Payout</th>
+                      <th className="px-3 py-2.5 text-right">Closing Pos.</th>
                     </>
                   ) : (
                     <>
+                      <th className="px-3 py-2.5">Role</th>
                       <th className="px-3 py-2.5">Department</th>
                       <th className="px-3 py-2.5 text-right">Salary (ZiG)</th>
                     </>
@@ -287,17 +320,27 @@ export default function HRTab() {
                 </tr>
               </thead>
               <tbody className="divide-y">
-                {isAgents
+                {dirLoading ? (
+                  <tr>
+                    <td colSpan={9} className="px-3 py-8 text-center text-[13px] text-muted-foreground">
+                      <LoaderCircle className="mr-2 inline size-4 animate-spin" aria-hidden /> Loading directory…
+                    </td>
+                  </tr>
+                ) : (isAgents ? agents : executiveStaff).length === 0 ? (
+                  <tr>
+                    <td colSpan={9} className="px-3 py-8 text-center text-[13px] text-muted-foreground">
+                      No records found.
+                    </td>
+                  </tr>
+                ) : isAgents
                   ? agents.map((a) => (
                       <tr key={a.id} className="hover:bg-surface-hover">
                         <td className="font-mono text-[12px] text-muted-foreground px-3 py-2.5">{a.id}</td>
                         <td className="px-3 py-2.5 font-medium">{a.name}</td>
-                        <td className="px-3 py-2.5">{a.role}</td>
                         <td className="px-3 py-2.5">{a.province}</td>
-                        <td className="tnum px-3 py-2.5 text-right">{a.floatBalance.toLocaleString()}</td>
+                        <td className="tnum px-3 py-2.5 text-right">{a.deposits.toLocaleString()}</td>
                         <td className="tnum px-3 py-2.5 text-right">{a.commission.toLocaleString()}</td>
-                        <td className="tnum px-3 py-2.5 text-right">{a.bonus.toLocaleString()}</td>
-                        <td className="tnum px-3 py-2.5 text-right font-semibold">{(a.commission + a.bonus).toLocaleString()}</td>
+                        <td className="tnum px-3 py-2.5 text-right font-semibold">{a.closing.toLocaleString()}</td>
                         <td className="px-3 py-2.5">
                           <Badge variant="outline" className={a.status === "active" ? "border-transparent bg-success-soft text-success-foreground" : "border-transparent bg-destructive-soft text-destructive"}>
                             {a.status}
@@ -317,8 +360,8 @@ export default function HRTab() {
                                   period: "September 2026",
                                   currency: "ZWG",
                                   commission: a.commission,
-                                  bonus: a.bonus,
-                                  floatBalance: a.floatBalance,
+                                  bonus: 0,
+                                  floatBalance: a.deposits,
                                 });
                                 toast.success("Commission report downloaded");
                               } catch (err) {
@@ -454,7 +497,6 @@ function HRRecordsPanel({ staff }: { staff: { id: string; name: string }[] }) {
   const [createOpen, setCreateOpen] = React.useState(false);
 
   const load = React.useCallback(async () => {
-    setLoading(true);
     try {
       const res = await fetch("/api/hr/records");
       if (res.ok) {
@@ -466,7 +508,9 @@ function HRRecordsPanel({ staff }: { staff: { id: string; name: string }[] }) {
     }
   }, []);
 
-  React.useEffect(() => { load(); }, [load]);
+  React.useEffect(() => {
+    queueMicrotask(() => { void load(); });
+  }, [load]);
 
   const shown = typeFilter === "all" ? records : records.filter((r) => r.type === typeFilter);
 
@@ -611,7 +655,7 @@ function HRRecordDialog({
   const set = (k: string) => (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
     setFields((f) => ({ ...f, [k]: e.target.value }));
 
-  const FIELD = ({ k, label, type: t = "text", placeholder }: { k: string; label: string; type?: string; placeholder?: string }) => (
+  const renderField = ({ k, label, type: t = "text", placeholder }: { k: string; label: string; type?: string; placeholder?: string }) => (
     <div className="space-y-1.5">
       <Label className="text-[12.5px]">{label}</Label>
       <Input type={t} value={fields[k] ?? ""} onChange={set(k)} placeholder={placeholder} className="h-9 bg-card" />
@@ -678,9 +722,9 @@ function HRRecordDialog({
 
           {type === "welfare" && (
             <>
-              <FIELD k="benefit" label="Benefit" placeholder="e.g. Medical aid, funeral cover" />
-              <FIELD k="amount" label="Amount (ZiG)" type="number" />
-              <FIELD k="notes" label="Notes" />
+              {renderField({ k: "benefit", label: "Benefit", placeholder: "e.g. Medical aid, funeral cover" })}
+              {renderField({ k: "amount", label: "Amount (ZiG)", type: "number" })}
+              {renderField({ k: "notes", label: "Notes" })}
             </>
           )}
           {type === "leave" && (
@@ -699,65 +743,65 @@ function HRRecordDialog({
                 </Select>
               </div>
               <div className="grid grid-cols-3 gap-3">
-                <FIELD k="from" label="From" type="date" />
-                <FIELD k="to" label="To" type="date" />
-                <FIELD k="days" label="Days" type="number" />
+                {renderField({ k: "from", label: "From", type: "date" })}
+                {renderField({ k: "to", label: "To", type: "date" })}
+                {renderField({ k: "days", label: "Days", type: "number" })}
               </div>
-              <FIELD k="reason" label="Reason" />
+              {renderField({ k: "reason", label: "Reason" })}
             </>
           )}
           {type === "loan" && (
             <>
               <div className="grid grid-cols-3 gap-3">
-                <FIELD k="amount" label="Amount (ZiG)" type="number" />
-                <FIELD k="installments" label="Installments" type="number" />
-                <FIELD k="monthly" label="Monthly (ZiG)" type="number" />
+                {renderField({ k: "amount", label: "Amount (ZiG)", type: "number" })}
+                {renderField({ k: "installments", label: "Installments", type: "number" })}
+                {renderField({ k: "monthly", label: "Monthly (ZiG)", type: "number" })}
               </div>
-              <FIELD k="reason" label="Reason" />
+              {renderField({ k: "reason", label: "Reason" })}
             </>
           )}
           {type === "sick_note" && (
             <>
               <div className="grid grid-cols-3 gap-3">
-                <FIELD k="from" label="From" type="date" />
-                <FIELD k="to" label="To" type="date" />
-                <FIELD k="days" label="Days" type="number" />
+                {renderField({ k: "from", label: "From", type: "date" })}
+                {renderField({ k: "to", label: "To", type: "date" })}
+                {renderField({ k: "days", label: "Days", type: "number" })}
               </div>
-              <FIELD k="clinic" label="Clinic / Doctor" />
-              <FIELD k="notes" label="Notes" />
+              {renderField({ k: "clinic", label: "Clinic / Doctor" })}
+              {renderField({ k: "notes", label: "Notes" })}
             </>
           )}
           {type === "timecard" && (
             <div className="grid grid-cols-2 gap-3">
-              <FIELD k="date" label="Date" type="date" />
-              <FIELD k="hours" label="Hours" type="number" />
-              <FIELD k="clockIn" label="Clock In" type="time" />
-              <FIELD k="clockOut" label="Clock Out" type="time" />
+              {renderField({ k: "date", label: "Date", type: "date" })}
+              {renderField({ k: "hours", label: "Hours", type: "number" })}
+              {renderField({ k: "clockIn", label: "Clock In", type: "time" })}
+              {renderField({ k: "clockOut", label: "Clock Out", type: "time" })}
             </div>
           )}
           {type === "banking" && (
             <>
               <div className="grid grid-cols-2 gap-3">
-                <FIELD k="bank" label="Bank" placeholder="e.g. CBZ" />
-                <FIELD k="branch" label="Branch" />
+                {renderField({ k: "bank", label: "Bank", placeholder: "e.g. CBZ" })}
+                {renderField({ k: "branch", label: "Branch" })}
               </div>
-              <FIELD k="accountName" label="Account Name" />
+              {renderField({ k: "accountName", label: "Account Name" })}
               <div className="grid grid-cols-2 gap-3">
-                <FIELD k="accountNo" label="Account Number" />
-                <FIELD k="ecocash" label="EcoCash Number" />
+                {renderField({ k: "accountNo", label: "Account Number" })}
+                {renderField({ k: "ecocash", label: "EcoCash Number" })}
               </div>
             </>
           )}
           {type === "kyc" && (
             <>
               <div className="grid grid-cols-2 gap-3">
-                <FIELD k="idNumber" label="National ID" />
-                <FIELD k="passport" label="Passport No." />
+                {renderField({ k: "idNumber", label: "National ID" })}
+                {renderField({ k: "passport", label: "Passport No." })}
               </div>
-              <FIELD k="address" label="Residential Address" />
+              {renderField({ k: "address", label: "Residential Address" })}
               <div className="grid grid-cols-2 gap-3">
-                <FIELD k="nextOfKin" label="Next of Kin" />
-                <FIELD k="nextOfKinPhone" label="NOK Phone" />
+                {renderField({ k: "nextOfKin", label: "Next of Kin" })}
+                {renderField({ k: "nextOfKinPhone", label: "NOK Phone" })}
               </div>
             </>
           )}
@@ -824,8 +868,8 @@ function EditRowDialog({
   const [form, setForm] = React.useState<Record<string, string>>(() => {
     const r = target.row;
     const init: Record<string, string> = isStaff
-      ? { name: r.name, role: r.role, dept: (r as StaffRow).dept, phone: r.phone, email: r.email, salary: String((r as StaffRow).salary) }
-      : { name: r.name, role: r.role, province: (r as AgentRow).province, phone: r.phone, email: r.email, commission: String((r as AgentRow).commission), bonus: String((r as AgentRow).bonus) };
+      ? { name: r.name, role: (r as StaffRow).role, dept: (r as StaffRow).dept, phone: r.phone, email: r.email, salary: String((r as StaffRow).salary) }
+      : { name: r.name, province: (r as AgentRow).province, phone: r.phone, email: r.email };
     return init;
   });
 
@@ -842,7 +886,7 @@ function EditRowDialog({
       onSave({ ...r, name: form.name.trim(), role: form.role.trim(), dept: form.dept.trim(), phone: form.phone.trim(), email: form.email.trim(), salary: Number(form.salary) || r.salary });
     } else {
       const r = target.row as AgentRow;
-      onSave({ ...r, name: form.name.trim(), role: (form.role === "Assistant" ? "Assistant" : "Agent"), province: form.province.trim(), phone: form.phone.trim(), email: form.email.trim(), commission: Number(form.commission) || 0, bonus: Number(form.bonus) || 0 });
+      onSave({ ...r, name: form.name.trim(), province: form.province.trim(), phone: form.phone.trim(), email: form.email.trim() });
     }
     onClose();
   }
@@ -859,17 +903,19 @@ function EditRowDialog({
             <Label>Name</Label>
             <Input value={form.name} onChange={set("name")} />
           </div>
-          <div className="space-y-1.5">
-            <Label>Role</Label>
-            <Input value={form.role} onChange={set("role")} />
-          </div>
           {isStaff ? (
-            <div className="space-y-1.5">
-              <Label>Department</Label>
-              <Input value={form.dept} onChange={set("dept")} />
-            </div>
+            <>
+              <div className="space-y-1.5">
+                <Label>Role</Label>
+                <Input value={form.role} onChange={set("role")} />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Department</Label>
+                <Input value={form.dept} onChange={set("dept")} />
+              </div>
+            </>
           ) : (
-            <div className="space-y-1.5">
+            <div className="space-y-1.5 sm:col-span-2">
               <Label>Province</Label>
               <Input value={form.province} onChange={set("province")} />
             </div>
@@ -882,24 +928,19 @@ function EditRowDialog({
             <Label>Email</Label>
             <Input type="email" value={form.email} onChange={set("email")} />
           </div>
-          {isStaff ? (
+          {isStaff && (
             <div className="space-y-1.5 sm:col-span-2">
               <Label>Salary (ZiG)</Label>
               <Input type="number" value={form.salary} onChange={set("salary")} />
             </div>
-          ) : (
-            <>
-              <div className="space-y-1.5">
-                <Label>Commission (ZiG)</Label>
-                <Input type="number" value={form.commission} onChange={set("commission")} />
-              </div>
-              <div className="space-y-1.5">
-                <Label>Bonus (ZiG)</Label>
-                <Input type="number" value={form.bonus} onChange={set("bonus")} />
-              </div>
-            </>
           )}
         </div>
+
+        {/* Remuneration payment methods — 3+ optional bank / mobile-money / other */}
+        <div className="border-t pt-3">
+          <PaymentMethodsEditor ownerType={isStaff ? "staff" : "agent"} ownerId={target.row.id} />
+        </div>
+
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>Cancel</Button>
           <Button onClick={save}>Save Changes</Button>
@@ -970,8 +1011,7 @@ function PayslipDialog({
   deductions: Deduction[];
   onClose: () => void;
 }) {
-  const loanAmount = staff.loan?.amount ?? 0;
-  const dedTotal = deductions.reduce((s, d) => s + d.amount, 0) + loanAmount;
+  const dedTotal = deductions.reduce((s, d) => s + d.amount, 0);
   const net = staff.salary - dedTotal;
 
   return (
@@ -991,12 +1031,6 @@ function PayslipDialog({
                 <span className="tnum text-destructive">({formatMoney(d.amount)})</span>
               </div>
             ))}
-            {staff.loan && (
-              <div className="flex justify-between py-0.5">
-                <span>{staff.loan.label}</span>
-                <span className="tnum text-destructive">({formatMoney(staff.loan.amount)})</span>
-              </div>
-            )}
           </div>
           <div className="flex justify-between border-t pt-2 text-[14px] font-bold">
             <span>Net pay</span>
@@ -1018,7 +1052,6 @@ function PayslipDialog({
                   currency: "ZWG",
                   basicSalary: staff.salary,
                   deductions,
-                  loanRepayment: staff.loan,
                 });
                 toast.success("Payslip downloaded");
                 onClose();

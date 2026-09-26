@@ -32,6 +32,7 @@ export default async function DashboardPage() {
 
   const agentId = session.user.agentId ?? "AGT-000184";
   const agent = (await getAgentById(agentId)) ?? (await getAgents())[0];
+  if (!agent) redirect("/login");
   const booths = await getBooths(agent.id);
 
   const hour = new Date().getHours();

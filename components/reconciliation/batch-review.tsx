@@ -364,10 +364,13 @@ export function BatchReview({ rows }: { rows: Reconciliation[] }) {
                   <TriangleAlert className="size-4" aria-hidden /> Resolve exception
                 </Link>
               </DropdownMenuItem>
-              <DropdownMenuItem className="gap-2" onSelect={() => toast.success("Agent reconciliation queued for reprocessing")}>
-                <RotateCcw className="size-4" aria-hidden /> Reprocess
-              </DropdownMenuItem>
-              <DropdownMenuItem className="gap-2" onSelect={() => toast.success("Report generated", { description: `PDF + CSV for ${row.original.agentName} (${row.original.agentId})` })}>
+              <DropdownMenuItem
+                className="gap-2"
+                onSelect={() => {
+                  const url = `/api/reconciliation/download?agentId=${encodeURIComponent(row.original.agentId)}&period=${encodeURIComponent(row.original.period)}&format=xlsx`;
+                  window.open(url, "_blank");
+                }}
+              >
                 <FileDown className="size-4" aria-hidden /> Generate Report
               </DropdownMenuItem>
               <DropdownMenuItem className="gap-2" onSelect={() => setSendAgent(row.original)}>

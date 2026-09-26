@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -64,11 +65,13 @@ export function MyAssistants({
   booths: Booth[];
   isAdminView?: boolean;
 }) {
+  const router = useRouter();
   const [open, setOpen] = React.useState(false);
   const [perms, setPerms] = React.useState<string[]>(["submissions"]);
   const [search, setSearch] = React.useState("");
   const [statusFilter, setStatusFilter] = React.useState<string>("all");
   const [boothFilter, setBoothFilter] = React.useState<string>("all");
+  const [busy, setBusy] = React.useState(false);
 
   const filtered = React.useMemo(() => {
     return assistants.filter((a) => {
@@ -103,13 +106,63 @@ export function MyAssistants({
   }
 
   async function onSubmit(values: RequestValues) {
-    console.info("assistant request", { ...values, perms });
-    toast.success("Assistant request submitted", {
-      description: "A Super Admin will review and approve the account before it activates.",
-    });
-    setOpen(false);
-    form.reset();
-    setPerms(["submissions"]);
+    setBusy(true);
+    try {
+      const res = await fetch("/api/assistants", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...values, permissions: perms }),
+      });
+      const d = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(d.error ?? "Request failed");
+      toast.success("Assistant request submitted", {
+        description: "A Super Admin will review and approve the account before it activates.",
+      });
+      setOpen(false);
+      form.reset();
+      setPerms(["submissions"]);
+      router.refresh();
+    } catch (e) {
+      toast.error("Request failed", { description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Persist an assistant status change (approve / suspend / activate). */
+  async function setStatus(a: Assistant, status: string) {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/assistants/${encodeURIComponent(a.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      });
+      const d = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(d.error ?? "Update failed");
+      toast.success(`${a.fullName} ${status}`);
+      router.refresh();
+    } catch (e) {
+      toast.error("Update failed", { description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  /** Permanently remove an assistant account. */
+  async function removeAssistant(a: Assistant) {
+    setBusy(true);
+    try {
+      const res = await fetch(`/api/assistants/${encodeURIComponent(a.id)}`, { method: "DELETE" });
+      const d = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(d.error ?? "Remove failed");
+      toast.success(`${a.fullName} removed`);
+      router.refresh();
+    } catch (e) {
+      toast.error("Remove failed", { description: e instanceof Error ? e.message : undefined });
+    } finally {
+      setBusy(false);
+    }
   }
 
   return (
@@ -290,19 +343,32 @@ export function MyAssistants({
                   </Button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end">
-                  <DropdownMenuItem onSelect={() => toast.info(`Viewing profile for ${a.fullName}`)}>
-                    View profile
-                  </DropdownMenuItem>
-                  <DropdownMenuItem onSelect={() => toast.info(`Editing permissions for ${a.fullName}`)}>
-                    Edit permissions
-                  </DropdownMenuItem>
-                  {isAdminView && (
-                    <DropdownMenuItem
-                      className="text-destructive focus:text-destructive"
-                      onSelect={() => toast.success(`${a.fullName} has been removed`)}
-                    >
-                      Remove assistant
-                    </DropdownMenuItem>
+                  {isAdminView ? (
+                    <>
+                      {a.status === "pending" && (
+                        <DropdownMenuItem disabled={busy} onSelect={() => setStatus(a, "active")}>
+                          Approve
+                        </DropdownMenuItem>
+                      )}
+                      {a.status === "active" ? (
+                        <DropdownMenuItem disabled={busy} onSelect={() => setStatus(a, "suspended")}>
+                          Suspend
+                        </DropdownMenuItem>
+                      ) : a.status !== "pending" ? (
+                        <DropdownMenuItem disabled={busy} onSelect={() => setStatus(a, "active")}>
+                          Activate
+                        </DropdownMenuItem>
+                      ) : null}
+                      <DropdownMenuItem
+                        className="text-destructive focus:text-destructive"
+                        disabled={busy}
+                        onSelect={() => removeAssistant(a)}
+                      >
+                        Remove assistant
+                      </DropdownMenuItem>
+                    </>
+                  ) : (
+                    <DropdownMenuItem disabled>No actions — pending admin review</DropdownMenuItem>
                   )}
                 </DropdownMenuContent>
               </DropdownMenu>

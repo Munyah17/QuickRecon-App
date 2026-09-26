@@ -16,6 +16,7 @@ export interface DocLine {
 export type DocStatus =
   | "paid"
   | "pending"
+  | "sent"
   | "overdue"
   | "draft"
   | "accepted"
@@ -71,6 +72,7 @@ const STATUS_COLOR: Record<DocStatus, string> = {
   paid: "#15803d",
   accepted: "#15803d",
   pending: "#b45309",
+  sent: "#1d4ed8",
   overdue: "#b91c1c",
   declined: "#b91c1c",
   draft: "#6b7280",

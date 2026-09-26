@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { Users, UserRoundCheck, ShieldCheck, TriangleAlert, ArrowUpRight } from "lucide-react";
+import { Users, UserRoundCheck, ShieldCheck, TriangleAlert, ArrowUpRight, Upload, RefreshCcw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { MetricCard } from "@/components/shared/metric-card";
 import { ModuleSelector } from "@/components/shared/module-selector";
@@ -46,13 +47,21 @@ export function AdminDashboard({
   return (
     <div className="space-y-4 sm:space-y-5">
       {/* Mobile greeting (per mobile mockup #2) */}
-      <div className="space-y-4 lg:hidden">
+      <div className="space-y-3 lg:hidden">
         <Card className="gap-0 py-0 shadow-xs">
-          <CardContent className="p-4">
-            <p className="mb-2 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
-              Module
-            </p>
-            <ModuleSelector allowAll />
+          <CardContent className="space-y-3 p-4">
+            <div>
+              <p className="mb-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                Module
+              </p>
+              <ModuleSelector allowAll />
+            </div>
+            <div>
+              <p className="mb-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                Period
+              </p>
+              <PeriodSelector />
+            </div>
           </CardContent>
         </Card>
         <div className="flex items-end justify-between">
@@ -60,6 +69,18 @@ export function AdminDashboard({
             <h1 className="text-[22px] font-bold tracking-tight">Good day, {firstName}</h1>
             <p className="mt-0.5 text-[12.5px] text-muted-foreground">{today}</p>
           </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2">
+          <Button variant="outline" className="h-9 gap-1.5 text-[12.5px]" asChild>
+            <Link href="/app/imports">
+              <Upload className="size-4" aria-hidden /> New Import
+            </Link>
+          </Button>
+          <Button className="h-9 gap-1.5 text-[12.5px]" asChild>
+            <Link href="/app/reconciliation">
+              <RefreshCcw className="size-4" aria-hidden /> Recon Workbench
+            </Link>
+          </Button>
         </div>
       </div>
 
@@ -78,7 +99,7 @@ export function AdminDashboard({
       </div>
 
       {/* Metric cards */}
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
         <MetricCard
           label="Total Agents"
           value="248"

@@ -25,15 +25,17 @@ import { AgentAvatar } from "@/components/shared/agent-avatar";
 import { MoneyValue } from "@/components/shared/money-value";
 import { ExportButton } from "@/components/shared/export-button";
 import { BatchReview } from "@/components/reconciliation/batch-review";
+import { ReconWorkbench } from "@/components/reconciliation/recon-workbench";
 import { formatMoney, formatPeriod, moduleName } from "@/lib/format";
 import { downloadFromApi } from "@/lib/export";
 import { useWorkspace } from "@/components/workspace-provider";
-import type { Reconciliation, Txn } from "@/types";
+import type { Reconciliation, ReconException, Txn } from "@/types";
 import type { getReconciliationDocuments } from "@/lib/data";
 
 type ReconDocument = Awaited<ReturnType<typeof getReconciliationDocuments>>[number];
 
 const TABS = [
+  { id: "workbench", label: "Workbench" },
   { id: "summary", label: "Summary" },
   { id: "breakdowns", label: "Breakdowns" },
   { id: "transactions", label: "Transactions" },
@@ -50,12 +52,14 @@ export function ReconciliationTabs({
   rows,
   transactions,
   documents,
+  exceptions,
   canEditCells = false,
 }: {
   activeTab: string;
   rows: Reconciliation[];
   transactions: Txn[];
   documents: ReconDocument[];
+  exceptions: ReconException[];
   /** Super-admin inline cell editing on Breakdowns. */
   canEditCells?: boolean;
 }) {
@@ -72,7 +76,7 @@ export function ReconciliationTabs({
         {TABS.map((t) => (
           <Link
             key={t.id}
-            href={t.id === "summary" ? "/app/reconciliation" : `/app/reconciliation?tab=${t.id}`}
+            href={t.id === "workbench" ? "/app/reconciliation" : `/app/reconciliation?tab=${t.id}`}
             className={
               activeTab === t.id
                 ? "shrink-0 border-b-2 border-primary px-1 pb-2.5 text-[13px] font-semibold text-foreground"
@@ -90,6 +94,7 @@ export function ReconciliationTabs({
         </Link>
       </div>
 
+      {activeTab === "workbench" && <ReconWorkbench rows={rows} exceptions={exceptions} />}
       {activeTab === "summary" && <BatchReview rows={rows} />}
       {activeTab === "breakdowns" && <BreakdownsView rows={scoped} canEdit={canEditCells} />}
       {activeTab === "transactions" && <TransactionsView transactions={transactions} />}

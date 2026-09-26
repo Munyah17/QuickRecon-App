@@ -61,6 +61,21 @@ function previewUser(role: RoleCode): AppUser {
   return { ...PREVIEW_USERS[role] };
 }
 
+const ROLE_ALIASES: Record<string, RoleCode> = {
+  superadmin: "super_admin",
+  super_admin: "super_admin",
+  admin: "admin",
+  agent: "agent",
+  assistant: "assistant",
+  tech_support: "tech_support",
+};
+
+/** Map a raw profiles.role value to a valid RoleCode (defaults to "agent"). */
+function normalizeRole(raw: string | null | undefined): RoleCode {
+  if (!raw) return "agent";
+  return ROLE_ALIASES[raw.trim().toLowerCase()] ?? "agent";
+}
+
 /**
  * Resolve the current session. When Supabase is configured this reads the
  * auth cookie and loads the profile + permissions. Otherwise the app runs
@@ -82,7 +97,7 @@ export const getSession = cache(async (): Promise<SessionInfo | null> => {
       .eq("id", authUser.id)
       .single();
 
-    const role = (profile?.role ?? "agent") as RoleCode;
+    const role = normalizeRole(profile?.role);
     const user: AppUser = {
       id: authUser.id,
       fullName: profile?.full_name ?? authUser.email ?? "User",
