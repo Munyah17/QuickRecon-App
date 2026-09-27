@@ -22,7 +22,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { fullName, email, phone, nationalId, location, role, moduleAccess, password } = body ?? {};
+  const { fullName, email, phone, nationalId, location, province, role, moduleAccess, password } = body ?? {};
 
   if (!fullName?.trim() || !email?.trim()) {
     return NextResponse.json({ error: "Full name and email are required" }, { status: 400 });
@@ -30,7 +30,14 @@ export async function POST(request: NextRequest) {
   if (!VALID_ROLES.includes(role)) {
     return NextResponse.json({ error: "Invalid role" }, { status: 400 });
   }
-  if (typeof password !== "string" || password.length < 8) {
+
+  // Password is optional for agent/assistant accounts — generate a one-time
+  // temporary password that is returned to the admin to share.
+  const generatedPassword = typeof password !== "string" || password.length === 0;
+  const finalPassword = generatedPassword
+    ? `Qr-${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}!`
+    : password;
+  if (typeof finalPassword !== "string" || finalPassword.length < 8) {
     return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 });
   }
 
@@ -42,7 +49,7 @@ export async function POST(request: NextRequest) {
 
   const { data: authUser, error: authError } = await sb.auth.admin.createUser({
     email: email.trim().toLowerCase(),
-    password,
+    password: finalPassword,
     email_confirm: true,
     user_metadata: { full_name: fullName.trim(), role },
   });
@@ -79,25 +86,43 @@ export async function POST(request: NextRequest) {
       full_name: fullName.trim(),
       email: email.trim().toLowerCase(),
       phone: phone || null,
-      province: location || null,
+      province: province || location || null,
       location: location || null,
       national_id: nationalId || null,
       status: "pending",
       kyc_status: "pending",
     });
-    if (!agentError) {
-      await sb.from("profiles").update({ agent_id: agentId }).eq("id", userId);
-      const modules = moduleAccess === "both"
-        ? ["enpassent", "econet-moovah"]
-        : [moduleAccess];
-      await sb.from("agent_modules").insert(
-        modules.filter(Boolean).map((m: string) => ({ agent_id: agentId, module: m }))
+    if (agentError) {
+      // Roll back so a failed agent insert doesn't leave an orphaned login.
+      await sb.from("profiles").delete().eq("id", userId);
+      await sb.auth.admin.deleteUser(userId);
+      return NextResponse.json(
+        { error: `Agent profile could not be created: ${agentError.message}` },
+        { status: 500 }
       );
-      return NextResponse.json({ status: "pending", userId, agentId });
     }
+    await sb.from("profiles").update({ agent_id: agentId }).eq("id", userId);
+    const modules = moduleAccess === "both"
+      ? ["enpassent", "econet-moovah"]
+      : [moduleAccess].filter(Boolean);
+    if (modules.length) {
+      await sb.from("agent_modules").insert(
+        modules.map((m: string) => ({ agent_id: agentId, module: m }))
+      );
+    }
+    return NextResponse.json({
+      status: "pending",
+      userId,
+      agentId,
+      ...(generatedPassword ? { tempPassword: finalPassword } : {}),
+    });
   }
 
-  return NextResponse.json({ status: "active", userId });
+  return NextResponse.json({
+    status: "active",
+    userId,
+    ...(generatedPassword ? { tempPassword: finalPassword } : {}),
+  });
 }
 
 /**

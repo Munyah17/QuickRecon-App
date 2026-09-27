@@ -51,6 +51,8 @@ interface ProcessResult {
   stats: { recordsIn: number; recordsNormalised: number; unmatched: number; duplicates: number };
   results: { status: "success" | "warning" | "attention" }[];
   exceptions: { type: string; severity: string; description: string }[];
+  persisted?: boolean;
+  persistenceErrors?: string[];
 }
 
 const STEPS = [
@@ -491,20 +493,65 @@ function ProcessingSummary({
     },
     { success: 0, warning: 0, attention: 0 }
   );
+  const persistenceErrors = result.persistenceErrors ?? [];
+  const persisted = result.persisted !== false && persistenceErrors.length === 0;
 
   return (
     <div className="space-y-5">
       <div className="flex items-start gap-3">
-        <span className="flex size-10 shrink-0 items-center justify-center rounded-full bg-success-soft text-success-foreground">
-          <CircleCheck className="size-5" aria-hidden />
+        <span
+          className={cn(
+            "flex size-10 shrink-0 items-center justify-center rounded-full",
+            persisted
+              ? "bg-success-soft text-success-foreground"
+              : "bg-destructive/10 text-destructive"
+          )}
+        >
+          {persisted ? (
+            <CircleCheck className="size-5" aria-hidden />
+          ) : (
+            <TriangleAlert className="size-5" aria-hidden />
+          )}
         </span>
         <div>
-          <p className="text-[15px] font-bold">Import staged successfully</p>
+          <p className="text-[15px] font-bold">
+            {persisted
+              ? "Import staged successfully"
+              : "Import processed — but results were NOT saved"}
+          </p>
           <p className="text-[12.5px] text-muted-foreground">
             Batch {result.batchId} · {moduleName(module)} · {formatPeriod(period)}
           </p>
         </div>
       </div>
+
+      {persistenceErrors.length > 0 && (
+        <div className="rounded-xl border border-destructive/30 bg-destructive/5 p-4">
+          <p className="mb-2 flex items-center gap-2 text-[13px] font-semibold text-destructive">
+            <TriangleAlert className="size-4" aria-hidden />
+            Failed to write results to the database
+          </p>
+          <ul className="space-y-1 text-[12px] text-destructive/90">
+            {persistenceErrors.map((e, i) => (
+              <li key={i}>• {e}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {result.results.length === 0 && (
+        <div className="rounded-xl border border-warning/30 bg-warning-soft/60 p-4">
+          <p className="flex items-center gap-2 text-[13px] font-semibold text-warning-foreground">
+            <TriangleAlert className="size-4" aria-hidden />
+            No agent reconciliations were produced
+          </p>
+          <p className="mt-1 text-[12px] text-warning-foreground/90">
+            The workbook rows did not match any registered agents. Verify the agents
+            exist under Agents and that their external IDs are mapped in Identity
+            Aliases before re-importing.
+          </p>
+        </div>
+      )}
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <SummaryTile label="Records normalised" value={result.stats.recordsNormalised.toLocaleString()} />

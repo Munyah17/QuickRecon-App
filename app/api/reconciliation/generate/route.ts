@@ -68,7 +68,7 @@ export async function POST(request: NextRequest) {
 
     // Persist batch and documents to Supabase if available.
     if (sb) {
-      await sb.from("reconciliation_batches").insert({
+      const { error: batchErr } = await sb.from("reconciliation_batches").insert({
         id: batchDocs.batchId,
         module: batchDocs.module,
         period: batchDocs.period,
@@ -76,6 +76,13 @@ export async function POST(request: NextRequest) {
         created_by: session.user.id,
         status: "review",
       });
+      if (batchErr) {
+        console.error("reconciliation_batches insert failed:", batchErr.message);
+        return NextResponse.json(
+          { error: `Failed to persist reconciliation batch: ${batchErr.message}` },
+          { status: 500 }
+        );
+      }
 
       const rows = batchDocs.documents.map((d) => ({
         batch_id: batchDocs.batchId,
@@ -104,7 +111,16 @@ export async function POST(request: NextRequest) {
         created_at: d.generatedAt,
       }));
 
-      await sb.from("reconciliation_documents").insert(rows);
+      if (rows.length) {
+        const { error: docsErr } = await sb.from("reconciliation_documents").insert(rows);
+        if (docsErr) {
+          console.error("reconciliation_documents insert failed:", docsErr.message);
+          return NextResponse.json(
+            { error: `Failed to persist reconciliation documents: ${docsErr.message}` },
+            { status: 500 }
+          );
+        }
+      }
     }
 
     return NextResponse.json({

@@ -57,10 +57,11 @@ function mapAgent(row: any): (typeof MOCK_AGENTS)[number] {
 export async function getAgents() {
   const supabase = await db();
   if (supabase) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("agents")
       .select("*, agent_modules(module, enabled), booths:booths(count), assistants:assistants(count)")
       .order("full_name", { ascending: true });
+    if (error) console.error("getAgents query failed:", error.message);
     return (data ?? []).map(mapAgent);
   }
   return MOCK_AGENTS;
@@ -174,7 +175,8 @@ export async function getReconciliations(opts: {
     if (opts.agentId) q = q.eq("agent_id", opts.agentId);
     if (opts.module && opts.module !== "all") q = q.eq("module", opts.module);
     if (opts.period) q = q.eq("period", opts.period);
-    const { data } = await q.order("period", { ascending: false });
+    const { data, error } = await q.order("period", { ascending: false });
+    if (error) console.error("getReconciliations query failed:", error.message);
     return (data ?? []).map(mapRecon);
   }
   let rows = MOCK_RECONCILIATIONS;
@@ -226,7 +228,8 @@ export async function getReconciliationDocuments(batchId?: string) {
       .select("*")
       .order("created_at", { ascending: false });
     if (batchId) q = q.eq("batch_id", batchId);
-    const { data } = await q;
+    const { data, error } = await q;
+    if (error) console.error("getReconciliationDocuments query failed:", error.message);
     if (data?.length) {
       return data.map((d: any) => ({
         id: d.id,
@@ -267,7 +270,8 @@ export async function getExceptions(batchId?: string) {
       .select("*, agents(full_name)")
       .order("created_at", { ascending: false });
     if (batchId) q = q.eq("import_batch_id", batchId);
-    const { data } = await q;
+    const { data, error } = await q;
+    if (error) console.error("getExceptions query failed:", error.message);
     return (data ?? []).map((e: any) => ({
       id: e.id,
       batchId: e.import_batch_id ?? e.batch_id ?? "",
@@ -291,10 +295,11 @@ export async function getExceptions(batchId?: string) {
 export async function getImportBatches() {
   const supabase = await db();
   if (supabase) {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from("import_batches")
       .select("*")
       .order("created_at", { ascending: false });
+    if (error) console.error("getImportBatches query failed:", error.message);
     return (data ?? []).map((b: any) => ({
       id: b.id,
       fileName: b.file_name,
@@ -437,7 +442,8 @@ export async function getTransactions(agentId?: string) {
 export async function getIdentityAliases() {
   const supabase = await db();
   if (supabase) {
-    const { data } = await supabase.from("agent_external_ids").select("*");
+    const { data, error } = await supabase.from("agent_external_ids").select("*");
+    if (error) console.error("getIdentityAliases query failed:", error.message);
     return (data ?? []).map((r: any) => ({ agentId: r.agent_id, scheme: r.scheme, value: r.value }));
   }
   return MOCK_EXTERNAL_IDS;

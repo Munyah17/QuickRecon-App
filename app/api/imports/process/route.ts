@@ -54,7 +54,38 @@ export async function POST(request: NextRequest) {
       sheets[name] = XLSX.utils.sheet_to_json<SourceRow>(sheet, { defval: null });
     }
 
-    const [agents, aliases] = await Promise.all([getAgents(), getIdentityAliases()]);
+    // Read agents + identity aliases through the service client. This route is
+    // already permission-gated (imports.process), and going through the
+    // caller's RLS session can silently return zero agents — the engine then
+    // reconciles nothing and no documents are produced.
+    const { createServiceClient } = await import("@/lib/supabase/server");
+    const sb = await createServiceClient();
+
+    let agents: { id: string; fullName: string; openingPosition: number }[] = [];
+    let aliases: { scheme: string; value: string; agentId: string }[] = [];
+    if (sb) {
+      const [{ data: agentRows, error: agentsErr }, { data: aliasRows, error: aliasErr }] =
+        await Promise.all([
+          sb.from("agents").select("id, full_name, opening_position"),
+          sb.from("agent_external_ids").select("scheme, value, agent_id"),
+        ]);
+      if (agentsErr) console.error("imports/process agents read failed:", agentsErr.message);
+      if (aliasErr) console.error("imports/process aliases read failed:", aliasErr.message);
+      agents = (agentRows ?? []).map((a) => ({
+        id: a.id,
+        fullName: a.full_name,
+        openingPosition: Number(a.opening_position) || 0,
+      }));
+      aliases = (aliasRows ?? []).map((a) => ({
+        scheme: a.scheme,
+        value: a.value,
+        agentId: a.agent_id,
+      }));
+    } else {
+      const [mockAgents, mockAliases] = await Promise.all([getAgents(), getIdentityAliases()]);
+      agents = mockAgents.map((a) => ({ id: a.id, fullName: a.fullName, openingPosition: 0 }));
+      aliases = mockAliases;
+    }
 
     const scopedAgents =
       agentScope === "all" ? agents : agents.filter((a) => a.id === agentScope);
@@ -66,15 +97,16 @@ export async function POST(request: NextRequest) {
       module: moduleCode,
       period,
       sheets,
-      agents: scopedAgents.map((a) => ({ id: a.id, fullName: a.fullName, openingPosition: 0 })),
+      agents: scopedAgents.map((a) => ({ id: a.id, fullName: a.fullName, openingPosition: a.openingPosition })),
       aliases,
     });
 
     const batchDocs = generateAgentDocuments(output);
 
-    // Persist staged documents to Supabase when configured.
-    const { createServiceClient } = await import("@/lib/supabase/server");
-    const sb = await createServiceClient();
+    // Persist staged documents to Supabase when configured. Every failure is
+    // collected and returned so the operator sees that nothing was saved
+    // instead of a false "staged successfully".
+    const persistenceErrors: string[] = [];
     if (sb) {
       const importId = `IMP-${period.replace("-", "")}-${moduleCode === "enpassent" ? "ENP" : "ECN"}-${Date.now() % 10000}`;
       const { error: impErr } = await sb.from("import_batches").insert({
@@ -86,9 +118,9 @@ export async function POST(request: NextRequest) {
         status: "completed",
         uploaded_by: session.user.id,
       });
-      if (impErr) console.error("import_batches insert failed:", impErr.message);
+      if (impErr) persistenceErrors.push(`import_batches: ${impErr.message}`);
 
-      await sb.from("reconciliation_batches").insert({
+      const { error: batchErr } = await sb.from("reconciliation_batches").insert({
         id: batchDocs.batchId,
         module: batchDocs.module,
         period: batchDocs.period,
@@ -96,6 +128,7 @@ export async function POST(request: NextRequest) {
         created_by: session.user.id,
         status: "review",
       });
+      if (batchErr) persistenceErrors.push(`reconciliation_batches: ${batchErr.message}`);
 
       // Per-agent reconciliation rows (batch review reads these).
       const reconRows = output.results.map((r, i) => ({
@@ -117,7 +150,7 @@ export async function POST(request: NextRequest) {
       const { error: reconErr } = await sb
         .from("reconciliations")
         .upsert(reconRows, { onConflict: "id" });
-      if (reconErr) console.error("reconciliations upsert failed:", reconErr.message);
+      if (reconErr) persistenceErrors.push(`reconciliations: ${reconErr.message}`);
       else {
         const lineRows = output.results.flatMap((r, i) =>
           r.lines.map((l) => ({
@@ -130,10 +163,14 @@ export async function POST(request: NextRequest) {
             status: l.variance === 0 ? "matched" : "variance",
           }))
         );
-        if (lineRows.length) await sb.from("reconciliation_lines").insert(lineRows);
+        if (lineRows.length) {
+          const { error: linesErr } = await sb.from("reconciliation_lines").insert(lineRows);
+          if (linesErr) persistenceErrors.push(`reconciliation_lines: ${linesErr.message}`);
+        }
       }
 
-      await sb.from("reconciliation_documents").insert(
+      if (batchDocs.documents.length) {
+        const { error: docsErr } = await sb.from("reconciliation_documents").insert(
         batchDocs.documents.map((d) => ({
           batch_id: batchDocs.batchId,
           agent_id: d.agentId,
@@ -159,7 +196,13 @@ export async function POST(request: NextRequest) {
           summary_text: d.summaryText,
           csv_text: documentToCSV(d),
           created_at: d.generatedAt,
-        }))
+          }))
+        );
+        if (docsErr) persistenceErrors.push(`reconciliation_documents: ${docsErr.message}`);
+      }
+    } else {
+      persistenceErrors.push(
+        "Supabase service client unavailable — results were computed but not saved"
       );
     }
 
@@ -167,6 +210,8 @@ export async function POST(request: NextRequest) {
       batchId: batchDocs.batchId,
       ...output,
       documents: batchDocs.documents,
+      persisted: persistenceErrors.length === 0,
+      persistenceErrors,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Processing failed";
