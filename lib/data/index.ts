@@ -581,12 +581,19 @@ export async function getAdminDashboardSummary() {
 
   const total = agents.length;
   const active = agents.filter((a) => a.status === "active").length;
+  const thisMonth = new Date().toISOString().slice(0, 7);
+  const newThisMonth = agents.filter(
+    (a) => typeof a.joinedAt === "string" && a.joinedAt.startsWith(thisMonth)
+  ).length;
 
   let reconciledAgents = 0;
   let pendingIssues = 0;
+  const revenueByPeriod = new Map<string, { insurance: number; zinara: number }>();
   if (supabase) {
     const [{ data: recons }, { count: openExc }] = await Promise.all([
-      supabase.from("reconciliations").select("agent_id, status"),
+      supabase
+        .from("reconciliations")
+        .select("agent_id, status, period, insurance, zinara"),
       supabase
         .from("reconciliation_exceptions")
         .select("id", { count: "exact", head: true })
@@ -598,7 +605,39 @@ export async function getAdminDashboardSummary() {
         .map((r: any) => r.agent_id)
     ).size;
     pendingIssues = openExc ?? 0;
+    for (const r of recons ?? []) {
+      const bucket = revenueByPeriod.get(r.period) ?? { insurance: 0, zinara: 0 };
+      bucket.insurance += Number(r.insurance) || 0;
+      bucket.zinara += Number(r.zinara) || 0;
+      revenueByPeriod.set(r.period, bucket);
+    }
   }
+
+  // Split agents by which modules they have enabled.
+  let enpassentOnly = 0;
+  let moovahOnly = 0;
+  let both = 0;
+  for (const a of agents) {
+    const hasEnp = a.modules?.some((m) => m.module === "enpassent" && m.enabled);
+    const hasEco = a.modules?.some((m) => m.module === "econet-moovah" && m.enabled);
+    if (hasEnp && hasEco) both++;
+    else if (hasEnp) enpassentOnly++;
+    else if (hasEco) moovahOnly++;
+  }
+  const moduleDonut = [
+    { name: "Enpassent", value: enpassentOnly, color: "var(--color-brand-600)" },
+    { name: "Econet Moovah", value: moovahOnly, color: "var(--color-brand-400)" },
+    { name: "Both", value: both, color: "var(--color-brand-200)" },
+  ].filter((d) => d.value > 0);
+
+  const revenueTrend = [...revenueByPeriod.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .slice(-8)
+    .map(([period, v]) => ({
+      month: new Date(`${period}-01`).toLocaleDateString("en-GB", { month: "short" }),
+      insurance: v.insurance,
+      zinara: v.zinara,
+    }));
 
   return {
     totalAgents: total,
@@ -607,6 +646,9 @@ export async function getAdminDashboardSummary() {
     pendingIssues,
     activePct: total ? Math.round((active / total) * 100) : 0,
     reconciledPct: total ? Math.round((reconciledAgents / total) * 100) : 0,
+    newThisMonth,
+    moduleDonut,
+    revenueTrend,
     agentRows: agents,
   };
 }

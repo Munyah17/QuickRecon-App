@@ -23,9 +23,8 @@ import dynamic from "next/dynamic";
 import { ChartCard, ChartLegendItem } from "@/components/shared/chart-card";
 import { ActivityFeed } from "@/components/shared/activity-feed";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { ActivityItem, Agent, Booth } from "@/types";
-import { mockAgentPerformance, mockBoothRevenue } from "@/lib/data/mock";
-import { formatMoneyCompact, formatPeriod } from "@/lib/format";
+import type { ActivityItem, Agent, AgentPeriodMetrics, Booth } from "@/types";
+import { formatPeriod } from "@/lib/format";
 import { useWorkspace } from "@/components/workspace-provider";
 
 const TrendChart = dynamic(() => import("@/components/charts/trend-chart").then(m => m.TrendChart), {
@@ -53,19 +52,45 @@ export function AgentDashboard({
   booths,
   activities,
   greeting,
+  periodMetrics,
 }: {
   agent: Agent;
   booths: Booth[];
   activities: ActivityItem[];
   greeting: string;
+  periodMetrics: AgentPeriodMetrics[];
 }) {
   const { period } = useWorkspace();
-  const m = agent.metrics;
 
-  const boothSeries = booths.slice(0, 3).map((b, i) => ({
+  // Metrics for the selected reporting period, falling back to the most
+  // recent period that has data, then to the static metrics on the agent row.
+  const idx = periodMetrics.findIndex((p) => p.period === period);
+  const m = idx >= 0 ? periodMetrics[idx] : periodMetrics[0] ?? agent.metrics;
+  const prev = idx >= 0 ? periodMetrics[idx + 1] : periodMetrics[1];
+  const pct = (cur?: number, base?: number) =>
+    cur != null && base ? Math.round(((cur - base) / Math.abs(base)) * 100) : undefined;
+
+  const perfSeries = [...periodMetrics]
+    .sort((a, b) => a.period.localeCompare(b.period))
+    .slice(-8)
+    .map((p) => ({
+      month: new Date(`${p.period}-01`).toLocaleDateString("en-GB", { month: "short" }),
+      insurance: p.totalInsurance,
+      zinara: p.totalZinara,
+    }));
+
+  const boothStatus = ["active", "pending", "suspended"]
+    .map((s, i) => ({
+      name: s.charAt(0).toUpperCase() + s.slice(1),
+      value: booths.filter((b) => b.status === s).length,
+      color: BOOTH_COLORS[i],
+    }))
+    .filter((d) => d.value > 0);
+
+  const boothSeries = booths.slice(0, 5).map((b, i) => ({
     month: b.name.split(" ")[0],
-    value: mockBoothRevenue()[i % mockBoothRevenue().length].value,
-    fill: BOOTH_COLORS[i],
+    value: b.assistantsCount,
+    fill: BOOTH_COLORS[i % BOOTH_COLORS.length],
   }));
 
   return (
@@ -109,28 +134,28 @@ export function AgentDashboard({
           value={<MoneyValue amount={m?.totalInsurance ?? 0} currency={m?.currency} />}
           icon={CreditCard}
           iconTone="primary"
-          deltaPct={m?.insuranceChangePct ?? 0}
+          deltaPct={pct(m?.totalInsurance, prev?.totalInsurance)}
         />
         <MetricCard
           label="Total ZINARA"
           value={<MoneyValue amount={m?.totalZinara ?? 0} currency={m?.currency} />}
           icon={Receipt}
           iconTone="success"
-          deltaPct={m?.zinaraChangePct ?? 0}
+          deltaPct={pct(m?.totalZinara, prev?.totalZinara)}
         />
         <MetricCard
           label="Total Deposits"
           value={<MoneyValue amount={m?.totalDeposits ?? 0} currency={m?.currency} />}
           icon={Banknote}
           iconTone="violet"
-          deltaPct={m?.depositsChangePct ?? 0}
+          deltaPct={pct(m?.totalDeposits, prev?.totalDeposits)}
         />
         <MetricCard
           label="Closing Position"
           value={<MoneyValue className="text-destructive" amount={m?.closingPosition ?? 0} currency={m?.currency} />}
           icon={Wallet}
           iconTone="danger"
-          deltaPct={m?.closingChangePct ?? 0}
+          deltaPct={pct(m?.closingPosition, prev?.closingPosition)}
           negativeGood
         />
       </div>
@@ -138,7 +163,7 @@ export function AgentDashboard({
       {/* Performance chart + collections donut */}
       <div className="grid gap-4 lg:grid-cols-12">
         <ChartCard
-          title="Monthly Performance (ZiG)"
+          title="Monthly Performance"
           className="lg:col-span-7"
           legend={
             <>
@@ -155,46 +180,58 @@ export function AgentDashboard({
             </Link>
           }
         >
-          <TrendChart
-            data={mockAgentPerformance()}
-            series={[
-              { key: "insurance", label: "Insurance", color: "var(--color-brand-600)" },
-              { key: "zinara", label: "ZINARA", color: "var(--color-brand-300)" },
-            ]}
-            height={250}
-          />
+          {perfSeries.length ? (
+            <TrendChart
+              data={perfSeries}
+              series={[
+                { key: "insurance", label: "Insurance", color: "var(--color-brand-600)" },
+                { key: "zinara", label: "ZINARA", color: "var(--color-brand-300)" },
+              ]}
+              height={250}
+            />
+          ) : (
+            <p className="px-4 py-16 text-center text-[12.5px] text-muted-foreground">
+              No reconciliation data yet — it appears after your first processed import.
+            </p>
+          )}
         </ChartCard>
 
-        <ChartCard title="Collections by Booth" className="lg:col-span-5">
-          <DonutChart
-            data={mockBoothRevenue().map((b, i) => ({
-              name: b.name,
-              value: b.value,
-              color: BOOTH_COLORS[i % BOOTH_COLORS.length],
-            }))}
-            height={170}
-            center={
-              <>
-                <span className="tnum text-[20px] font-bold tracking-tight">
-                  {formatMoneyCompact(m?.totalInsurance ?? 0)}
-                </span>
-                <span className="text-[11px] text-muted-foreground">This month</span>
-              </>
-            }
-          />
-          <ul className="mt-2 space-y-1.5 px-3 pb-1">
-            {mockBoothRevenue().map((b, i) => (
-              <li key={b.name} className="flex items-center gap-2 text-[12px]">
-                <span
-                  className="size-2 rounded-full"
-                  style={{ background: BOOTH_COLORS[i % BOOTH_COLORS.length] }}
-                  aria-hidden
-                />
-                <span className="flex-1 truncate text-muted-foreground">{b.name}</span>
-                <span className="tnum font-semibold">{b.pct}%</span>
-              </li>
-            ))}
-          </ul>
+        <ChartCard title="Booths by Status" className="lg:col-span-5">
+          {boothStatus.length ? (
+            <>
+              <DonutChart
+                data={boothStatus}
+                height={170}
+                center={
+                  <>
+                    <span className="tnum text-[20px] font-bold tracking-tight">
+                      {booths.length}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground">Booths</span>
+                  </>
+                }
+              />
+              <ul className="mt-2 space-y-1.5 px-3 pb-1">
+                {boothStatus.map((b) => (
+                  <li key={b.name} className="flex items-center gap-2 text-[12px]">
+                    <span
+                      className="size-2 rounded-full"
+                      style={{ background: b.color }}
+                      aria-hidden
+                    />
+                    <span className="flex-1 truncate text-muted-foreground">{b.name}</span>
+                    <span className="tnum font-semibold">
+                      {booths.length ? Math.round((b.value / booths.length) * 100) : 0}%
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <p className="px-4 py-16 text-center text-[12.5px] text-muted-foreground">
+              No booths registered yet.
+            </p>
+          )}
         </ChartCard>
       </div>
 
@@ -226,12 +263,18 @@ export function AgentDashboard({
           </CardContent>
         </Card>
 
-        <ChartCard title="Transactions per Booth" subtitle="Collections this month" className="lg:col-span-5">
-          <BarsChart
-            data={boothSeries.length ? boothSeries : [{ month: "No booths", value: 0, fill: BOOTH_COLORS[0] }]}
-            series={[{ key: "value", label: "Collected", color: "var(--color-brand-600)" }]}
-            height={210}
-          />
+        <ChartCard title="Assistants per Booth" className="lg:col-span-5">
+          {boothSeries.length ? (
+            <BarsChart
+              data={boothSeries}
+              series={[{ key: "value", label: "Assistants", color: "var(--color-brand-600)" }]}
+              height={210}
+            />
+          ) : (
+            <p className="px-4 py-16 text-center text-[12.5px] text-muted-foreground">
+              No booths registered yet.
+            </p>
+          )}
         </ChartCard>
 
         <ChartCard title="Recent Activity" className="lg:col-span-3">

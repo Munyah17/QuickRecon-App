@@ -13,7 +13,18 @@ import { ChartCard, ChartLegendItem } from "@/components/shared/chart-card";
 import { ActivityFeed } from "@/components/shared/activity-feed";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ActivityItem } from "@/types";
-import { mockRevenueTrend } from "@/lib/data/mock";
+
+export interface AdminSummary {
+  totalAgents: number;
+  activeAgents: number;
+  reconciledAgents: number;
+  pendingIssues: number;
+  activePct: number;
+  reconciledPct: number;
+  newThisMonth: number;
+  moduleDonut: { name: string; value: number; color: string }[];
+  revenueTrend: { month: string; insurance: number; zinara: number }[];
+}
 
 const TrendChart = dynamic(() => import("@/components/charts/trend-chart").then(m => m.TrendChart), {
   ssr: false,
@@ -24,18 +35,14 @@ const DonutChart = dynamic(() => import("@/components/charts/donut-chart").then(
   loading: () => <Skeleton className="h-[170px] w-full rounded-lg" />,
 });
 
-const MODULE_DONUT = [
-  { name: "Enpassent", value: 160, color: "var(--color-brand-600)" },
-  { name: "Econet Moovah", value: 72, color: "var(--color-brand-400)" },
-  { name: "Both", value: 16, color: "var(--color-brand-200)" },
-];
-
 export function AdminDashboard({
   firstName,
   activities,
+  summary,
 }: {
   firstName: string;
   activities: ActivityItem[];
+  summary: AdminSummary;
 }) {
   const today = new Date().toLocaleDateString("en-GB", {
     weekday: "short",
@@ -102,29 +109,32 @@ export function AdminDashboard({
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-4">
         <MetricCard
           label="Total Agents"
-          value="248"
+          value={summary.totalAgents}
           icon={Users}
           iconTone="primary"
-          deltaPct={12}
-          deltaLabel="this month"
+          footer={
+            <span className="text-muted-foreground">
+              {summary.newThisMonth} joined this month
+            </span>
+          }
         />
         <MetricCard
           label="Active Agents"
-          value="236"
+          value={summary.activeAgents}
           icon={UserRoundCheck}
           iconTone="success"
-          footer={<span className="text-muted-foreground">95% of total</span>}
+          footer={<span className="text-muted-foreground">{summary.activePct}% of total</span>}
         />
         <MetricCard
           label="Reconciled Agents"
-          value="222"
+          value={summary.reconciledAgents}
           icon={ShieldCheck}
           iconTone="primary"
-          footer={<span className="text-muted-foreground">90% completion</span>}
+          footer={<span className="text-muted-foreground">{summary.reconciledPct}% completion</span>}
         />
         <MetricCard
           label="Pending Issues"
-          value="14"
+          value={summary.pendingIssues}
           icon={TriangleAlert}
           iconTone="warning"
           footer={<span className="font-medium text-warning-foreground">Require attention</span>}
@@ -134,8 +144,12 @@ export function AdminDashboard({
       {/* Charts + activity */}
       <div className="grid gap-4 lg:grid-cols-12">
         <ChartCard
-          title="Revenue Trend (ZiG)"
-          subtitle="January — August"
+          title="Revenue Trend"
+          subtitle={
+            summary.revenueTrend.length > 1
+              ? `${summary.revenueTrend[0].month} — ${summary.revenueTrend[summary.revenueTrend.length - 1].month}`
+              : undefined
+          }
           className="lg:col-span-5"
           legend={
             <>
@@ -144,40 +158,56 @@ export function AdminDashboard({
             </>
           }
         >
-          <TrendChart
-            data={mockRevenueTrend()}
-            series={[
-              { key: "insurance", label: "Insurance Revenue", color: "var(--color-brand-600)" },
-              { key: "zinara", label: "ZINARA Revenue", color: "var(--color-brand-300)" },
-            ]}
-            height={232}
-          />
+          {summary.revenueTrend.length ? (
+            <TrendChart
+              data={summary.revenueTrend}
+              series={[
+                { key: "insurance", label: "Insurance Revenue", color: "var(--color-brand-600)" },
+                { key: "zinara", label: "ZINARA Revenue", color: "var(--color-brand-300)" },
+              ]}
+              height={232}
+            />
+          ) : (
+            <p className="px-4 py-16 text-center text-[12.5px] text-muted-foreground">
+              No reconciliation data yet — import a workbook to populate this chart.
+            </p>
+          )}
         </ChartCard>
 
         <ChartCard title="Agents by Module" className="lg:col-span-3">
-          <DonutChart
-            data={MODULE_DONUT}
-            height={170}
-            center={
-              <>
-                <span className="text-[24px] font-bold tracking-tight">248</span>
-                <span className="text-[11px] text-muted-foreground">Agents</span>
-              </>
-            }
-          />
-          <ul className="mt-2 space-y-1.5 px-3 pb-1">
-            {MODULE_DONUT.map((d) => {
-              const pct = Math.round((d.value / 248) * 100);
-              return (
-                <li key={d.name} className="flex items-center gap-2 text-[12px]">
-                  <span className="size-2 rounded-full" style={{ background: d.color }} aria-hidden />
-                  <span className="flex-1 text-muted-foreground">{d.name}</span>
-                  <span className="tnum font-semibold">{d.value}</span>
-                  <span className="tnum w-9 text-right text-muted-foreground">({pct}%)</span>
-                </li>
-              );
-            })}
-          </ul>
+          {summary.moduleDonut.length ? (
+            <>
+              <DonutChart
+                data={summary.moduleDonut}
+                height={170}
+                center={
+                  <>
+                    <span className="text-[24px] font-bold tracking-tight">{summary.totalAgents}</span>
+                    <span className="text-[11px] text-muted-foreground">Agents</span>
+                  </>
+                }
+              />
+              <ul className="mt-2 space-y-1.5 px-3 pb-1">
+                {summary.moduleDonut.map((d) => {
+                  const pct = summary.totalAgents
+                    ? Math.round((d.value / summary.totalAgents) * 100)
+                    : 0;
+                  return (
+                    <li key={d.name} className="flex items-center gap-2 text-[12px]">
+                      <span className="size-2 rounded-full" style={{ background: d.color }} aria-hidden />
+                      <span className="flex-1 text-muted-foreground">{d.name}</span>
+                      <span className="tnum font-semibold">{d.value}</span>
+                      <span className="tnum w-9 text-right text-muted-foreground">({pct}%)</span>
+                    </li>
+                  );
+                })}
+              </ul>
+            </>
+          ) : (
+            <p className="px-4 py-16 text-center text-[12.5px] text-muted-foreground">
+              No module access configured on agents yet.
+            </p>
+          )}
         </ChartCard>
 
         <ChartCard
