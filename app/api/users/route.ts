@@ -60,14 +60,19 @@ export async function POST(request: NextRequest) {
   const userId = authUser.user.id;
 
   // profiles has no national_id/location columns — those live on agents.
-  const { error: profileError } = await sb.from("profiles").insert({
-    id: userId,
-    full_name: fullName.trim(),
-    email: email.trim().toLowerCase(),
-    role,
-    status: "active",
-    phone: phone || null,
-  });
+  // Upsert: a handle_new_user DB trigger may have already inserted a stub
+  // row (with default role) when the auth user was created — overwrite it.
+  const { error: profileError } = await sb.from("profiles").upsert(
+    {
+      id: userId,
+      full_name: fullName.trim(),
+      email: email.trim().toLowerCase(),
+      role,
+      status: "active",
+      phone: phone || null,
+    },
+    { onConflict: "id" }
+  );
   if (profileError) {
     await sb.auth.admin.deleteUser(userId);
     return NextResponse.json({ error: profileError.message }, { status: 500 });
