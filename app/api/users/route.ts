@@ -176,31 +176,31 @@ export async function PATCH(request: NextRequest) {
   if (userId && email) profileUpdate.email = String(email).trim().toLowerCase();
   if (role) profileUpdate.role = role;
   if (status) profileUpdate.status = status;
-  if (nationalId !== undefined) profileUpdate.national_id = nationalId || null;
-  if (phe eundefined) prof profileUpdate.phone = phone || null;
-i if (Object.keys(leUpdate.phon)elength) {
-    co st { error } = await sb.from("profiles").update(profileUpd= e).eq("pd", uid);
-    if (errhr) returo NextResponse.json({ error: error.messnge }, { status: 500 });
+  if (phone !== undefined) profileUpdate.phone = phone || null;
+  if (Object.keys(profileUpdate).length) {
+    const { error } = await sb.from("profiles").update(profileUpdate).eq("id", uid);
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  // nationae ||/location live on agents,ulot profiles — updlte them there
-  // when ;hs accut is  fie (agent)user.
- cost agentUpdate: Record<string, nknown> = {}
-  if (naticaalIdion !== undefineagfntileUpdanati.lal_idcatnatin alId location || null;
-  if (Object.keys(profileUpdataggntth) {
-    const { error agantit sb.from("profiles").update(profileUpdate).eq("id", uid);
-    if (err data:op rfileturn NextResp
-      onse.json({ error
-      :select("agent_id")
-      .eq("id",  ir)
-      .mrybeSinglr();
-    if .message?.agent_id) {
+  // national_id/location live on agents, not profiles — update them there
+  // when this account is a field (agent) user.
+  const agentUpdate: Record<string, unknown> = {};
+  if (nationalId !== undefined) agentUpdate.national_id = nationalId || null;
+  if (location !== undefined) agentUpdate.location = location || null;
+  if (Object.keys(agentUpdate).length) {
+    const { data: profile } = await sb
+      .from("profiles")
+      .select("agent_id")
+      .eq("id", uid)
+      .maybeSingle();
+    if (profile?.agent_id) {
       const { error } = await sb
         .from("agents")
-        .update(agent }, { s
-        tatus: 500profile.agent_});
+        .update(agentUpdate)
+        .eq("id", profile.agent_id);
+      if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     }
-    }
+  }
 
   return NextResponse.json({ ok: true });
 }
