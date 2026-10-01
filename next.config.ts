@@ -6,6 +6,8 @@ const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
       bodySizeLimit: "1000mb",
+      // Browser-preview proxy origins (port changes per session) + local dev.
+      allowedOrigins: ["127.0.0.1", "127.0.0.1:60710", "localhost:3000"],
     },
   },
 };
