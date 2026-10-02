@@ -17,7 +17,7 @@ export interface AgentReconDocument {
   netInsurance: number;
   zinara: number;
   pds: number;
-  /** Split PDS for the workbook Summary sheet (default: pds â†’ insurancePds). */
+  /** Split PDS for the workbook Summary sheet (default: pds → insurancePds). */
   insurancePds?: number;
   zinaraPds?: number;
   totalExpected: number;
@@ -49,7 +49,7 @@ export interface BatchDocuments {
 
 /**
  * Builds one consolidated reconciliation document per agent from engine output.
- * No agent sees another agent's figures â€” documents are isolated by agentId.
+ * No agent sees another agent's figures — documents are isolated by agentId.
  */
 export function generateAgentDocuments(engineOutput: EngineOutput): BatchDocuments {
   const generatedAt = new Date().toISOString();
@@ -104,7 +104,7 @@ function buildDocumentForAgent(
   };
 }
 
-/** Neutralise CSV formula injection â€” cells starting with =, +, @ or tab
+/** Neutralise CSV formula injection — cells starting with =, +, @ or tab
  * are flagged by mail scanners and dangerous when opened in Excel. */
 function csvSafe(value: unknown): string {
   const s = String(value ?? "");
@@ -113,7 +113,7 @@ function csvSafe(value: unknown): string {
 
 /**
  * Serialises one agent document to CSV matching the real Enpassent
- * "Consolidated A" report â€” exactly 2 rows: header + figures, bank columns
+ * "Consolidated A" report — exactly 2 rows: header + figures, bank columns
  * before Alterations/Closing Variance. Private to that agent.
  */
 export function documentToCSV(doc: AgentReconDocument): string {
@@ -164,15 +164,15 @@ interface DetailSheet {
 
 /**
  * Produces the client's real multi-sheet reconciliation workbook:
- *   Dashboard  â€” USD | ZiG split dashboard (stat cards, bars, status banner)
- *   Summary    â€” every column, 2 rows (USD + ZiG), zero-filled
- *   Insurance  â€” insurance sales (VRN, premium, RTA, insurer)
- *   ZINARA     â€” zinara sales (account ID, VRN, payment method)
- *   <Bank>     â€” one sheet per bank actually used (CBZ, NBS, NMB, STEWARDâ€¦)
+ *   Dashboard  — USD | ZiG split dashboard (stat cards, bars, status banner)
+ *   Summary    — every column, 2 rows (USD + ZiG), zero-filled
+ *   Insurance  — insurance sales (VRN, premium, RTA, insurer)
+ *   ZINARA     — zinara sales (account ID, VRN, payment method)
+ *   <Bank>     — one sheet per bank actually used (CBZ, NBS, NMB, STEWARD…)
  *   USD Deposits / ZiG Deposits
  *   Transfers & Ecocash
  *   Alterations
- * `docs` is the agent's document set â€” one per currency. Missing currency
+ * `docs` is the agent's document set — one per currency. Missing currency
  * rows are zero-filled so the workbook never fails.
  */
 export async function documentsToWorkbook(docs: AgentReconDocument[]): Promise<Buffer> {
@@ -199,21 +199,21 @@ export async function documentsToWorkbook(docs: AgentReconDocument[]): Promise<B
   const statusBgOf = (d: AgentReconDocument | null) =>
     !d || d.status === "success" ? GREEN_BG : d.status === "warning" ? AMBER_BG : RED_BG;
   const labelOf = (d: AgentReconDocument | null) =>
-    !d ? "NO DATA" : d.status === "success" ? "RECONCILED" : d.status === "warning" ? "VARIANCE â€” REVIEW" : "ATTENTION REQUIRED";
+    !d ? "NO DATA" : d.status === "success" ? "RECONCILED" : d.status === "warning" ? "VARIANCE — REVIEW" : "ATTENTION REQUIRED";
 
-  // â”€â”€ Sheet 1: Dashboard â€” USD left, ZiG right â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Sheet 1: Dashboard — USD left, ZiG right ────────────────────────
   const ws = wb.addWorksheet("Dashboard", { views: [{ showGridLines: false }] });
   ws.columns = [
     { width: 3 },
-    { width: 24 }, { width: 15 }, { width: 15 }, { width: 15 },   // USD side  Bâ€“E
+    { width: 24 }, { width: 15 }, { width: 15 }, { width: 15 },   // USD side  B–E
     { width: 3 },                                                  // centre divider F
-    { width: 24 }, { width: 15 }, { width: 15 }, { width: 15 },   // ZiG side  Gâ€“J
+    { width: 24 }, { width: 15 }, { width: 15 }, { width: 15 },   // ZiG side  G–J
     { width: 3 },
   ];
 
   ws.mergeCells("B2:J2");
   const title = ws.getCell("B2");
-  title.value = "QUICKRECON â€” CONSOLIDATED REVENUE REPORT";
+  title.value = "QUICKRECON — CONSOLIDATED REVENUE REPORT";
   title.font = { bold: true, size: 16, color: { argb: "FFFFFFFF" } };
   title.alignment = { vertical: "middle", horizontal: "center" };
   ws.getRow(2).height = 34;
@@ -221,7 +221,7 @@ export async function documentsToWorkbook(docs: AgentReconDocument[]): Promise<B
 
   ws.mergeCells("B3:J3");
   const sub = ws.getCell("B3");
-  sub.value = `${primary.agentName} (${primary.agentId})  Â·  ${primary.module}  Â·  Period ${primary.period}`;
+  sub.value = `${primary.agentName} (${primary.agentId})  ·  ${primary.module}  ·  Period ${primary.period}`;
   sub.font = { size: 11, color: { argb: GREY } };
   sub.alignment = { vertical: "middle", horizontal: "center" };
   ws.getRow(3).height = 20;
@@ -252,7 +252,7 @@ export async function documentsToWorkbook(docs: AgentReconDocument[]): Promise<B
       ws.getCell(6, c).border = box;
     }
 
-    // KPI cards â€” stacked label/value pairs, one column pair each
+    // KPI cards — stacked label/value pairs, one column pair each
     const kpis: [string, number, string, string][] = doc ? [
       ["Insurance", doc.insurance, BLUE, LBLUE],
       ["Commission", doc.commission, BLUE, LBLUE],
@@ -338,7 +338,7 @@ export async function documentsToWorkbook(docs: AgentReconDocument[]): Promise<B
   paintSide(usd, 2, "USD");
   paintSide(zig, 7, "ZiG");
 
-  // â”€â”€ Sheet 2: Summary â€” all columns, USD + ZiG rows, zero-filled â”€â”€â”€â”€â”€
+  // ── Sheet 2: Summary — all columns, USD + ZiG rows, zero-filled ─────
   const wsS = wb.addWorksheet("Summary");
   const allBanks = new Set<string>();
   for (const d of [usd, zig]) {
@@ -380,7 +380,7 @@ export async function documentsToWorkbook(docs: AgentReconDocument[]): Promise<B
   }
   wsS.columns.forEach((c, i) => (c.width = i === 1 ? 24 : i === 0 ? 9 : 13));
 
-  // â”€â”€ Detail sheets â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Detail sheets ───────────────────────────────────────────────────
   const txns = [...(usd?.transactions ?? []), ...(zig?.transactions ?? [])];
   const bankNames = new Set<string>();
   for (const t of txns) if (t.bankAccount) bankNames.add(t.bankAccount);
@@ -759,7 +759,7 @@ export function documentToHTML(doc: AgentReconDocument): string {
     .join("");
   return `
     <div style="font-family:Arial,sans-serif;font-size:13px;color:#333;">
-      <h2 style="margin-top:0;color:#0f2b4c;">Consolidated Revenue Report â€” ${doc.period}</h2>
+      <h2 style="margin-top:0;color:#0f2b4c;">Consolidated Revenue Report — ${doc.period}</h2>
       <p><strong>Agent:</strong> ${doc.agentName} (${doc.agentId}) &nbsp; <strong>Currency:</strong> ${doc.currency}</p>
       <p>${doc.summaryText}</p>
       <table style="border-collapse:collapse;width:100%;max-width:900px;margin-top:12px;">
