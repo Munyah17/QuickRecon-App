@@ -25,6 +25,16 @@ export interface NormalizedRecord {
   usdConversionRate?: number;
   /** Narration / reference text from the source. */
   narration?: string;
+  /** Vehicle registration / plate (insurance & ZINARA sales). */
+  vrn?: string;
+  /** Insurer name for insurance sales. */
+  insuranceCompany?: string;
+  /** RTA amount for insurance sales. */
+  rtaAmount?: number;
+  /** ZINARA account identifier. */
+  zinaraAccountId?: string;
+  /** Payment method for ZINARA sales. */
+  paymentMethod?: string;
 }
 
 /** Mapping table used by the identity resolver (agent_external_ids). */
@@ -128,6 +138,8 @@ export interface EngineOutput {
     recordsNormalised: number;
     unmatched: number;
     duplicates: number;
+    /** Sheets skipped because the adapter doesn't recognise their format. */
+    skippedSheets: string[];
   };
 }
 

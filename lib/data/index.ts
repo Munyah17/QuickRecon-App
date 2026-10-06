@@ -147,6 +147,7 @@ export async function getAssistants(agentId?: string) {
 function mapRecon(row: any): (typeof MOCK_RECONCILIATIONS)[number] {
   return {
     id: row.id,
+    batchId: row.batch_id ?? undefined,
     agentId: row.agent_id,
     agentName: row.agents?.full_name ?? row.agent_id,
     module: row.module,

@@ -148,6 +148,8 @@ export type ReconciliationStatus =
 
 export interface Reconciliation {
   id: string;
+  /** Engine batch this row belongs to (reconciliation_documents.batch_id). */
+  batchId?: string;
   agentId: string;
   agentName: string;
   module: ModuleCode;

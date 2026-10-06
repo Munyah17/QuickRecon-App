@@ -75,6 +75,49 @@ export async function PATCH(
   return NextResponse.json({ ok: true });
 }
 
+/** PUT /api/agents/[id]/modules style — handled here as PATCH with
+ * { modules: [{ module, enabled }] } so the profile-page toggles persist.
+ * Kept in the same handler to avoid another round trip. */
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> }
+) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!isCompanyRole(session.user.role)) {
+    return NextResponse.json({ error: "Only company staff can manage agent modules" }, { status: 403 });
+  }
+
+  const { id } = await params;
+  const body = await request.json().catch(() => null);
+  const mods = Array.isArray(body?.modules) ? body.modules : null;
+  if (!mods || mods.length === 0) {
+    return NextResponse.json({ error: "modules[] required" }, { status: 400 });
+  }
+  const VALID = new Set(["enpassent", "econet-moovah"]);
+  const rows = (mods as { module?: unknown; enabled?: unknown }[])
+    .filter((m): m is { module: string; enabled: boolean } =>
+      typeof m?.module === "string" && VALID.has(m.module) && typeof m?.enabled === "boolean")
+    .map((m) => ({
+      agent_id: id,
+      module: m.module,
+      enabled: m.enabled,
+      updated_by: session.user.id,
+      updated_at: new Date().toISOString(),
+    }));
+  if (rows.length === 0) {
+    return NextResponse.json({ error: "No valid modules provided" }, { status: 400 });
+  }
+
+  const service = await createServiceClient();
+  if (!service) return NextResponse.json({ error: "Database not configured" }, { status: 503 });
+  const { error } = await service
+    .from("agent_modules")
+    .upsert(rows, { onConflict: "agent_id,module" });
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true });
+}
+
 /**
  * DELETE /api/agents/[id]
  * Company staff remove an agent record. Service client after a role check,

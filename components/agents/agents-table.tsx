@@ -2,6 +2,7 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
 import { Ellipsis, Eye, ShieldOff, UserPen } from "lucide-react";
 import { toast } from "sonner";
@@ -245,8 +246,30 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
 }
 
 function AgentActions({ id, agent }: { id: string; agent: Agent }) {
+  const router = useRouter();
   const [editOpen, setEditOpen] = React.useState(false);
   const [suspendOpen, setSuspendOpen] = React.useState(false);
+  const [suspending, setSuspending] = React.useState(false);
+
+  const suspend = async () => {
+    setSuspending(true);
+    try {
+      const res = await fetch(`/api/agents/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "suspended" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Suspend failed");
+      toast.success(`${agent.fullName} has been suspended`);
+      setSuspendOpen(false);
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Suspend failed");
+    } finally {
+      setSuspending(false);
+    }
+  };
 
   return (
     <>
@@ -290,14 +313,8 @@ function AgentActions({ id, agent }: { id: string; agent: Agent }) {
             <Button variant="outline" onClick={() => setSuspendOpen(false)}>
               Cancel
             </Button>
-            <Button
-              variant="destructive"
-              onClick={() => {
-                toast.success(`${agent.fullName} has been suspended`);
-                setSuspendOpen(false);
-              }}
-            >
-              Suspend Agent
+            <Button variant="destructive" onClick={suspend} disabled={suspending}>
+              {suspending ? "Suspending…" : "Suspend Agent"}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -320,10 +337,27 @@ function EditAgentDialog({
   const [phone, setPhone] = React.useState(agent.phone);
   const [province, setProvince] = React.useState(agent.province);
   const [location, setLocation] = React.useState(agent.location);
+  const [saving, setSaving] = React.useState(false);
+  const router = useRouter();
 
-  const handleSave = () => {
-    toast.success(`Agent ${fullName} updated successfully`);
-    onOpenChange(false);
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/agents/${agent.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fullName, email, phone, province, location }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Update failed");
+      toast.success(`Agent ${fullName} updated`);
+      onOpenChange(false);
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Update failed");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -386,7 +420,9 @@ function EditAgentDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button onClick={handleSave}>Save Changes</Button>
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? "Saving…" : "Save Changes"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

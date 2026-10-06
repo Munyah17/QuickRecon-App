@@ -24,13 +24,34 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { batchId, agentId, channels = ["email", "whatsapp"], senderId = "QuickRecon" } = body;
+    const { agentId, channels = ["email", "whatsapp"], senderId = "QuickRecon" } = body;
+    let { batchId } = body;
 
     if (!batchId || !agentId) {
       return NextResponse.json({ error: "Missing batchId or agentId" }, { status: 400 });
     }
 
     const sb = await createServiceClient();
+
+    // Callers sometimes pass a reconciliations row id (RCN-…) instead of the
+    // batch id stored on reconciliation_documents.batch_id. Resolve it so a
+    // send never 404s on a valid-looking request.
+    if (sb) {
+      const { data: probe } = await sb
+        .from("reconciliation_documents")
+        .select("id")
+        .eq("batch_id", batchId)
+        .eq("agent_id", agentId)
+        .limit(1);
+      if (!probe?.length) {
+        const { data: reconRow } = await sb
+          .from("reconciliations")
+          .select("batch_id")
+          .eq("id", batchId)
+          .maybeSingle();
+        if (reconRow?.batch_id) batchId = reconRow.batch_id;
+      }
+    }
 
     // Idempotency guard — refuse a second send to the same agent within 5 min.
     if (sb) {
@@ -139,71 +160,86 @@ export async function POST(request: NextRequest) {
     const subject = `QuickRecon Reconciliation — ${doc.period} (${moduleList})`;
 
     const delivered: string[] = [];
-    const failures: string[] = [];
+    const failures: { channel: string; error: string }[] = [];
+    const skipped: string[] = [];
 
-    if (channels.includes("email") && agentEmail) {
-      try {
-        const attachments: { filename: string; content: Buffer }[] = [];
+    if (channels.includes("email")) {
+      if (!agentEmail) {
+        skipped.push("email: agent has no email on record");
+      } else {
+        try {
+          const attachments: { filename: string; content: Buffer }[] = [];
+          for (const [mod, modDocs] of byModule) {
+            const slug = mod.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "module";
+            attachments.push({
+              filename: `${slug}-reconciliation-${doc.agentId}-${doc.period}.xlsx`,
+              content: await documentsToWorkbook(modDocs),
+            });
+            attachments.push({
+              filename: `${slug}-reconciliation-${doc.agentId}-${doc.period}.pdf`,
+              content: await documentsToPDF(modDocs),
+            });
+          }
+          const result = await sendEmail({
+            to: agentEmail,
+            subject,
+            text,
+            html,
+            attachments,
+          });
+          if (result.ok) delivered.push("email");
+          else failures.push({ channel: "email", error: result.error ?? "send failed" });
+        } catch (e) {
+          failures.push({ channel: "email", error: e instanceof Error ? e.message : "send failed" });
+        }
+      }
+    }
+
+    if (channels.includes("whatsapp")) {
+      if (!agentPhone) {
+        skipped.push("whatsapp: agent has no phone on record");
+      } else {
+        const wa = getWhatsAppProvider();
+        let waOk = false;
+        let waErr = "provider error";
         for (const [mod, modDocs] of byModule) {
           const slug = mod.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "module";
-          attachments.push({
-            filename: `${slug}-reconciliation-${doc.agentId}-${doc.period}.xlsx`,
-            content: await documentsToWorkbook(modDocs),
+          const modDoc = modDocs.find((d) => d.currency === "ZWG") ?? modDocs[0];
+          const result = await wa.sendDocument(agentPhone, {
+            buffer: Buffer.from(await documentsToWorkbook(modDocs)),
+            fileName: `${slug}-reconciliation-${doc.agentId}-${doc.period}.xlsx`,
+            caption: `${moduleName(mod)} — ${documentToSMS(modDoc).slice(0, 200)}`,
           });
-          attachments.push({
-            filename: `${slug}-reconciliation-${doc.agentId}-${doc.period}.pdf`,
-            content: await documentsToPDF(modDocs),
-          });
+          waOk = waOk || result.ok;
+          if (!result.ok && result.error) waErr = result.error;
         }
-        const result = await sendEmail({
-          to: agentEmail,
-          subject,
-          text,
-          html,
-          attachments,
-        });
-        if (result.ok) delivered.push("email");
-        else failures.push("email");
-      } catch {
-        failures.push("email");
+        if (waOk) delivered.push("whatsapp");
+        else failures.push({ channel: "whatsapp", error: waErr });
       }
     }
 
-    if (channels.includes("whatsapp") && agentPhone) {
-      const wa = getWhatsAppProvider();
-      let waOk = false;
-      for (const [mod, modDocs] of byModule) {
-        const slug = mod.toLowerCase().replace(/[^a-z0-9]+/g, "-") || "module";
-        const modDoc = modDocs.find((d) => d.currency === "ZWG") ?? modDocs[0];
-        const csv = documentToCSV(modDoc);
-        const result = await wa.sendDocument(agentPhone, {
-          buffer: Buffer.from(csv, "utf-8"),
-          fileName: `${slug}-reconciliation-${doc.agentId}-${doc.period}.csv`,
-          caption: `${moduleName(mod)} — ${documentToSMS(modDoc).slice(0, 200)}`,
-        });
-        waOk = waOk || result.ok;
-      }
-      if (waOk) delivered.push("whatsapp");
-      else failures.push("whatsapp");
-    }
-
-    if (channels.includes("sms") && agentPhone) {
-      const smsRes = await fetch(`${request.nextUrl.origin}/api/sms`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          cookie: request.headers.get("cookie") ?? "",
-        },
-        body: JSON.stringify({
-          recipients: [agentPhone],
-          message: summary,
-          senderId,
-        }),
-      });
-      if (smsRes.ok) {
-        delivered.push("sms");
+    if (channels.includes("sms")) {
+      if (!agentPhone) {
+        skipped.push("sms: agent has no phone on record");
       } else {
-        failures.push("sms");
+        const smsRes = await fetch(`${request.nextUrl.origin}/api/sms`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            cookie: request.headers.get("cookie") ?? "",
+          },
+          body: JSON.stringify({
+            recipients: [agentPhone],
+            message: summary,
+            senderId,
+          }),
+        });
+        if (smsRes.ok) {
+          delivered.push("sms");
+        } else {
+          const err = await smsRes.json().catch(() => ({}));
+          failures.push({ channel: "sms", error: (err as { error?: string }).error ?? `HTTP ${smsRes.status}` });
+        }
       }
     }
 
@@ -214,14 +250,16 @@ export async function POST(request: NextRequest) {
         channels: delivered,
         delivered_at: new Date().toISOString(),
         delivered_by: session.user.id,
-        status: failures.length === 0 ? "sent" : delivered.length > 0 ? "partial" : "failed",
+        status: delivered.length === 0 ? "failed" : failures.length === 0 ? "sent" : "partial",
       });
     }
 
+    // success only when at least one requested channel actually delivered.
     return NextResponse.json({
-      success: failures.length === 0 || delivered.length > 0,
+      success: delivered.length > 0,
       delivered,
       failures,
+      skipped,
       agentId,
       batchId,
     });

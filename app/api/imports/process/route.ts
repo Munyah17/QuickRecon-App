@@ -44,14 +44,43 @@ export async function POST(request: NextRequest) {
 
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
-    const workbook = XLSX.read(buffer, { type: "buffer" });
+    const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
+
+    // Locate the real header row — real-world workbooks often carry a title
+    // banner above the headers, and sheet_to_json would treat that banner as
+    // the header row and produce garbage __EMPTY keys. Scan the first rows
+    // for the one containing the most recognisable field names.
+    const HEADER_HINTS = /^(agent|agent\s*(id|code|name|full name)|name|amount|premium|premium collected|deposit|deposited|settled|settled amount|value|total|date|txn date|transaction date|posting date|sale date|ref|reference|policy no|receipt no|narration|narration \/ref|description|currency|curr|account|account name|bank|bank account|channel|commission|comm|usd|usd amount|usd deposit|rate|conversion|vrn|vehicle registration|reg no|registration number|insurance company|insurer|underwriter|rta|rta amount|payment method|float|msisdn|econet id|ecocash id|code|status|type)$/i;
+    const sheetRows = (name: string): SourceRow[] => {
+      const sheet = workbook.Sheets[name];
+      if (!sheet) return [];
+      const grid = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
+        header: 1,
+        defval: null,
+        blankrows: false,
+      });
+      let headerIdx = 0;
+      let best = 0;
+      const scan = Math.min(grid.length, 15);
+      for (let i = 0; i < scan; i++) {
+        const cells = (grid[i] ?? []) as unknown[];
+        const score = cells.reduce<number>(
+          (n, c) => n + (typeof c === "string" && HEADER_HINTS.test(c.trim()) ? 1 : 0),
+          0
+        );
+        if (score > best) { best = score; headerIdx = i; }
+      }
+      // Need at least 2 known columns to trust it as a header row; otherwise
+      // fall back to the default (first row) so unusual sheets still parse.
+      if (best < 2) return XLSX.utils.sheet_to_json<SourceRow>(sheet, { defval: null });
+      return XLSX.utils.sheet_to_json<SourceRow>(sheet, { defval: null, range: headerIdx });
+    };
 
     const sheets: Record<string, SourceRow[]> = {};
     const sheetNames = selectedSheets.length ? selectedSheets : workbook.SheetNames;
     for (const name of sheetNames) {
-      const sheet = workbook.Sheets[name];
-      if (!sheet) continue;
-      sheets[name] = XLSX.utils.sheet_to_json<SourceRow>(sheet, { defval: null });
+      if (!workbook.Sheets[name]) continue;
+      sheets[name] = sheetRows(name);
     }
 
     // Read agents + identity aliases through the service client. This route is
@@ -93,6 +122,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: `Agent ${agentScope} not found` }, { status: 404 });
     }
 
+    if (!period) {
+      return NextResponse.json({ error: "Missing period (YYYY-MM)" }, { status: 400 });
+    }
+
     const output = runReconciliationEngine({
       module: moduleCode,
       period,
@@ -130,9 +163,14 @@ export async function POST(request: NextRequest) {
       });
       if (batchErr) persistenceErrors.push(`reconciliation_batches: ${batchErr.message}`);
 
-      // Per-agent reconciliation rows (batch review reads these).
+      // Per-agent reconciliation rows (batch review reads these). The id
+      // embeds a batch suffix — plain RCN-<period>-<seq> collides across
+      // batches and the upsert would silently overwrite an older batch.
+      const batchTag = batchDocs.batchId.slice(-5);
+      const reconId = (i: number) =>
+        `RCN-${period.replace("-", "")}-${batchTag}-${String(i + 1).padStart(3, "0")}`;
       const reconRows = output.results.map((r, i) => ({
-        id: `RCN-${period.replace("-", "")}-${String(i + 1).padStart(3, "0")}`,
+        id: reconId(i),
         batch_id: batchDocs.batchId,
         agent_id: r.agentId,
         module: batchDocs.module,
@@ -152,9 +190,14 @@ export async function POST(request: NextRequest) {
         .upsert(reconRows, { onConflict: "id" });
       if (reconErr) persistenceErrors.push(`reconciliations: ${reconErr.message}`);
       else {
+        // Replace any stale lines for these recon ids before inserting fresh.
+        await sb
+          .from("reconciliation_lines")
+          .delete()
+          .in("reconciliation_id", output.results.map((_, i) => reconId(i)));
         const lineRows = output.results.flatMap((r, i) =>
           r.lines.map((l) => ({
-            reconciliation_id: `RCN-${period.replace("-", "")}-${String(i + 1).padStart(3, "0")}`,
+            reconciliation_id: reconId(i),
             item: l.item,
             category: l.category,
             expected: l.expected,

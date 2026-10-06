@@ -68,9 +68,16 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
   const adapter = adapterFor(input.module);
   const exceptions: EngineException[] = [];
 
-  // 1. Normalise all selected sheets.
+  // 1. Normalise all selected sheets. Sheets the adapter doesn't recognise
+  // are skipped and reported — feeding them through would fabricate
+  // "adjustment" records from unrelated columns.
   const normalised: NormalizedRecord[] = [];
+  const skippedSheets: string[] = [];
   for (const [sheetName, rows] of Object.entries(input.sheets)) {
+    if (!adapter.supportsSheet(sheetName)) {
+      skippedSheets.push(sheetName);
+      continue;
+    }
     normalised.push(...adapter.normalise(sheetName, rows));
   }
 
@@ -220,16 +227,25 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
     const closingVariance = totalExpected - deposits + adjustments;
     const closing = closingVariance;
 
-    // Transaction-level detail rows for deposits.
-    const transactions: TransactionDetail[] = depositRecs.map((r) => ({
+    // Transaction-level detail rows across every category — the workbook's
+    // Insurance / ZINARA / Alterations sheets read these, so deposits alone
+    // would leave them permanently empty.
+    const transactions: TransactionDetail[] = recs.map((r) => ({
       date: r.date,
       agentName: agent.fullName,
       amount: convert(r.amount, r.currency),
+      currency: r.currency,
       usdAmount: r.usdAmount,
       usdConversionRate: r.usdConversionRate,
       bankAccount: r.bankAccount,
       narration: r.narration,
       reference: r.reference,
+      category: r.category,
+      vrn: r.vrn,
+      insuranceCompany: r.insuranceCompany,
+      rtaAmount: r.rtaAmount,
+      zinaraAccountId: r.zinaraAccountId,
+      paymentMethod: r.paymentMethod,
     }));
 
     // Build meaningful line items.
@@ -296,6 +312,7 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
       recordsNormalised: deduped.length,
       unmatched,
       duplicates,
+      skippedSheets,
     },
   };
 }

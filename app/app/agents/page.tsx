@@ -1,13 +1,12 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { Download } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { getAgents } from "@/lib/data";
 import { isCompanyRole } from "@/lib/nav";
 import { PageHeader } from "@/components/layout/page-header";
-import { Button } from "@/components/ui/button";
 import { AgentsTable } from "@/components/agents/agents-table";
 import { AddAgentDialog } from "@/components/agents/add-agent-dialog";
+import { ImportAgentsDialog } from "@/components/agents/import-agents-dialog";
 import { ModuleSelector } from "@/components/shared/module-selector";
 
 export const metadata: Metadata = { title: "Agents" };
@@ -31,9 +30,7 @@ export default async function AgentsPage() {
         description="Manage all agents, their profiles, booths and module access"
         actions={
           <>
-            <Button variant="outline" className="h-9 gap-1.5 text-[13px]">
-              <Download className="size-4 rotate-180" aria-hidden /> Import Agents
-            </Button>
+            <ImportAgentsDialog />
             <AddAgentDialog />
           </>
         }

@@ -372,7 +372,7 @@ export async function documentsToWorkbook(docs: AgentReconDocument[]): Promise<B
   });
   wsS.getRow(1).height = 28;
   for (const r of [2, 3]) {
-    wsS.getRow(r).eachCell((c) => {
+    wsS.getRow(r).eachCell({ includeEmpty: true }, (c) => {
       c.border = box;
       if (typeof c.value === "number") c.numFmt = "#,##0.00";
     });
@@ -457,6 +457,14 @@ export async function documentsToWorkbook(docs: AgentReconDocument[]): Promise<B
     const w = wb.addWorksheet(safeSheetName(s.name));
     w.addRow(s.columns);
     for (const r of s.rows) w.addRow(r);
+    // Pad short rows — a trailing empty cell is dropped by addRow, leaving a
+    // borderless gap under the header without this.
+    for (let r = 2; r <= w.rowCount; r++) {
+      for (let c = 1; c <= s.columns.length; c++) {
+        const cell = w.getCell(r, c);
+        if (cell.value === null || cell.value === undefined) cell.value = "";
+      }
+    }
     w.getRow(1).eachCell((c) => {
       c.font = { bold: true, size: 9, color: { argb: "FFFFFFFF" } };
       c.fill = fill(NAVY);
@@ -464,7 +472,7 @@ export async function documentsToWorkbook(docs: AgentReconDocument[]): Promise<B
     });
     w.getRow(1).height = 22;
     for (let r = 2; r <= w.rowCount; r++) {
-      w.getRow(r).eachCell((c) => {
+      w.getRow(r).eachCell({ includeEmpty: true }, (c) => {
         c.border = box;
         if (typeof c.value === "number") c.numFmt = "#,##0.00";
       });
@@ -542,7 +550,7 @@ export async function batchToWorkbook(docs: AgentReconDocument[]): Promise<Buffe
   });
   ws.getRow(1).height = 28;
   for (let r = 2; r <= ws.rowCount; r++) {
-    ws.getRow(r).eachCell((c) => {
+    ws.getRow(r).eachCell({ includeEmpty: true }, (c) => {
       c.border = box;
       if (typeof c.value === "number") c.numFmt = "#,##0.00";
     });

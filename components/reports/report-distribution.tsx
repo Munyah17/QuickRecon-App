@@ -68,24 +68,42 @@ export function ReportDistribution({
     }
     setSending(true);
     let ok = 0;
-    let failed = 0;
+    const reasons: string[] = [];
     for (const r of targetRecons) {
       try {
         const res = await fetch("/api/reconciliation/send", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ batchId: r.id, agentId: r.agentId, channels }),
+          body: JSON.stringify({ batchId: r.batchId ?? r.id, agentId: r.agentId, channels }),
         });
         const data = await res.json();
-        if (data.success) ok++; else failed++;
+        if (data.success) {
+          ok++;
+        } else {
+          const why =
+            (data.failures as { channel: string; error: string }[] | undefined)
+              ?.map((f) => `${f.channel}: ${f.error}`)
+              .join(", ") ??
+            data.error ??
+            "send failed";
+          reasons.push(`${r.agentName}: ${why}`);
+        }
       } catch {
-        failed++;
+        reasons.push(`${r.agentName}: network error`);
       }
     }
     setSending(false);
-    toast.success(`Sent ${ok} report${ok === 1 ? "" : "s"}`, {
-      description: failed ? `${failed} failed — check delivery history.` : `Each agent received only their own document via ${channels.join(" + ")}.`,
-    });
+    if (reasons.length === 0) {
+      toast.success(`Sent ${ok} report${ok === 1 ? "" : "s"}`, {
+        description: `Each agent received only their own document via ${channels.join(" + ")}.`,
+      });
+    } else if (ok === 0) {
+      toast.error("All sends failed", { description: reasons.slice(0, 3).join(" · ") });
+    } else {
+      toast.warning(`Sent ${ok}, failed ${reasons.length}`, {
+        description: reasons.slice(0, 3).join(" · "),
+      });
+    }
   }
 
   const toggle = (list: string[], set: (v: string[]) => void, id: string, on: boolean) =>

@@ -66,6 +66,35 @@ class MetaCloudProvider implements WhatsAppProvider {
     }
   }
 
+  /** Upload binary media to Meta's resumable upload endpoint; returns the
+   * media_id needed to attach the file to a document message. */
+  private async uploadMedia(
+    buffer: Buffer,
+    fileName: string,
+    mimeType: string
+  ): Promise<{ ok: boolean; mediaId?: string; error?: string }> {
+    try {
+      const form = new FormData();
+      form.append("messaging_product", "whatsapp");
+      form.append("file", new Blob([new Uint8Array(buffer)], { type: mimeType }), fileName);
+      const res = await fetch(
+        `https://graph.facebook.com/v19.0/${this.senderId}/media`,
+        {
+          method: "POST",
+          headers: { Authorization: `Bearer ${this.token}` },
+          body: form,
+        }
+      );
+      const body = await res.json();
+      if (!res.ok || !body?.id) {
+        return { ok: false, error: body?.error?.message ?? "media upload failed" };
+      }
+      return { ok: true, mediaId: body.id };
+    } catch (err) {
+      return { ok: false, error: err instanceof Error ? err.message : "network error" };
+    }
+  }
+
   sendText(to: string, body: string) {
     return this.call({
       messaging_product: "whatsapp",
@@ -75,17 +104,26 @@ class MetaCloudProvider implements WhatsAppProvider {
     });
   }
 
-  sendDocument(
+  async sendDocument(
     to: string,
     document: { buffer: Buffer; fileName: string; caption?: string }
-  ) {
-    // Meta requires media upload first; left to the concrete integration step.
-    void document;
+  ): Promise<ProviderResult> {
+    const mime = document.fileName.endsWith(".pdf")
+      ? "application/pdf"
+      : document.fileName.endsWith(".xlsx")
+        ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        : "text/csv";
+    const up = await this.uploadMedia(document.buffer, document.fileName, mime);
+    if (!up.ok) return { ok: false, error: up.error };
     return this.call({
       messaging_product: "whatsapp",
       to,
-      type: "text",
-      text: { body: document.caption ?? "Document attached." },
+      type: "document",
+      document: {
+        id: up.mediaId,
+        filename: document.fileName,
+        caption: document.caption ?? "Reconciliation report attached.",
+      },
     });
   }
 

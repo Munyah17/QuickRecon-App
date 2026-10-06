@@ -7,7 +7,6 @@ import { toast } from "sonner";
 import {
   ArrowLeft,
   Ellipsis,
-  Eye,
   FileText,
   MapPin,
   Phone,
@@ -15,7 +14,6 @@ import {
   IdCard,
   CreditCard,
   CalendarDays,
-  KeyRound,
   UserPen,
   Plus,
   Check,
@@ -101,7 +99,35 @@ export function AgentProfile({
   const canManage = isCompanyRole(viewer.role);
   const [modules, setModules] = React.useState(agent.modules);
   const [editOpen, setEditOpen] = React.useState(false);
+  const [savingModule, setSavingModule] = React.useState<string | null>(null);
   const m = agent.metrics;
+
+  async function toggleModule(module: string, enabled: boolean) {
+    setModules((prev) => prev.map((x) => (x.module === module ? { ...x, enabled } : x)));
+    setSavingModule(module);
+    try {
+      const res = await fetch(`/api/agents/${agent.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          modules: modules.map((x) =>
+            x.module === module ? { ...x, enabled } : { module: x.module, enabled: x.enabled }
+          ),
+        }),
+      });
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({}));
+        throw new Error(d.error || "Save failed");
+      }
+      toast.success(`${moduleName(module)} ${enabled ? "enabled" : "disabled"}`);
+    } catch (e) {
+      // Roll back the optimistic flip.
+      setModules((prev) => prev.map((x) => (x.module === module ? { ...x, enabled: !enabled } : x)));
+      toast.error(e instanceof Error ? e.message : "Could not update module");
+    } finally {
+      setSavingModule(null);
+    }
+  }
 
   return (
     <div className="space-y-4">
@@ -116,18 +142,11 @@ export function AgentProfile({
           <span className="truncate">{agent.fullName}</span>
         </Link>
         {canManage && (
-          <div className="flex shrink-0 items-center gap-2">
-            <Button variant="outline" size="sm" className="gap-1.5 text-[12.5px]" onClick={() => setEditOpen(true)}>
-              <UserPen className="size-3.5" aria-hidden />
-              <span className="hidden sm:inline">Edit Profile</span>
-              <span className="sm:hidden">Edit</span>
-            </Button>
-            <Button variant="outline" size="sm" className="gap-1.5 text-[12.5px]">
-              <KeyRound className="size-3.5" aria-hidden />
-              <span className="hidden sm:inline">Reset Password</span>
-              <span className="sm:hidden">Reset</span>
-            </Button>
-          </div>
+          <Button variant="outline" size="sm" className="shrink-0 gap-1.5 text-[12.5px]" onClick={() => setEditOpen(true)}>
+            <UserPen className="size-3.5" aria-hidden />
+            <span className="hidden sm:inline">Edit Profile</span>
+            <span className="sm:hidden">Edit</span>
+          </Button>
         )}
       </div>
 
@@ -168,12 +187,9 @@ export function AgentProfile({
                   {canManage ? (
                     <Switch
                       checked={mod.enabled}
+                      disabled={savingModule === mod.module}
                       aria-label={`Toggle ${moduleName(mod.module)} access`}
-                      onCheckedChange={(checked) =>
-                        setModules((prev) =>
-                          prev.map((x) => (x.module === mod.module ? { ...x, enabled: checked } : x))
-                        )
-                      }
+                      onCheckedChange={(checked) => toggleModule(mod.module, checked)}
                     />
                   ) : (
                     <span className={`text-[11.5px] font-medium ${mod.enabled ? "text-success-foreground" : "text-muted-foreground"}`}>
@@ -263,8 +279,10 @@ export function AgentProfile({
                   <CardTitle className="text-[14.5px] font-semibold">Assistants</CardTitle>
                   {canManage && (
                     <CardAction>
-                      <Button size="sm" className="h-8 gap-1.5 text-[12.5px]">
-                        <Plus className="size-3.5" aria-hidden /> Add Assistant
+                      <Button size="sm" className="h-8 gap-1.5 text-[12.5px]" asChild>
+                        <Link href="/app/assistants">
+                          <Plus className="size-3.5" aria-hidden /> Add Assistant
+                        </Link>
                       </Button>
                     </CardAction>
                   )}
@@ -287,8 +305,10 @@ export function AgentProfile({
                       <StatusBadge status={a.status} />
                       {canManage && a.status === "pending" && (
                         <div className="flex items-center gap-1">
-                          <Button size="sm" variant="outline" className="h-8 gap-1 text-[12px]">
-                            <Check className="size-3.5" aria-hidden /> Approve
+                          <Button size="sm" variant="outline" className="h-8 gap-1 text-[12px]" asChild>
+                            <Link href={`/app/assistants?approve=${a.id}`}>
+                              <Check className="size-3.5" aria-hidden /> Approve
+                            </Link>
                           </Button>
                           <ConfirmDialog
                             trigger={
@@ -309,26 +329,21 @@ export function AgentProfile({
               </Card>
             </TabsContent>
 
-            {/* Documents */}
+            {/* Documents — KYC files uploaded via submissions surface here. */}
             <TabsContent value="documents" className="mt-4">
               <Card className="gap-0 py-0 shadow-xs">
-                <CardContent className="space-y-2.5 p-4 sm:p-5">
-                  {[
-                    { name: "National ID — scanned.pdf", meta: "PDF · 1.2 MB · Verified" },
-                    { name: "Proof of residence.pdf", meta: "PDF · 0.9 MB · Verified" },
-                    { name: "IceCash registration.pdf", meta: "PDF · 0.6 MB" },
-                  ].map((d) => (
-                    <div key={d.name} className="flex items-center gap-3 rounded-xl border p-3.5">
-                      <FileText className="size-4.5 text-muted-foreground" aria-hidden />
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-[13.5px] font-medium">{d.name}</p>
-                        <p className="text-[11.5px] text-muted-foreground">{d.meta}</p>
-                      </div>
-                      <Button variant="ghost" size="icon-sm" aria-label="Download">
-                        <Eye className="size-4" />
-                      </Button>
-                    </div>
-                  ))}
+                <CardContent className="p-4 sm:p-5">
+                  <div className="flex flex-col items-center gap-2 py-10 text-center">
+                    <FileText className="size-8 text-muted-foreground/50" aria-hidden />
+                    <p className="text-[13px] font-medium">No documents uploaded</p>
+                    <p className="max-w-xs text-[12px] text-muted-foreground">
+                      ID scans, proof of residence and registration files submitted
+                      through Submissions appear here once reviewed.
+                    </p>
+                    <Button variant="outline" size="sm" className="mt-1 text-[12.5px]" asChild>
+                      <Link href="/app/submissions">Go to Submissions</Link>
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             </TabsContent>
@@ -528,8 +543,10 @@ function BoothsSection({
           <CardTitle className="text-[14.5px] font-semibold">Booths</CardTitle>
           {canManage && (
             <CardAction>
-              <Button size="sm" className="h-8 gap-1.5 text-[12.5px]">
-                <Plus className="size-3.5" aria-hidden /> Add Booth
+              <Button size="sm" className="h-8 gap-1.5 text-[12.5px]" asChild>
+                <Link href="/app/booths">
+                  <Plus className="size-3.5" aria-hidden /> Add Booth
+                </Link>
               </Button>
             </CardAction>
           )}
@@ -567,6 +584,24 @@ function BoothsSection({
                   )}
                 </tr>
               ))}
+              {booths.length === 0 && (
+                <tr>
+                  <td colSpan={canManage ? 5 : 4} className="px-3 py-10 text-center">
+                    <div className="flex flex-col items-center gap-1.5">
+                      <Store className="size-6 text-muted-foreground/50" aria-hidden />
+                      <p className="text-[13px] font-medium">No booths yet</p>
+                      <p className="text-[12px] text-muted-foreground">
+                        Booths group this agent&apos;s assistants and field locations.
+                      </p>
+                      {canManage && (
+                        <Button variant="outline" size="sm" className="mt-1 h-8 text-[12.5px]" asChild>
+                          <Link href="/app/booths">Manage Booths</Link>
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              )}
             </tbody>
           </table>
         </div>
