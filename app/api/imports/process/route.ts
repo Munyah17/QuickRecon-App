@@ -214,34 +214,60 @@ export async function POST(request: NextRequest) {
 
       if (batchDocs.documents.length) {
         const { error: docsErr } = await sb.from("reconciliation_documents").insert(
-        batchDocs.documents.map((d) => ({
-          batch_id: batchDocs.batchId,
-          agent_id: d.agentId,
-          agent_name: d.agentName,
-          module: d.module,
-          period: d.period,
-          currency: d.currency,
-          opening_variance: d.openingVariance,
-          insurance: d.insurance,
-          premium_cover: d.premiumCover,
-          commission: d.commission,
-          net_insurance: d.netInsurance,
-          zinara: d.zinara,
-          pds: d.pds,
-          total_expected: d.totalExpected,
-          bank_deposits: d.bankDeposits,
-          deposits: d.deposits,
-          adjustments: d.adjustments,
-          closing_variance: d.closingVariance,
-          closing_position: d.closingPosition,
-          status: d.status,
-          transactions: d.transactions,
-          summary_text: d.summaryText,
-          csv_text: documentToCSV(d),
-          created_at: d.generatedAt,
+          batchDocs.documents.map((d) => ({
+            batch_id: batchDocs.batchId,
+            agent_id: d.agentId,
+            agent_name: d.agentName,
+            module: d.module,
+            period: d.period,
+            currency: d.currency,
+            opening_variance: d.openingVariance,
+            insurance: d.insurance,
+            premium_cover: d.premiumCover,
+            commission: d.commission,
+            net_insurance: d.netInsurance,
+            zinara: d.zinara,
+            pds: d.pds,
+            total_expected: d.totalExpected,
+            bank_deposits: d.bankDeposits,
+            deposits: d.deposits,
+            adjustments: d.adjustments,
+            closing_variance: d.closingVariance,
+            closing_position: d.closingPosition,
+            status: d.status,
+            transactions: d.transactions,
+            summary_text: d.summaryText,
+            csv_text: documentToCSV(d),
+            created_at: d.generatedAt,
           }))
         );
         if (docsErr) persistenceErrors.push(`reconciliation_documents: ${docsErr.message}`);
+      }
+
+      // Persist engine exceptions so the Exception Centre / validation step
+      // shows them — previously they only lived in this response and vanished.
+      if (output.exceptions.length) {
+        const excRows = output.exceptions.map((e, i) => ({
+          id: `EXC-${Date.now().toString(36)}-${String(i).padStart(3, "0")}`,
+          batch_id: batchErr ? null : batchDocs.batchId,
+          import_batch_id: impErr ? null : importId,
+          module: e.module,
+          agent_id: e.agentId ?? null,
+          type: e.type,
+          severity: e.severity,
+          source_ref: e.sourceRef ?? null,
+          description: e.description,
+          status: "open",
+        }));
+        const { error: excErr } = await sb.from("reconciliation_exceptions").insert(excRows);
+        if (excErr) persistenceErrors.push(`reconciliation_exceptions: ${excErr.message}`);
+      }
+
+      if (!impErr) {
+        await sb
+          .from("import_batches")
+          .update({ status: persistenceErrors.length ? "partial" : "completed" })
+          .eq("id", importId);
       }
     } else {
       persistenceErrors.push(

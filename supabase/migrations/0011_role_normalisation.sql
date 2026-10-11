@@ -9,13 +9,13 @@
 
 -- 1. Data fix: map any non-standard value to a valid role_code.
 update public.profiles
-set role = case role::text
+set role = (case role::text
   when 'superadmin' then 'super_admin'
   when 'super admin' then 'super_admin'
   when 'administrator' then 'admin'
   when 'customer' then 'agent'
   else 'agent'
-end
+end)::role_code
 where role::text not in ('super_admin', 'admin', 'agent', 'assistant', 'tech_support');
 
 -- 2. Hardened helpers: read as text, map known aliases, fall back to 'agent'

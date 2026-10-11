@@ -13,7 +13,7 @@ create table public.staff (
   job_title text,                               -- CTO, Clerk, Insurer…
   department text,
   salary numeric(14,2) not null default 0,
-  status user_status not null default 'active',
+  status text not null default 'active',     -- free-form HR status: active, on_leave, exited…
   phone text,
   email text,
   user_id uuid references public.profiles (id), -- optional link to a login

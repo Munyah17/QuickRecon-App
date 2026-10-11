@@ -40,8 +40,24 @@ export async function loginWithPassword(
     });
     redirect("/app/dashboard");
   }
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const { data: auth, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) return { error: error.message };
+
+  // Field roles have no portal access — agents and assistants receive their
+  // consolidated reconciliations via email/WhatsApp instead of a dashboard.
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("role")
+    .eq("id", auth.user.id)
+    .maybeSingle();
+  const role = (profile?.role ?? "").toLowerCase();
+  if (role === "agent" || role === "assistant") {
+    await supabase.auth.signOut();
+    return {
+      error:
+        "Portal access is limited to company staff. Reconciliation statements are delivered to agents by WhatsApp/email.",
+    };
+  }
   redirect("/app/dashboard");
 }
 

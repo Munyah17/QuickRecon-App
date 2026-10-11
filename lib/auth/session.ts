@@ -97,6 +97,12 @@ export const getSession = cache(async (): Promise<SessionInfo | null> => {
       .eq("id", authUser.id)
       .single();
 
+    // Field roles have no portal access — treat their sessions as unauthenticated
+    // even if an auth cookie exists (e.g. an account created before the cutoff).
+    // Checked on the raw stored role: a missing profile defaults to 'agent' in
+    // normalizeRole and must not wall out staff with a provisioning gap.
+    const rawRole = (profile?.role ?? "").trim().toLowerCase();
+    if (rawRole === "agent" || rawRole === "assistant") return null;
     const role = normalizeRole(profile?.role);
     const user: AppUser = {
       id: authUser.id,

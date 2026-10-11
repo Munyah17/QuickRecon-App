@@ -13,7 +13,6 @@ interface RowOutcome {
   name: string;
   email: string;
   agentId?: string;
-  tempPassword?: string;
   ok: boolean;
   error?: string;
 }
@@ -54,9 +53,9 @@ const STATUS_MAP: Record<string, string> = {
  * Bulk-create agents from an .xlsx/.csv upload. Expected columns (header row,
  * case-insensitive): Full Name* | Email* | Phone | Province | Location |
  * National ID | IceCash ID | Modules | Status.
- * Each row gets an auth login (generated temp password), a profiles row, an
- * agents row and its agent_modules grants — the same shape as POST /api/users.
- * Per-row outcomes are returned; one bad row never aborts the batch.
+ * Each row gets an agents row plus its agent_modules grants — no login is
+ * provisioned (agents receive consolidated reconciliations on their contact
+ * channels). Per-row outcomes are returned; one bad row never aborts the batch.
  */
 export async function POST(request: NextRequest) {
   const session = await getSession();
@@ -120,37 +119,16 @@ export async function POST(request: NextRequest) {
       continue;
     }
 
-    const tempPassword = `Qr-${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}!`;
-
+    // No login is provisioned — agents receive consolidated reconciliations
+    // on their contact channels, so a bare agents row is the whole account.
     try {
-      const { data: authUser, error: authError } = await sb.auth.admin.createUser({
-        email,
-        password: tempPassword,
-        email_confirm: true,
-        user_metadata: { full_name: fullName, role: "agent" },
-      });
-      if (authError) throw new Error(authError.message);
-      const userId = authUser.user.id;
-
-      try {
-        const { error: profileError } = await sb.from("profiles").upsert(
-          {
-            id: userId,
-            full_name: fullName,
-            email,
-            role: "agent",
-            status: "active",
-            phone: phone || null,
-          },
-          { onConflict: "id" }
-        );
-        if (profileError) throw new Error(profileError.message);
-
+      let agentId = "";
+      for (let attempt = 0; attempt < 3; attempt++) {
         seq += 1;
-        const agentId = `AGT-${String(seq).padStart(6, "0")}`;
+        agentId = `AGT-${String(seq).padStart(6, "0")}`;
         const { error: agentError } = await sb.from("agents").insert({
           id: agentId,
-          user_id: userId,
+          user_id: null,
           full_name: fullName,
           email,
           phone: phone || null,
@@ -161,21 +139,14 @@ export async function POST(request: NextRequest) {
           status,
           kyc_status: "pending",
         });
-        if (agentError) {
-          // Roll back the login so a failed row leaves no orphan account.
-          await sb.from("profiles").delete().eq("id", userId);
-          await sb.auth.admin.deleteUser(userId);
-          throw new Error(agentError.message);
-        }
-        await sb.from("profiles").update({ agent_id: agentId }).eq("id", userId);
-        await sb.from("agent_modules").insert(
-          modules.map((m) => ({ agent_id: agentId, module: m }))
-        );
-        outcomes.push({ ...base, ok: true, agentId, tempPassword });
-      } catch (inner) {
-        await sb.auth.admin.deleteUser(userId).catch(() => {});
-        throw inner;
+        if (!agentError) break;
+        if (agentError.code === "23505" && attempt < 2) continue; // id raced — bump and retry
+        throw new Error(agentError.message);
       }
+      await sb.from("agent_modules").insert(
+        modules.map((m) => ({ agent_id: agentId, module: m }))
+      );
+      outcomes.push({ ...base, ok: true, agentId });
     } catch (e) {
       outcomes.push({ ...base, error: e instanceof Error ? e.message : "create failed" });
     }

@@ -51,7 +51,6 @@ export function AddAgentDialog() {
   const [creating, setCreating] = React.useState(false);
   const [created, setCreated] = React.useState<{
     agentId?: string;
-    tempPassword?: string;
   } | null>(null);
 
   const reset = () => {
@@ -93,7 +92,7 @@ export function AddAgentDialog() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed to create agent");
-      setCreated({ agentId: data.agentId, tempPassword: data.tempPassword });
+      setCreated({ agentId: data.agentId });
       router.refresh();
     } catch (e) {
       toast.error(e instanceof Error ? e.message : "Failed to create agent");
@@ -119,8 +118,8 @@ export function AddAgentDialog() {
         <DialogHeader>
           <DialogTitle>Add New Agent</DialogTitle>
           <DialogDescription>
-            Create a new agent profile. The agent will receive an email with
-            login instructions.
+            Create a new agent profile. Agents don&apos;t get portal logins —
+            their consolidated reconciliations are sent via WhatsApp/email.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-2">
@@ -213,19 +212,10 @@ export function AddAgentDialog() {
               <p className="font-semibold text-success-foreground">
                 Agent created{created.agentId ? ` — ${created.agentId}` : ""}
               </p>
-              {created.tempPassword ? (
-                <p className="text-muted-foreground">
-                  Temporary password:{" "}
-                  <code className="rounded bg-card px-1.5 py-0.5 font-mono text-[11.5px] text-foreground">
-                    {created.tempPassword}
-                  </code>{" "}
-                  — share it with the agent; they can reset it after first login.
-                </p>
-              ) : (
-                <p className="text-muted-foreground">
-                  Share the login credentials with the agent.
-                </p>
-              )}
+              <p className="text-muted-foreground">
+                The agent is onboard for reconciliation — statements are
+                delivered to their phone/email each period.
+              </p>
             </div>
           </div>
         )}

@@ -20,15 +20,14 @@ interface Outcome {
   name: string;
   email: string;
   agentId?: string;
-  tempPassword?: string;
   ok: boolean;
   error?: string;
 }
 
 /**
  * Bulk agent import — uploads an .xlsx/.csv to /api/agents/import and shows
- * per-row results, including generated temp passwords the admin must capture
- * before closing (they are never stored retrievably).
+ * per-row results. Imported agents get no portal login; their consolidated
+ * reconciliations are delivered on their contact channels.
  */
 export function ImportAgentsDialog() {
   const router = useRouter();
@@ -97,7 +96,8 @@ export function ImportAgentsDialog() {
         <DialogHeader>
           <DialogTitle>Import Agents</DialogTitle>
           <DialogDescription>
-            Upload an .xlsx or .csv with one agent per row. Required columns:
+            Upload an .xlsx or .csv with one agent per row — no logins are
+            created; agents receive statements via WhatsApp/email. Required:
             Full Name, Email. Optional: Phone, Province, Location, National ID,
             IceCash ID, Modules, Status.
           </DialogDescription>
@@ -166,25 +166,13 @@ export function ImportAgentsDialog() {
                         </span>
                       )}
                     </p>
-                    {o.ok && o.tempPassword ? (
-                      <p className="text-muted-foreground">
-                        Temp password:{" "}
-                        <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px] text-foreground">
-                          {o.tempPassword}
-                        </code>
-                      </p>
-                    ) : (
-                      o.error && <p className="text-destructive">{o.error}</p>
+                    {!o.ok && o.error && (
+                      <p className="text-destructive">{o.error}</p>
                     )}
                   </div>
                 </div>
               ))}
             </div>
-            {result.created > 0 && (
-              <p className="rounded-lg bg-muted px-3 py-2 text-[12px] text-muted-foreground">
-                Copy the temp passwords now — they are shown only once.
-              </p>
-            )}
           </div>
         )}
 

@@ -9,10 +9,10 @@ export const runtime = "nodejs";
 const VALID_ROLES: RoleCode[] = ["super_admin", "admin", "agent", "assistant", "tech_support"];
 
 /**
- * POST /api/users — create a staff account.
- * Creates the Supabase auth user (service role), the profiles row, and —
- * for agents/assistants — a matching agents row so identity resolution
- * and reconciliation scoping work immediately.
+ * POST /api/users — create a staff account or onboard a field agent.
+ * Company roles get a Supabase auth login + profiles row. Agents and
+ * assistants get NO login — only an agents row (+ module grants) so identity
+ * resolution works; their reconciliations arrive via email/WhatsApp.
  */
 export async function POST(request: NextRequest) {
   const session = await getSession();
@@ -31,20 +31,56 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid role" }, { status: 400 });
   }
 
-  // Password is optional for agent/assistant accounts — generate a one-time
-  // temporary password that is returned to the admin to share.
+  const sb = await createServiceClient();
+  if (!sb) {
+    // Preview mode (no Supabase) — acknowledge without persisting.
+    return NextResponse.json({ status: "pending", preview: true });
+  }
+
+  // Agents & assistants get NO login — the portal is company-staff only.
+  // Field agents receive their consolidated reconciliations by email/WhatsApp,
+  // so we create the agents row directly (user_id stays null).
+  if (role === "agent" || role === "assistant") {
+    const { count } = await sb
+      .from("agents")
+      .select("id", { count: "exact", head: true });
+    const agentId = `AGT-${String((count ?? 0) + 1).padStart(6, "0")}`;
+    const { error: agentError } = await sb.from("agents").insert({
+      id: agentId,
+      user_id: null,
+      full_name: fullName.trim(),
+      email: email.trim().toLowerCase(),
+      phone: phone || null,
+      province: province || location || null,
+      location: location || null,
+      national_id: nationalId || null,
+      status: "pending",
+      kyc_status: "pending",
+    });
+    if (agentError) {
+      return NextResponse.json(
+        { error: `Agent profile could not be created: ${agentError.message}` },
+        { status: 500 }
+      );
+    }
+    const modules = moduleAccess === "both"
+      ? ["enpassent", "econet-moovah"]
+      : [moduleAccess].filter(Boolean);
+    if (modules.length) {
+      await sb.from("agent_modules").insert(
+        modules.map((m: string) => ({ agent_id: agentId, module: m }))
+      );
+    }
+    return NextResponse.json({ status: "pending", agentId });
+  }
+
+  // Company staff roles get a real login.
   const generatedPassword = typeof password !== "string" || password.length === 0;
   const finalPassword = generatedPassword
     ? `Qr-${crypto.randomUUID().replaceAll("-", "").slice(0, 12)}!`
     : password;
   if (typeof finalPassword !== "string" || finalPassword.length < 8) {
     return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 });
-  }
-
-  const sb = await createServiceClient();
-  if (!sb) {
-    // Preview mode (no Supabase) — acknowledge without persisting.
-    return NextResponse.json({ status: "pending", preview: true });
   }
 
   const { data: authUser, error: authError } = await sb.auth.admin.createUser({
@@ -59,7 +95,6 @@ export async function POST(request: NextRequest) {
 
   const userId = authUser.user.id;
 
-  // profiles has no national_id/location columns — those live on agents.
   // Upsert: a handle_new_user DB trigger may have already inserted a stub
   // row (with default role) when the auth user was created — overwrite it.
   const { error: profileError } = await sb.from("profiles").upsert(
@@ -76,50 +111,6 @@ export async function POST(request: NextRequest) {
   if (profileError) {
     await sb.auth.admin.deleteUser(userId);
     return NextResponse.json({ error: profileError.message }, { status: 500 });
-  }
-
-  if (role === "agent" || role === "assistant") {
-    // Sequential agent id: AGT-000xxx based on count.
-    const { count } = await sb
-      .from("agents")
-      .select("id", { count: "exact", head: true });
-    const agentId = `AGT-${String((count ?? 0) + 1).padStart(6, "0")}`;
-    const { error: agentError } = await sb.from("agents").insert({
-      id: agentId,
-      user_id: userId,
-      full_name: fullName.trim(),
-      email: email.trim().toLowerCase(),
-      phone: phone || null,
-      province: province || location || null,
-      location: location || null,
-      national_id: nationalId || null,
-      status: "pending",
-      kyc_status: "pending",
-    });
-    if (agentError) {
-      // Roll back so a failed agent insert doesn't leave an orphaned login.
-      await sb.from("profiles").delete().eq("id", userId);
-      await sb.auth.admin.deleteUser(userId);
-      return NextResponse.json(
-        { error: `Agent profile could not be created: ${agentError.message}` },
-        { status: 500 }
-      );
-    }
-    await sb.from("profiles").update({ agent_id: agentId }).eq("id", userId);
-    const modules = moduleAccess === "both"
-      ? ["enpassent", "econet-moovah"]
-      : [moduleAccess].filter(Boolean);
-    if (modules.length) {
-      await sb.from("agent_modules").insert(
-        modules.map((m: string) => ({ agent_id: agentId, module: m }))
-      );
-    }
-    return NextResponse.json({
-      status: "pending",
-      userId,
-      agentId,
-      ...(generatedPassword ? { tempPassword: finalPassword } : {}),
-    });
   }
 
   return NextResponse.json({

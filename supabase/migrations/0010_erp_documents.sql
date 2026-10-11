@@ -34,6 +34,8 @@ create index if not exists erp_documents_status_idx on public.erp_documents (sta
 alter table public.erp_documents enable row level security;
 
 -- Company staff (super_admin, admin, finance, operations) manage documents.
+-- role cast to text: 'finance'/'operations' aren't role_code enum values —
+-- a raw enum comparison errors at policy creation.
 create policy "erp_documents_company_all"
   on public.erp_documents
   for all
@@ -42,14 +44,14 @@ create policy "erp_documents_company_all"
     exists (
       select 1 from public.profiles p
       where p.id = auth.uid()
-        and p.role in ('super_admin','admin','finance','operations')
+        and p.role::text in ('super_admin','admin','finance','operations')
     )
   )
   with check (
     exists (
       select 1 from public.profiles p
       where p.id = auth.uid()
-        and p.role in ('super_admin','admin','finance','operations')
+        and p.role::text in ('super_admin','admin','finance','operations')
     )
   );
 
