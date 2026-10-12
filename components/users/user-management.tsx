@@ -49,6 +49,10 @@ const ROLE_BADGE: Record<RoleCode, string> = {
   tech_support: "bg-muted text-muted-foreground",
 };
 
+/** Roles that get a portal login — staff only. Agents/assistants are field
+ *  roles without portal access and are managed from the Agents module. */
+const STAFF_ROLES: RoleCode[] = ["super_admin", "admin", "tech_support"];
+
 const SEGMENTS = ["all", "active", "pending", "suspended"] as const;
 
 export function UserManagement({
@@ -190,7 +194,7 @@ export function UserManagement({
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">All Roles</SelectItem>
-                  {(Object.keys(ROLE_BADGE) as RoleCode[]).map((r) => (
+                  {STAFF_ROLES.map((r) => (
                     <SelectItem key={r} value={r}>{roleLabel(r)}</SelectItem>
                   ))}
                 </SelectContent>
@@ -232,7 +236,7 @@ export function UserManagement({
 
       <TabsContent value="roles" className="mt-4">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-          {(Object.keys(ROLE_BADGE) as RoleCode[]).map((role) => {
+          {STAFF_ROLES.map((role) => {
             const perms = permissionsForRole(role);
             return (
               <Card key={role} className="gap-0 py-0 shadow-xs">
@@ -407,7 +411,7 @@ function UserActions({ user }: { user: TeamUser }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {(Object.keys(ROLE_BADGE) as RoleCode[]).map((r) => (
+                  {STAFF_ROLES.map((r) => (
                     <SelectItem key={r} value={r}>{roleLabel(r)}</SelectItem>
                   ))}
                 </SelectContent>
@@ -447,7 +451,7 @@ function UserActions({ user }: { user: TeamUser }) {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  {(Object.keys(ROLE_BADGE) as RoleCode[]).map((r) => (
+                  {STAFF_ROLES.map((r) => (
                     <SelectItem key={r} value={r}>{roleLabel(r)}</SelectItem>
                   ))}
                 </SelectContent>
@@ -598,15 +602,14 @@ export function AddUserDialog() {
   const [phone, setPhone] = React.useState("");
   const [nationalId, setNationalId] = React.useState("");
   const [location, setLocation] = React.useState("");
-  const [role, setRole] = React.useState<RoleCode>("agent");
-  const [moduleAccess, setModuleAccess] = React.useState<string>("both");
+  const [role, setRole] = React.useState<RoleCode>("admin");
   const [password, setPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
   const [creating, setCreating] = React.useState(false);
 
   const reset = () => {
     setFullName(""); setEmail(""); setPhone(""); setNationalId("");
-    setLocation(""); setRole("agent"); setModuleAccess("both");
+    setLocation(""); setRole("admin");
     setPassword(""); setConfirmPassword("");
   };
 
@@ -629,7 +632,7 @@ export function AddUserDialog() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          fullName, email, phone, nationalId, location, role, moduleAccess, password,
+          fullName, email, phone, nationalId, location, role, password,
         }),
       });
       const data = await res.json();
@@ -657,7 +660,8 @@ export function AddUserDialog() {
         <DialogHeader>
           <DialogTitle>Add New Staff Member</DialogTitle>
           <DialogDescription>
-            Create an account with the details below. Login credentials are sent to their email.
+            Create a staff login account. Agents and assistants are onboarded
+            from the Agents module — they have no portal access.
           </DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-2 sm:grid-cols-2">
@@ -695,20 +699,9 @@ export function AddUserDialog() {
             <Select value={role} onValueChange={(v) => setRole(v as RoleCode)}>
               <SelectTrigger id="add-user-role"><SelectValue /></SelectTrigger>
               <SelectContent>
-                {(Object.keys(ROLE_BADGE) as RoleCode[]).map((r) => (
+                {STAFF_ROLES.map((r) => (
                   <SelectItem key={r} value={r}>{roleLabel(r)}</SelectItem>
                 ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="add-user-module">Module Access</Label>
-            <Select value={moduleAccess} onValueChange={setModuleAccess}>
-              <SelectTrigger id="add-user-module"><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="both">Both modules</SelectItem>
-                <SelectItem value="enpassent">Enpassent only</SelectItem>
-                <SelectItem value="econet-moovah">Econet Moovah only</SelectItem>
               </SelectContent>
             </Select>
           </div>

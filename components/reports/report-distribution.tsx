@@ -280,12 +280,35 @@ export function ReportDistribution({
 
       <TabsContent value="schedule" className="mt-4">
         <Card className="gap-0 py-0 shadow-xs">
-          <CardContent className="max-w-md space-y-4 p-5">
-            <ScheduleField label="Frequency" value="Monthly — on the 1st at 06:00" />
-            <ScheduleField label="Recipients" value="All Agents" />
-            <ScheduleField label="Channels" value="Email + WhatsApp" />
-            <ScheduleField label="Next run" value="1 October 2026, 06:00 (CAT)" />
-            <Button className="h-9 text-[13px]">Send Now (override)</Button>
+          <CardContent className="max-w-lg space-y-4 p-5">
+            <div className="space-y-1.5">
+              <p className="text-[14px] font-semibold">Automatic scheduling isn&apos;t configured yet</p>
+              <p className="text-[13px] leading-relaxed text-muted-foreground">
+                Distributions run manually for now — pick recipients, formats and
+                channels on the Send Reports tab, then send. Every run is logged
+                in History so you can track what went out and when.
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <ConfirmDialog
+                trigger={
+                  <Button
+                    className="h-9 gap-1.5 text-[13px]"
+                    disabled={formats.length === 0 || channels.length === 0 || sending || targetRecons.length === 0}
+                  >
+                    <Send className="size-4" aria-hidden /> {sending ? "Sending…" : "Send Now"}
+                  </Button>
+                }
+                title="Queue distribution?"
+                description={`${targetRecons.length} agent reconciliation document${targetRecons.length === 1 ? "" : "s"} will be generated and delivered via ${channels.join(" + ")}. Each agent receives only their own document.`}
+                confirmLabel="Send Now"
+                onConfirm={sendNow}
+              />
+              <p className="text-[12px] text-muted-foreground">
+                Uses the recipients, formats and channels set on Send Reports
+                {targetRecons.length === 0 ? " — select agents with a published reconciliation first" : ` (${targetRecons.length} ready)`}.
+              </p>
+            </div>
           </CardContent>
         </Card>
       </TabsContent>
@@ -387,14 +410,5 @@ function StepCard({ n, title, children }: { n: number; title: string; children: 
       </CardHeader>
       <CardContent className="px-4 pt-2 pb-4 sm:px-5">{children}</CardContent>
     </Card>
-  );
-}
-
-function ScheduleField({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between gap-3 text-[13px]">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="font-medium">{value}</span>
-    </div>
   );
 }

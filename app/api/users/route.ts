@@ -7,6 +7,8 @@ import type { RoleCode } from "@/types";
 export const runtime = "nodejs";
 
 const VALID_ROLES: RoleCode[] = ["super_admin", "admin", "agent", "assistant", "tech_support"];
+/** Roles that hold a portal login. Field roles never appear on profiles. */
+const STAFF_ROLES: RoleCode[] = ["super_admin", "admin", "tech_support"];
 
 /**
  * POST /api/users — create a staff account or onboard a field agent.
@@ -37,10 +39,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ status: "pending", preview: true });
   }
 
-  // Agents & assistants get NO login — the portal is company-staff only.
-  // Field agents receive their consolidated reconciliations by email/WhatsApp,
-  // so we create the agents row directly (user_id stays null).
-  if (role === "agent" || role === "assistant") {
+  // Agents get NO login — the portal is company-staff only. Field agents
+  // receive their consolidated reconciliations by email/WhatsApp, so we
+  // create the agents row directly (user_id stays null).
+  if (role === "assistant") {
+    return NextResponse.json(
+      { error: "Assistants are created under an agent — use Agents → (agent profile) → Add Assistant." },
+      { status: 400 }
+    );
+  }
+  if (role === "agent") {
     const { count } = await sb
       .from("agents")
       .select("id", { count: "exact", head: true });
@@ -136,8 +144,11 @@ export async function PATCH(request: NextRequest) {
   if (!userId && !email) {
     return NextResponse.json({ error: "userId or email required" }, { status: 400 });
   }
-  if (role && !VALID_ROLES.includes(role)) {
-    return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+  if (role && !STAFF_ROLES.includes(role)) {
+    return NextResponse.json(
+      { error: "Staff accounts can only hold staff roles (super_admin, admin, tech_support). Field roles have no portal login." },
+      { status: 400 }
+    );
   }
   if (password !== undefined && (typeof password !== "string" || password.length < 8)) {
     return NextResponse.json({ error: "Password must be at least 8 characters" }, { status: 400 });
