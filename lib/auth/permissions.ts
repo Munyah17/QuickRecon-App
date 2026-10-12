@@ -15,7 +15,6 @@ export const PERMISSIONS = {
     "agents.manage_modules",
     "agents.manage_booths",
   ],
-  assistants: ["assistants.view", "assistants.approve", "assistants.reject"],
   imports: [
     "imports.create",
     "imports.preview",
@@ -55,13 +54,6 @@ const AGENT_BASE: Permission[] = [
   "support.view",
 ];
 
-const ASSISTANT_BASE: Permission[] = [
-  "reconciliation.view",
-  "reports.view",
-  "submissions.view",
-  "support.view",
-];
-
 const TECH_SUPPORT_BASE: Permission[] = [
   "agents.view",
   "imports.preview",
@@ -85,7 +77,6 @@ export function permissionsForRole(role: RoleCode): Permission[] {
       return [
         "agents.view",
         "agents.edit",
-        "assistants.view",
         "imports.preview",
         "reconciliation.view",
         "reconciliation.view_all",
@@ -102,8 +93,6 @@ export function permissionsForRole(role: RoleCode): Permission[] {
       ];
     case "agent":
       return AGENT_BASE;
-    case "assistant":
-      return ASSISTANT_BASE;
     case "tech_support":
       return TECH_SUPPORT_BASE;
     default:
@@ -116,7 +105,6 @@ export function roleLabel(role: RoleCode): string {
     super_admin: "Super Admin",
     admin: "Admin",
     agent: "Agent",
-    assistant: "Assistant",
     tech_support: "Tech Support",
   };
   return labels[role] ?? role;

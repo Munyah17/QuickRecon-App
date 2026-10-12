@@ -22,6 +22,7 @@ interface Outcome {
   agentId?: string;
   ok: boolean;
   error?: string;
+  ids?: number;
 }
 
 /**
@@ -50,9 +51,9 @@ export function ImportAgentsDialog() {
 
   const downloadTemplate = () => {
     const header =
-      "Full Name,Email,Phone,Province,Location,National ID,IceCash ID,Modules,Status";
+      "Full Name,Email,Phone,Province,Location,National ID,IceCash ID,Modules,Status,Zinara User,NMB,NMB USD,CBZ,NBS,FBC";
     const sample =
-      'Tendai Moyo,tendai.moyo@example.com,+263771234567,Harare,CBD,63-123456A78,ICX-8821,both,pending';
+      'Tendai Moyo,tendai.moyo@example.com,+263771234567,Harare,CBD,63-123456A78,ICX-8821,both,pending,ZW019BJJ - TENDAI MOYO,N1411T01,Q1411T01,89021434,NBSP0633,29014121';
     const blob = new Blob([`${header}\n${sample}\n`], { type: "text/csv" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -99,7 +100,8 @@ export function ImportAgentsDialog() {
             Upload an .xlsx or .csv with one agent per row — no logins are
             created; agents receive statements via WhatsApp/email. Required:
             Full Name, Email. Optional: Phone, Province, Location, National ID,
-            IceCash ID, Modules, Status.
+            IceCash ID, Modules, Status — plus bank/Zinara code columns (Zinara
+            User, NMB, NMB USD, CBZ, NBS, FBC) used to match transactions.
           </DialogDescription>
         </DialogHeader>
 
@@ -165,6 +167,11 @@ export function ImportAgentsDialog() {
                           {o.agentId}
                         </span>
                       )}
+                      {o.ids ? (
+                        <span className="ml-1.5 text-[11px] text-muted-foreground">
+                          · {o.ids} ID{o.ids === 1 ? "" : "s"}
+                        </span>
+                      ) : null}
                     </p>
                     {!o.ok && o.error && (
                       <p className="text-destructive">{o.error}</p>

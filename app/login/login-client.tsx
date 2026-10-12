@@ -23,8 +23,7 @@ type LoginValues = z.infer<typeof loginSchema>;
 
 const PREVIEW_ROLES: { role: RoleCode; label: string }[] = [
   { role: "super_admin", label: "Super Admin" },
-  { role: "agent", label: "Agent" },
-  { role: "assistant", label: "Assistant" },
+  { role: "admin", label: "Admin" },
   { role: "tech_support", label: "Tech Support" },
 ];
 

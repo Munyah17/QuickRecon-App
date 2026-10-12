@@ -6,12 +6,10 @@
 import type {
   Agent,
   AppNotification,
-  Assistant,
   Booth,
   DistributionJob,
   ImportBatch,
   AgentReport,
-  PendingApproval,
   ReconException,
   Reconciliation,
   ReconciliationLine,
@@ -35,7 +33,6 @@ export const MOCK_AGENTS: Agent[] = [
       { module: "econet-moovah", enabled: true },
     ],
     boothsCount: 2,
-    assistantsCount: 2,
     joinedAt: "2023-01-12",
     nationalId: "63-123456-Z-12",
     iceCashId: "IC12345678",
@@ -66,7 +63,6 @@ export const MOCK_AGENTS: Agent[] = [
       { module: "econet-moovah", enabled: false },
     ],
     boothsCount: 1,
-    assistantsCount: 1,
     joinedAt: "2023-04-02",
     nationalId: "63-443211-Z-45",
     kycStatus: "verified",
@@ -92,7 +88,6 @@ export const MOCK_AGENTS: Agent[] = [
       { module: "econet-moovah", enabled: true },
     ],
     boothsCount: 1,
-    assistantsCount: 0,
     joinedAt: "2023-07-19",
     kycStatus: "pending",
     metrics: {
@@ -117,7 +112,6 @@ export const MOCK_AGENTS: Agent[] = [
       { module: "econet-moovah", enabled: true },
     ],
     boothsCount: 3,
-    assistantsCount: 2,
     joinedAt: "2022-11-05",
     kycStatus: "verified",
     metrics: {
@@ -142,7 +136,6 @@ export const MOCK_AGENTS: Agent[] = [
       { module: "econet-moovah", enabled: true },
     ],
     boothsCount: 1,
-    assistantsCount: 1,
     joinedAt: "2024-02-14",
     kycStatus: "pending",
     metrics: {
@@ -165,7 +158,6 @@ export const MOCK_BOOTHS: Booth[] = [
     province: "Matabeleland North",
     status: "active",
     modules: ["enpassent", "econet-moovah"],
-    assistantsCount: 2,
     createdAt: "2024-01-05",
   },
   {
@@ -176,7 +168,6 @@ export const MOCK_BOOTHS: Booth[] = [
     province: "Matabeleland North",
     status: "active",
     modules: ["enpassent"],
-    assistantsCount: 1,
     createdAt: "2024-03-18",
   },
   {
@@ -187,7 +178,6 @@ export const MOCK_BOOTHS: Booth[] = [
     province: "Bulawayo",
     status: "pending",
     modules: ["econet-moovah"],
-    assistantsCount: 0,
     createdAt: "2026-08-28",
   },
   {
@@ -198,47 +188,7 @@ export const MOCK_BOOTHS: Booth[] = [
     province: "Matabeleland North",
     status: "active",
     modules: ["enpassent"],
-    assistantsCount: 1,
     createdAt: "2024-06-01",
-  },
-];
-
-export const MOCK_ASSISTANTS: Assistant[] = [
-  {
-    id: "AST-0011",
-    agentId: "AGT-000184",
-    boothId: "BTH-0101",
-    boothName: "Victoria Falls Booth",
-    fullName: "Tairo Moyo",
-    email: "tairo@example.com",
-    phone: "+263 77 900 1001",
-    status: "active",
-    requestedPermissions: ["submissions", "reports"],
-    createdAt: "2025-11-02",
-  },
-  {
-    id: "AST-0012",
-    agentId: "AGT-000184",
-    boothId: "BTH-0102",
-    boothName: "Hwange Booth",
-    fullName: "Simbarashe Dube",
-    email: "simba@example.com",
-    phone: "+263 77 900 1002",
-    status: "active",
-    requestedPermissions: ["submissions"],
-    createdAt: "2025-12-10",
-  },
-  {
-    id: "AST-0013",
-    agentId: "AGT-000184",
-    boothId: "BTH-0101",
-    boothName: "Victoria Falls Booth",
-    fullName: "Nomsa Ndlovu",
-    email: "nomsa.a@example.com",
-    phone: "+263 77 900 1003",
-    status: "pending",
-    requestedPermissions: ["reports"],
-    createdAt: "2026-09-10",
   },
 ];
 
@@ -471,7 +421,7 @@ export const MOCK_SUBMISSIONS: Submission[] = [
 
 export const MOCK_TICKETS: SupportTicket[] = [
   { id: "TKT-71", agentId: "AGT-000184", agentName: "Musa Zhou", module: "enpassent", category: "reconciliation_query", subject: "August closing position mismatch", status: "in_progress", createdAt: "2026-09-05" },
-  { id: "TKT-72", agentId: "AGT-000185", agentName: "Tafadzwa Chitumbura", module: "general", category: "account_access", subject: "Assistant cannot sign in", status: "open", createdAt: "2026-09-11" },
+  { id: "TKT-72", agentId: "AGT-000185", agentName: "Tafadzwa Chitumbura", module: "general", category: "account_access", subject: "Report delivery email change", status: "open", createdAt: "2026-09-11" },
   { id: "TKT-73", agentId: "AGT-000184", agentName: "Musa Zhou", module: "general", category: "technical", subject: "Mobile app slow on booth tablet", status: "resolved", createdAt: "2026-08-28" },
 ];
 
@@ -479,26 +429,19 @@ export const MOCK_TEAM_USERS: TeamUser[] = [
   { id: "usr-01", fullName: "Admin User", email: "admin@enpassent.co.zw", role: "super_admin", status: "active", lastLoginAt: "2026-09-12T10:24:00Z" },
   { id: "usr-02", fullName: "Teridz Support", email: "support@enpassent.co.zw", role: "tech_support", status: "active", lastLoginAt: "2026-09-12T09:11:00Z" },
   { id: "usr-03", fullName: "Musa Zhou", email: "musa.z@example.com", role: "agent", status: "active", lastLoginAt: "2026-09-12T16:30:00Z" },
-  { id: "usr-04", fullName: "Tairo Moyo", email: "tairo@example.com", role: "assistant", status: "pending", lastLoginAt: "2026-09-10T14:05:00Z" },
-];
-
-export const MOCK_PENDING_APPROVALS: PendingApproval[] = [
-  { id: "APR-01", kind: "assistant", name: "Nomsa Ndlovu", email: "nomsa.a@example.com", detail: "Assistant — Victoria Falls Booth", requestedBy: "Musa Zhou", requestedAt: "2026-09-10" },
-  { id: "APR-02", kind: "assistant", name: "Blessing Chikafu", email: "blessing@example.com", detail: "Assistant — Hwange Main", requestedBy: "Tafadzwa Chitumbura", requestedAt: "2026-09-09" },
-  { id: "APR-03", kind: "booth", name: "Bulawayo Booth", detail: "New booth request — Bulawayo", requestedBy: "Musa Zhou", requestedAt: "2026-08-28" },
 ];
 
 export const MOCK_NOTIFICATIONS: AppNotification[] = [
   { id: "NTF-01", title: "Data import completed", body: "Enpassent · August 2026 — 5,980 rows staged.", read: false, at: "2026-09-02T08:14:00Z", kind: "import" },
   { id: "NTF-02", title: "Reconciliation batch processed", body: "Batch IMP-2608-01 finished: 236 successful, 8 warnings, 4 need attention.", read: false, at: "2026-09-05T09:15:00Z", kind: "reconciliation" },
-  { id: "NTF-03", title: "New user added", body: "Tairo Moyo was added as an assistant (pending approval).", read: true, at: "2026-09-10T14:05:00Z", kind: "assistant" },
+  { id: "NTF-03", title: "Agent onboarded", body: "Rumbidzai Moyo completed onboarding for Econet Moovah.", read: true, at: "2026-09-10T14:05:00Z", kind: "agent" },
   { id: "NTF-04", title: "System maintenance", body: "Scheduled on 21 Sep 2026, 22:00 — brief downtime expected.", read: true, at: "2026-09-08T09:00:00Z", kind: "profile" },
 ];
 
 export const MOCK_ACTIVITIES: ActivityItem[] = [
   { id: "ACT-01", kind: "import", title: "Import completed", description: "Enpassent — August 2026", at: "2026-09-12T07:10:00Z", module: "enpassent" },
   { id: "ACT-02", kind: "report", title: "Report sent to agents", description: "236 emails · Enpassent", at: "2026-09-11T15:40:00Z", module: "enpassent" },
-  { id: "ACT-03", kind: "assistant", title: "New assistant", description: "Tairo Moyo (Musa Zhou)", at: "2026-09-10T14:05:00Z" },
+  { id: "ACT-03", kind: "submission", title: "Submission reviewed", description: "Proof of Payment — Musa Zhou", at: "2026-09-10T14:05:00Z" },
   { id: "ACT-04", kind: "profile", title: "Agent updated profile", description: "Rumbidzai Moyo", at: "2026-09-09T11:22:00Z" },
   { id: "ACT-05", kind: "exception", title: "Exception resolved", description: "EXC-4004 — ZINARA schema", at: "2026-09-06T10:02:00Z", module: "econet-moovah" },
 ];

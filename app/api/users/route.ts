@@ -6,15 +6,15 @@ import type { RoleCode } from "@/types";
 
 export const runtime = "nodejs";
 
-const VALID_ROLES: RoleCode[] = ["super_admin", "admin", "agent", "assistant", "tech_support"];
+const VALID_ROLES: RoleCode[] = ["super_admin", "admin", "agent", "tech_support"];
 /** Roles that hold a portal login. Field roles never appear on profiles. */
 const STAFF_ROLES: RoleCode[] = ["super_admin", "admin", "tech_support"];
 
 /**
  * POST /api/users — create a staff account or onboard a field agent.
- * Company roles get a Supabase auth login + profiles row. Agents and
- * assistants get NO login — only an agents row (+ module grants) so identity
- * resolution works; their reconciliations arrive via email/WhatsApp.
+ * Company roles get a Supabase auth login + profiles row. Agents get NO
+ * login — only an agents row (+ module grants) so identity resolution
+ * works; their reconciliations arrive via email/WhatsApp.
  */
 export async function POST(request: NextRequest) {
   const session = await getSession();
@@ -42,12 +42,6 @@ export async function POST(request: NextRequest) {
   // Agents get NO login — the portal is company-staff only. Field agents
   // receive their consolidated reconciliations by email/WhatsApp, so we
   // create the agents row directly (user_id stays null).
-  if (role === "assistant") {
-    return NextResponse.json(
-      { error: "Assistants are created under an agent — use Agents → (agent profile) → Add Assistant." },
-      { status: 400 }
-    );
-  }
   if (role === "agent") {
     const { count } = await sb
       .from("agents")

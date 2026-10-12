@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
-import { getPendingApprovals, getTeamUsers } from "@/lib/data";
+import { getTeamUsers } from "@/lib/data";
 import { isCompanyRole } from "@/lib/nav";
 import { PageHeader } from "@/components/layout/page-header";
 import { UserManagement, AddUserDialog } from "@/components/users/user-management";
@@ -13,10 +13,7 @@ export default async function UsersPage() {
   if (!session) redirect("/login");
   if (!isCompanyRole(session.user.role)) redirect("/app/dashboard");
 
-  const [users, pendingApprovals] = await Promise.all([
-    getTeamUsers(),
-    getPendingApprovals(),
-  ]);
+  const users = await getTeamUsers();
 
   return (
     <div className="space-y-4">
@@ -25,7 +22,7 @@ export default async function UsersPage() {
         description="Manage staff accounts, roles and permissions"
         actions={<AddUserDialog />}
       />
-      <UserManagement users={users} pendingApprovals={pendingApprovals} />
+      <UserManagement users={users} />
     </div>
   );
 }

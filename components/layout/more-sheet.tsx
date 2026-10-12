@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { navForRole, AGENT_MOBILE_PRIMARY } from "@/lib/nav";
+import { navForRole } from "@/lib/nav";
 import {
   Sheet,
   SheetContent,
@@ -100,5 +100,3 @@ export function MoreSheet({
     </Sheet>
   );
 }
-
-export { AGENT_MOBILE_PRIMARY };

@@ -32,7 +32,6 @@ const HISTORY = [
 const TEMPLATES = [
   { id: "T-1", name: "New report available", body: "Dear Agent,\n\nA new reconciliation report for {period} is ready in QuickRecon App.\n\nRegards,\nEnpassent Team" },
   { id: "T-2", name: "Reconciliation published", body: "Dear Agent,\n\nYour {period} reconciliation has been approved and published.\n\nRegards,\nEnpassent Team" },
-  { id: "T-3", name: "Assistant approved", body: "Your assistant account for {agent} has been approved and is now active." },
 ];
 
 export default async function CommunicationsPage() {

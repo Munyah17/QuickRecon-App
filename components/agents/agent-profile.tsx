@@ -16,8 +16,6 @@ import {
   CalendarDays,
   UserPen,
   Plus,
-  Check,
-  X,
   Store,
 } from "lucide-react";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -45,13 +43,11 @@ import { StatusBadge } from "@/components/shared/status-badge";
 import { AgentAvatar } from "@/components/shared/agent-avatar";
 import { MoneyValue } from "@/components/shared/money-value";
 import { ActivityFeed } from "@/components/shared/activity-feed";
-import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { isCompanyRole, } from "@/lib/nav";
 import { formatDate, moduleName } from "@/lib/format";
 import type {
   ActivityItem,
   Agent,
-  Assistant,
   Booth,
   Reconciliation,
   AppUser,
@@ -84,14 +80,12 @@ function InfoRow({
 export function AgentProfile({
   agent,
   booths,
-  assistants,
   reconciliations,
   activities,
   viewer,
 }: {
   agent: Agent;
   booths: Booth[];
-  assistants: Assistant[];
   reconciliations: Reconciliation[];
   activities: ActivityItem[];
   viewer: AppUser;
@@ -227,7 +221,6 @@ export function AgentProfile({
               {[
                 ["overview", "Overview"],
                 ["booths", `Booths (${booths.length})`],
-                ["assistants", `Assistants (${assistants.length})`],
                 ["documents", "Documents"],
                 ["reconciliations", "Reconciliations"],
                 ["activity", "Activity"],
@@ -270,63 +263,6 @@ export function AgentProfile({
 
             <TabsContent value="booths" className="mt-4">
               <BoothsSection booths={booths} canManage={canManage} agentId={agent.id} headerLess />
-            </TabsContent>
-
-            {/* Assistants */}
-            <TabsContent value="assistants" className="mt-4">
-              <Card className="gap-0 py-0 shadow-xs">
-                <CardHeader className="px-4 pt-4 sm:px-5">
-                  <CardTitle className="text-[14.5px] font-semibold">Assistants</CardTitle>
-                  {canManage && (
-                    <CardAction>
-                      <Button size="sm" className="h-8 gap-1.5 text-[12.5px]" asChild>
-                        <Link href="/app/assistants">
-                          <Plus className="size-3.5" aria-hidden /> Add Assistant
-                        </Link>
-                      </Button>
-                    </CardAction>
-                  )}
-                </CardHeader>
-                <CardContent className="space-y-2.5 px-4 pb-4 sm:px-5">
-                  {assistants.length === 0 && (
-                    <p className="py-6 text-center text-[13px] text-muted-foreground">
-                      No assistants yet.
-                    </p>
-                  )}
-                  {assistants.map((a) => (
-                    <div key={a.id} className="flex flex-wrap items-center gap-3 rounded-xl border p-3.5">
-                      <AgentAvatar name={a.fullName} size="sm" />
-                      <div className="min-w-[140px] flex-1">
-                        <p className="text-[13.5px] font-semibold">{a.fullName}</p>
-                        <p className="truncate text-[12px] text-muted-foreground">
-                          {a.email} · {a.boothName ?? "Unassigned"}
-                        </p>
-                      </div>
-                      <StatusBadge status={a.status} />
-                      {canManage && a.status === "pending" && (
-                        <div className="flex items-center gap-1">
-                          <Button size="sm" variant="outline" className="h-8 gap-1 text-[12px]" asChild>
-                            <Link href={`/app/assistants?approve=${a.id}`}>
-                              <Check className="size-3.5" aria-hidden /> Approve
-                            </Link>
-                          </Button>
-                          <ConfirmDialog
-                            trigger={
-                              <Button size="sm" variant="ghost" className="h-8 gap-1 text-[12px] text-destructive">
-                                <X className="size-3.5" aria-hidden /> Reject
-                              </Button>
-                            }
-                            title="Reject assistant request?"
-                            description={`${a.fullName} (@${a.boothName ?? "unassigned"}) will not be granted access.`}
-                            confirmLabel="Reject"
-                            destructive
-                          />
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                </CardContent>
-              </Card>
             </TabsContent>
 
             {/* Documents — KYC files uploaded via submissions surface here. */}
@@ -416,7 +352,7 @@ function EditAgentDialog({
 }) {
   const router = useRouter();
   const [saving, setSaving] = React.useState(false);
-  const [form, setForm] = React.useState({
+  const seed = () => ({
     fullName: agent.fullName,
     email: agent.email,
     phone: agent.phone ?? "",
@@ -425,21 +361,14 @@ function EditAgentDialog({
     nationalId: agent.nationalId ?? "",
     icecashId: agent.iceCashId ?? "",
   });
+  const [form, setForm] = React.useState(seed);
 
   // Re-seed the form whenever a different agent / fresh data is opened.
-  React.useEffect(() => {
-    if (open) {
-      setForm({
-        fullName: agent.fullName,
-        email: agent.email,
-        phone: agent.phone ?? "",
-        province: agent.province ?? "",
-        location: agent.location ?? "",
-        nationalId: agent.nationalId ?? "",
-        icecashId: agent.iceCashId ?? "",
-      });
-    }
-  }, [open, agent]);
+  const [prev, setPrev] = React.useState({ open, agent });
+  if (open !== prev.open || agent !== prev.agent) {
+    setPrev({ open, agent });
+    if (open) setForm(seed());
+  }
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
@@ -543,10 +472,12 @@ function BoothsSection({
           <CardTitle className="text-[14.5px] font-semibold">Booths</CardTitle>
           {canManage && (
             <CardAction>
-              <Button size="sm" className="h-8 gap-1.5 text-[12.5px]" asChild>
-                <Link href="/app/booths">
-                  <Plus className="size-3.5" aria-hidden /> Add Booth
-                </Link>
+              <Button
+                size="sm"
+                className="h-8 gap-1.5 text-[12.5px]"
+                onClick={() => toast.info("Booth creation is not yet wired to the backend.")}
+              >
+                <Plus className="size-3.5" aria-hidden /> Add Booth
               </Button>
             </CardAction>
           )}
@@ -591,13 +522,8 @@ function BoothsSection({
                       <Store className="size-6 text-muted-foreground/50" aria-hidden />
                       <p className="text-[13px] font-medium">No booths yet</p>
                       <p className="text-[12px] text-muted-foreground">
-                        Booths group this agent&apos;s assistants and field locations.
+                        Booths group this agent&apos;s field locations.
                       </p>
-                      {canManage && (
-                        <Button variant="outline" size="sm" className="mt-1 h-8 text-[12.5px]" asChild>
-                          <Link href="/app/booths">Manage Booths</Link>
-                        </Button>
-                      )}
                     </div>
                   </td>
                 </tr>
@@ -620,11 +546,8 @@ function BoothsSection({
                 </div>
                 {canManage && <BoothActions id={b.id} />}
               </div>
-              <div className="mt-2 flex items-center justify-between">
+              <div className="mt-2">
                 <StatusBadge status={b.status} />
-                <span className="text-[11.5px] text-muted-foreground">
-                  {b.assistantsCount} assistant{b.assistantsCount === 1 ? "" : "s"}
-                </span>
               </div>
             </div>
           ))}
@@ -646,7 +569,9 @@ function BoothActions({ id }: { id: string }) {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem>Open</DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <Link href={`/app/booths/${id}`}>Open</Link>
+        </DropdownMenuItem>
         <DropdownMenuItem>Edit booth</DropdownMenuItem>
         <DropdownMenuItem className="text-destructive focus:text-destructive">Deactivate</DropdownMenuItem>
       </DropdownMenuContent>

@@ -24,10 +24,8 @@ export default async function ReconDetailPage({
   if (!recon) notFound();
 
   const company = isCompanyRole(session.user.role);
-  // Agents (and assistants) can only open their own reconciliations.
-  if (!company && session.user.agentId !== recon.agentId) {
-    redirect("/app/dashboard");
-  }
+  // Field roles have no portal access — staff only.
+  if (!company) redirect("/app/dashboard");
 
   const [lines, transactions] = await Promise.all([
     getReconciliationLines(recon.id),

@@ -43,7 +43,7 @@ export default async function SubmissionsPage({
         tasks={tasks}
         agents={agents.map((a) => ({ id: a.id, fullName: a.fullName }))}
         staff={staff
-          .filter((u) => u.role !== "agent" && u.role !== "assistant")
+          .filter((u) => u.role !== "agent")
           .map((u) => ({ id: u.id, fullName: u.fullName }))}
         isCompanyUser={company}
         isAdmin={isAdmin}

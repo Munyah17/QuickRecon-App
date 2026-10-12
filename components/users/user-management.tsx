@@ -3,12 +3,11 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Check, Ellipsis, Plus, ShieldCheck, X } from "lucide-react";
+import { Ellipsis, Plus, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import { DataTable } from "@/components/data-table/data-table";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { AgentAvatar } from "@/components/shared/agent-avatar";
-import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -39,17 +38,16 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PERMISSIONS, permissionsForRole, roleLabel } from "@/lib/auth/permissions";
 import { formatDate } from "@/lib/format";
-import type { PendingApproval, RoleCode, TeamUser } from "@/types";
+import type { RoleCode, TeamUser } from "@/types";
 
 const ROLE_BADGE: Record<RoleCode, string> = {
   super_admin: "bg-brand-100 text-brand-800 dark:bg-brand-950 dark:text-brand-200",
   admin: "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300",
   agent: "bg-success-soft text-success-foreground",
-  assistant: "bg-warning-soft text-warning-foreground",
   tech_support: "bg-muted text-muted-foreground",
 };
 
-/** Roles that get a portal login — staff only. Agents/assistants are field
+/** Roles that get a portal login — staff only. Agents are field
  *  roles without portal access and are managed from the Agents module. */
 const STAFF_ROLES: RoleCode[] = ["super_admin", "admin", "tech_support"];
 
@@ -57,10 +55,8 @@ const SEGMENTS = ["all", "active", "pending", "suspended"] as const;
 
 export function UserManagement({
   users,
-  pendingApprovals,
 }: {
   users: TeamUser[];
-  pendingApprovals: PendingApproval[];
 }) {
   const [roleFilter, setRoleFilter] = React.useState("all");
   const [statusFilter, setStatusFilter] = React.useState<string>("all");
@@ -151,14 +147,6 @@ export function UserManagement({
       <TabsList variant="line" className="w-full justify-start gap-5 rounded-none border-b bg-transparent p-0">
         <TabsTrigger value="users" className="rounded-none px-1 pb-2.5 text-[13px]">Users</TabsTrigger>
         <TabsTrigger value="roles" className="rounded-none px-1 pb-2.5 text-[13px]">Roles & Permissions</TabsTrigger>
-        <TabsTrigger value="approvals" className="rounded-none px-1 pb-2.5 text-[13px]">
-          Pending Approvals
-          {pendingApprovals.length > 0 && (
-            <span className="ml-1.5 flex size-5 items-center justify-center rounded-full bg-destructive text-[10px] font-bold text-destructive-foreground">
-              {pendingApprovals.length}
-            </span>
-          )}
-        </TabsTrigger>
       </TabsList>
 
       <TabsContent value="users" className="mt-4 space-y-3">
@@ -268,58 +256,6 @@ export function UserManagement({
             );
           })}
         </div>
-      </TabsContent>
-
-      <TabsContent value="approvals" className="mt-4 space-y-3">
-        {pendingApprovals.length === 0 && (
-          <p className="rounded-xl border border-dashed py-10 text-center text-[13px] text-muted-foreground">
-            No pending approvals.
-          </p>
-        )}
-        {pendingApprovals.map((a) => (
-          <Card key={a.id} className="gap-0 py-0 shadow-xs">
-            <CardContent className="flex flex-wrap items-center gap-3 p-4">
-              <AgentAvatar name={a.name} size="md" />
-              <div className="min-w-[160px] flex-1">
-                <p className="text-[13.5px] font-semibold">{a.name}</p>
-                <p className="text-[12px] text-muted-foreground">{a.detail}</p>
-                <p className="mt-0.5 text-[11px] text-muted-foreground">
-                  Requested by {a.requestedBy} · {formatDate(a.requestedAt, "dd MMM yyyy")}
-                </p>
-              </div>
-              <div className="flex items-center gap-2">
-                <ConfirmDialog
-                  trigger={
-                    <Button size="sm" className="h-8 gap-1.5 text-[12px]">
-                      <Check className="size-3.5" aria-hidden /> Approve
-                    </Button>
-                  }
-                  title="Approve request?"
-                  description={`Approving activates ${a.detail}. An audit entry will be recorded.`}
-                  confirmLabel="Approve"
-                  onConfirm={() => toast.success(`Approved: ${a.detail}`)}
-                />
-                <Button size="sm" variant="outline" className="h-8 text-[12px]"
-                  onClick={() => toast.info(`Changes requested for ${a.name}`)}
-                >
-                  Request changes
-                </Button>
-                <ConfirmDialog
-                  trigger={
-                    <Button size="sm" variant="ghost" className="h-8 gap-1.5 text-[12px] text-destructive">
-                      <X className="size-3.5" aria-hidden /> Reject
-                    </Button>
-                  }
-                  title="Reject request?"
-                  description="The requester will be notified. This is audit-logged."
-                  confirmLabel="Reject"
-                  destructive
-                  onConfirm={() => toast.success(`Rejected: ${a.detail}`)}
-                />
-              </div>
-            </CardContent>
-          </Card>
-        ))}
       </TabsContent>
     </Tabs>
   );
@@ -660,7 +596,7 @@ export function AddUserDialog() {
         <DialogHeader>
           <DialogTitle>Add New Staff Member</DialogTitle>
           <DialogDescription>
-            Create a staff login account. Agents and assistants are onboarded
+            Create a staff login account. Agents are onboarded
             from the Agents module — they have no portal access.
           </DialogDescription>
         </DialogHeader>

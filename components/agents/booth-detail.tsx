@@ -23,10 +23,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/shared/status-badge";
-import { AgentAvatar } from "@/components/shared/agent-avatar";
 import { useWorkspace } from "@/components/workspace-provider";
 import { formatDate, formatMoney, formatPeriod, moduleName } from "@/lib/format";
-import type { Assistant, Booth, Txn } from "@/types";
+import type { Booth, Txn } from "@/types";
 
 const BOOTH_LINES = [
   { item: "Insurance", expected: 1_068_320, actual: 1_068_320, variance: 0, status: "matched" as const },
@@ -35,7 +34,7 @@ const BOOTH_LINES = [
 const BOOTH_ACTIVITY = [
   { date: "28 Aug 2026", action: "Deposit recorded", by: "Tairo Moyo" },
   { date: "24 Aug 2026", action: "Monthly recon completed", by: "System" },
-  { date: "12 Aug 2026", action: "Assistant added", by: "Musa Zhou" },
+  { date: "12 Aug 2026", action: "Booth activated", by: "Munyah Griezmann" },
 ];
 
 function Tile({ label, value, delta }: { label: string; value: string; delta: string }) {
@@ -93,11 +92,9 @@ function ReconTable() {
 
 export function BoothDetail({
   booth,
-  assistants,
   transactions,
 }: {
   booth: Booth;
-  assistants: Assistant[];
   transactions: Txn[];
 }) {
   const { period } = useWorkspace();
@@ -105,10 +102,10 @@ export function BoothDetail({
   return (
     <div className="space-y-4">
       <Link
-        href="/app/booths"
+        href={`/app/agents/${booth.agentId}`}
         className="inline-flex items-center gap-1 text-[12.5px] text-muted-foreground hover:text-foreground"
       >
-        <ArrowLeft className="size-4" aria-hidden /> Back to Booths
+        <ArrowLeft className="size-4" aria-hidden /> Back to Agent
       </Link>
 
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -138,7 +135,6 @@ export function BoothDetail({
           <TabsTrigger value="overview" className="rounded-none px-1 pb-2.5 text-[13px]">Overview</TabsTrigger>
           <TabsTrigger value="reconciliation" className="rounded-none px-1 pb-2.5 text-[13px]">Reconciliation</TabsTrigger>
           <TabsTrigger value="transactions" className="rounded-none px-1 pb-2.5 text-[13px]">Transactions</TabsTrigger>
-          <TabsTrigger value="assistants" className="rounded-none px-1 pb-2.5 text-[13px]">Assistants</TabsTrigger>
           <TabsTrigger value="settings" className="rounded-none px-1 pb-2.5 text-[13px]">Settings</TabsTrigger>
         </TabsList>
 
@@ -255,45 +251,6 @@ export function BoothDetail({
               </CardContent>
             </Card>
           ))}
-        </TabsContent>
-
-        <TabsContent value="assistants" className="mt-4">
-          <Card className="gap-0 overflow-hidden py-0 shadow-xs">
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[520px] text-[13px]">
-                <thead>
-                  <tr className="border-b bg-muted/50 text-left text-[11.5px] font-semibold tracking-wide text-muted-foreground uppercase">
-                    <th className="px-4 py-2.5">Assistant</th>
-                    <th className="px-4 py-2.5">Email</th>
-                    <th className="px-4 py-2.5">Phone</th>
-                    <th className="px-4 py-2.5">Status</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y">
-                  {assistants.map((a) => (
-                    <tr key={a.id} className="hover:bg-surface-hover">
-                      <td className="px-4 py-3">
-                        <span className="flex items-center gap-2.5">
-                          <AgentAvatar name={a.fullName} size="xs" />
-                          <span className="font-medium">{a.fullName}</span>
-                        </span>
-                      </td>
-                      <td className="px-4 py-3 text-muted-foreground">{a.email}</td>
-                      <td className="px-4 py-3 font-mono text-[12px] text-muted-foreground">{a.phone}</td>
-                      <td className="px-4 py-3"><StatusBadge status={a.status} /></td>
-                    </tr>
-                  ))}
-                  {assistants.length === 0 && (
-                    <tr>
-                      <td colSpan={4} className="px-4 py-10 text-center text-[13px] text-muted-foreground">
-                        No assistants assigned to this booth yet.
-                      </td>
-                    </tr>
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </Card>
         </TabsContent>
 
         <TabsContent value="settings" className="mt-4">

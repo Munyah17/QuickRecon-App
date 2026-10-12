@@ -11,8 +11,6 @@ export interface LoginResult {
 
 const PREVIEW_CREDENTIALS: Record<string, { password: string; role: RoleCode }> = {
   "munyamuzvidziwa19@gmail.com": { password: "@@Griezmann177#$", role: "super_admin" },
-  "musa@example.com": { password: "agent123", role: "agent" },
-  "simba@example.com": { password: "assistant123", role: "assistant" },
   "support@enpassent.co.zw": { password: "support123", role: "tech_support" },
   "ops@enpassent.co.zw": { password: "admin123", role: "admin" },
 };
@@ -43,7 +41,7 @@ export async function loginWithPassword(
   const { data: auth, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) return { error: error.message };
 
-  // Field roles have no portal access — agents and assistants receive their
+  // Field roles have no portal access — agents receive their
   // consolidated reconciliations via email/WhatsApp instead of a dashboard.
   const { data: profile } = await supabase
     .from("profiles")

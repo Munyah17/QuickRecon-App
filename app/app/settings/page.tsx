@@ -302,7 +302,7 @@ function AuditPreview() {
     { id: "AUD-01", action: "Reconciliation published", actor: "Munyah Griezmann", at: "11 Sep 2026, 15:40", detail: "Batch IMP-2608-01 · 236 records" },
     { id: "AUD-02", action: "Agent suspended", actor: "Munyah Griezmann", at: "09 Sep 2026, 10:12", detail: "AGT-000187 (Kudakwashe Ncube)" },
     { id: "AUD-03", action: "Exception resolved", actor: "Taridzo Support", at: "06 Sep 2026, 10:02", detail: "EXC-4004 — ZINARA schema column" },
-    { id: "AUD-04", action: "Assistant approved", actor: "Munyah Griezmann", at: "05 Sep 2026, 08:44", detail: "Tairo Moyo → Musa Zhou" },
+    { id: "AUD-04", action: "Booth activated", actor: "Munyah Griezmann", at: "05 Sep 2026, 08:44", detail: "BTH-0104 — Hwange Main" },
   ];
   return (
     <Card className="gap-0 py-0 shadow-xs">

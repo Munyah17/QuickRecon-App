@@ -4,9 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { Ellipsis, LayoutDashboard, Users, RefreshCcw, Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { isCompanyRole, AGENT_MOBILE_PRIMARY } from "@/lib/nav";
-import { MoreSheet } from "./more-sheet";
 import type { AppUser } from "@/types";
+import { MoreSheet } from "./more-sheet";
 
 function active(pathname: string, href: string): boolean {
   if (href === "/app/dashboard") return pathname === "/app" || pathname === "/app/dashboard";
@@ -22,12 +21,11 @@ export const ADMIN_MOBILE_PRIMARY = [
 
 /**
  * Mobile bottom navigation (safe-area aware).
- * Field users: Home / Reports / Booths / Submissions / More — per mockups.
- * Company users: Home / Agents / Recon / Imports / More.
+ * Home / Agents / Recon / Imports / More.
  */
 export function MobileBottomNav({ user }: { user: AppUser }) {
   const pathname = usePathname();
-  const primary = isCompanyRole(user.role) ? ADMIN_MOBILE_PRIMARY : AGENT_MOBILE_PRIMARY;
+  const primary = ADMIN_MOBILE_PRIMARY;
   const pinned = primary.map((p) => p.href);
 
   return (

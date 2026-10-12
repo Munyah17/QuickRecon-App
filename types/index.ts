@@ -25,7 +25,6 @@ export type RoleCode =
   | "super_admin"
   | "admin"
   | "agent"
-  | "assistant"
   | "tech_support";
 
 export type UserStatus = "active" | "suspended" | "pending" | "inactive";
@@ -37,15 +36,13 @@ export interface AppUser {
   role: RoleCode;
   roleLabel: string;
   status: UserStatus;
-  /** Present when the user is an agent or assistant account. */
+  /** Present when the user is an agent account. */
   agentId?: string;
-  /** Present when the user is an assistant — link to parent agent. */
-  parentAgentId?: string;
   lastLoginAt?: string;
 }
 
 // ---------------------------------------------------------------------------
-// Agents, booths, assistants
+// Agents, booths
 // ---------------------------------------------------------------------------
 
 export type AgentStatus = "active" | "suspended" | "inactive" | "pending";
@@ -65,7 +62,6 @@ export interface Agent {
   status: AgentStatus;
   modules: AgentModuleAccess[];
   boothsCount: number;
-  assistantsCount: number;
   joinedAt: string;
   nationalId?: string;
   iceCashId?: string;
@@ -81,20 +77,6 @@ export interface Booth {
   province: string;
   status: "active" | "pending" | "suspended";
   modules: ModuleCode[];
-  assistantsCount: number;
-  createdAt: string;
-}
-
-export interface Assistant {
-  id: string;
-  agentId: string;
-  boothId?: string;
-  boothName?: string;
-  fullName: string;
-  email: string;
-  phone: string;
-  status: "active" | "pending" | "suspended" | "rejected";
-  requestedPermissions: string[];
   createdAt: string;
 }
 
@@ -360,7 +342,6 @@ export type ActivityKind =
   | "import"
   | "reconciliation"
   | "report"
-  | "assistant"
   | "agent"
   | "profile"
   | "exception"
@@ -392,16 +373,6 @@ export interface TeamUser {
   status: UserStatus;
   nationalId?: string;
   lastLoginAt?: string;
-}
-
-export interface PendingApproval {
-  id: string;
-  kind: "assistant" | "user" | "booth";
-  name: string;
-  email?: string;
-  detail: string;
-  requestedBy?: string;
-  requestedAt: string;
 }
 
 export interface TaskMilestone {

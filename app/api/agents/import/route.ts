@@ -15,6 +15,8 @@ interface RowOutcome {
   agentId?: string;
   ok: boolean;
   error?: string;
+  /** Number of external-ID aliases stored for the agent. */
+  ids?: number;
 }
 
 /** Pick the first present header (case-insensitive) from a parsed row. */
@@ -49,10 +51,37 @@ const STATUS_MAP: Record<string, string> = {
 };
 
 /**
+ * Optional columns holding source-system identifiers. Each non-empty value is
+ * stored in agent_external_ids so the reconciliation engine can match
+ * transaction rows that carry these codes (Agent ID / ZINARA account etc.).
+ * A cell may hold several codes separated by ";" or ",".
+ */
+const EXTERNAL_ID_COLUMNS: { scheme: string; headers: string[] }[] = [
+  { scheme: "zinara_user", headers: ["Zinara User", "ZINARA User", "Zinara ID", "ZINARA Account", "ZINARA Account ID"] },
+  { scheme: "nmb", headers: ["NMB", "NMB ZWG", "NMB ZiG"] },
+  { scheme: "nmb_usd", headers: ["NMB USD", "NMB US$"] },
+  { scheme: "cbz", headers: ["CBZ", "CBZ Account"] },
+  { scheme: "nbs", headers: ["NBS", "NBS Account"] },
+  { scheme: "fbc", headers: ["FBC", "FBC Account"] },
+  { scheme: "enpassent_user_id", headers: ["Enpassent ID", "Enpassent User ID", "EP ID"] },
+  { scheme: "econet_id", headers: ["Econet ID", "EcoCash ID", "MSISDN"] },
+];
+
+/** Split a multi-code cell into trimmed, non-empty values. */
+function splitCodes(raw: string): string[] {
+  return raw
+    .split(/[;,]/)
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+/**
  * POST /api/agents/import
  * Bulk-create agents from an .xlsx/.csv upload. Expected columns (header row,
  * case-insensitive): Full Name* | Email* | Phone | Province | Location |
- * National ID | IceCash ID | Modules | Status.
+ * National ID | IceCash ID | Modules | Status — plus optional external-ID
+ * columns (Zinara User, NMB, NMB USD, CBZ, NBS, FBC, Enpassent ID, Econet ID)
+ * saved to agent_external_ids for transaction matching.
  * Each row gets an agents row plus its agent_modules grants — no login is
  * provisioned (agents receive consolidated reconciliations on their contact
  * channels). Per-row outcomes are returned; one bad row never aborts the batch.
@@ -113,6 +142,26 @@ export async function POST(request: NextRequest) {
     const statusRaw = pick(r, "Status").toLowerCase();
     const status = STATUS_MAP[statusRaw] ?? "pending";
 
+    // External IDs — dedupe (scheme, value) within the row. Zinara cells look
+    // like "ZW019BJJ - KEITH HOMODZA": index the bare code as well so source
+    // files that carry only "ZW019BJJ" still resolve to this agent.
+    const aliasRows: { scheme: string; value: string }[] = [];
+    const aliasSeen = new Set<string>();
+    for (const { scheme, headers } of EXTERNAL_ID_COLUMNS) {
+      for (const code of splitCodes(pick(r, ...headers))) {
+        const variants = [code];
+        const dash = code.indexOf(" - ");
+        if (dash > 0) variants.push(code.slice(0, dash).trim());
+        for (const v of variants) {
+          const key = `${scheme}|${v.toUpperCase()}`;
+          if (!aliasSeen.has(key)) {
+            aliasSeen.add(key);
+            aliasRows.push({ scheme, value: v });
+          }
+        }
+      }
+    }
+
     const base: RowOutcome = { row: i + 2, name: fullName, email, ok: false };
     if (!fullName || !email) {
       outcomes.push({ ...base, error: "Full Name and Email are required" });
@@ -146,7 +195,20 @@ export async function POST(request: NextRequest) {
       await sb.from("agent_modules").insert(
         modules.map((m) => ({ agent_id: agentId, module: m }))
       );
-      outcomes.push({ ...base, ok: true, agentId });
+      let ids = 0;
+      if (aliasRows.length) {
+        // ignoreDuplicates: a code already claimed by another agent stays put
+        // rather than being silently re-pointed at the new row.
+        const { data: inserted } = await sb
+          .from("agent_external_ids")
+          .upsert(
+            aliasRows.map((a) => ({ agent_id: agentId, ...a })),
+            { onConflict: "scheme,value", ignoreDuplicates: true }
+          )
+          .select("id");
+        ids = inserted?.length ?? 0;
+      }
+      outcomes.push({ ...base, ok: true, agentId, ids: ids || undefined });
     } catch (e) {
       outcomes.push({ ...base, error: e instanceof Error ? e.message : "create failed" });
     }

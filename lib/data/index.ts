@@ -7,13 +7,11 @@ import { createClient } from "@/lib/supabase/server";
 import type { ModuleCode } from "@/types";
 import {
   MOCK_AGENTS,
-  MOCK_ASSISTANTS,
   MOCK_BOOTHS,
   MOCK_DISTRIBUTIONS,
   MOCK_EXCEPTIONS,
   MOCK_IMPORTS,
   MOCK_NOTIFICATIONS,
-  MOCK_PENDING_APPROVALS,
   MOCK_RECONCILIATIONS,
   MOCK_RECON_LINES,
   MOCK_REPORTS,
@@ -46,7 +44,6 @@ function mapAgent(row: any): (typeof MOCK_AGENTS)[number] {
     status: row.status,
     modules: (row.agent_modules ?? []).map((m: any) => ({ module: m.module, enabled: m.enabled })),
     boothsCount: row.booths?.[0]?.count ?? 0,
-    assistantsCount: row.assistants?.[0]?.count ?? 0,
     joinedAt: row.joined_at ?? row.created_at,
     nationalId: row.national_id ?? undefined,
     iceCashId: row.icecash_id ?? undefined,
@@ -59,7 +56,7 @@ export async function getAgents() {
   if (supabase) {
     const { data, error } = await supabase
       .from("agents")
-      .select("*, agent_modules(module, enabled), booths:booths(count), assistants:assistants(count)")
+      .select("*, agent_modules(module, enabled), booths:booths(count)")
       .order("full_name", { ascending: true });
     if (error) console.error("getAgents query failed:", error.message);
     return (data ?? []).map(mapAgent);
@@ -76,7 +73,7 @@ export async function getBoothById(id: string) {
   if (supabase) {
     const { data } = await supabase
       .from("booths")
-      .select("*, booth_modules(module), assistants:assistants(count)")
+      .select("*, booth_modules(module)")
       .eq("id", id)
       .maybeSingle();
     if (!data) return null;
@@ -88,7 +85,6 @@ export async function getBoothById(id: string) {
       province: data.province ?? "",
       status: data.status,
       modules: (data.booth_modules ?? []).map((m: any) => m.module),
-      assistantsCount: data.assistants?.[0]?.count ?? 0,
       createdAt: data.created_at,
     };
   }
@@ -100,7 +96,7 @@ export async function getBooths(agentId?: string) {
   if (supabase) {
     let q = supabase
       .from("booths")
-      .select("*, booth_modules(module), assistants:assistants(count)");
+      .select("*, booth_modules(module)");
     if (agentId) q = q.eq("agent_id", agentId);
     const { data } = await q.order("name");
     return (data ?? []).map((b: any) => ({
@@ -111,37 +107,12 @@ export async function getBooths(agentId?: string) {
       province: b.province ?? "",
       status: b.status,
       modules: (b.booth_modules ?? []).map((m: any) => m.module),
-      assistantsCount: b.assistants?.[0]?.count ?? 0,
       createdAt: b.created_at,
     }));
   }
   return agentId
     ? MOCK_BOOTHS.filter((b) => b.agentId === agentId)
     : MOCK_BOOTHS;
-}
-
-export async function getAssistants(agentId?: string) {
-  const supabase = await db();
-  if (supabase) {
-    let q = supabase.from("assistants").select("*, booths(name)");
-    if (agentId) q = q.eq("agent_id", agentId);
-    const { data } = await q.order("full_name");
-    return (data ?? []).map((a: any) => ({
-      id: a.id,
-      agentId: a.agent_id,
-      boothId: a.booth_id ?? undefined,
-      boothName: a.booths?.name ?? undefined,
-      fullName: a.full_name,
-      email: a.email ?? "",
-      phone: a.phone ?? "",
-      status: a.status,
-      requestedPermissions: a.requested_permissions ?? [],
-      createdAt: a.created_at,
-    }));
-  }
-  return agentId
-    ? MOCK_ASSISTANTS.filter((a) => a.agentId === agentId)
-    : MOCK_ASSISTANTS;
 }
 
 function mapRecon(row: any): (typeof MOCK_RECONCILIATIONS)[number] {
@@ -468,37 +439,7 @@ export async function getTeamUsers() {
   return MOCK_TEAM_USERS;
 }
 
-export async function getPendingApprovals() {
-  const supabase = await db();
-  if (supabase) {
-    const { data } = await supabase
-      .from("assistants")
-      .select("*, agents(full_name), booths(name)")
-      .eq("status", "pending")
-      .order("created_at", { ascending: false });
-    return (data ?? []).map((a: any) => ({
-      id: a.id,
-      kind: "assistant" as const,
-      name: a.full_name,
-      email: a.email ?? undefined,
-      detail: `Assistant — ${a.booths?.name ?? "unassigned booth"}`,
-      requestedBy: a.agents?.full_name ?? a.agent_id,
-      requestedAt: a.created_at,
-    }));
-  }
-  return MOCK_PENDING_APPROVALS;
-}
-
-/** Kinds a field user may see — internal ops events stay company-only. */
-const FIELD_ACTIVITY_KINDS = new Set(["report", "submission", "assistant"]);
-const FIELD_NOTIFICATION_KINDS = new Set(["report", "assistant", "profile", "submission"]);
-
-/** Filter a notification list down to the kinds field users may see. */
-export function filterFieldNotifications<T extends { kind: string }>(rows: T[]): T[] {
-  return rows.filter((n) => FIELD_NOTIFICATION_KINDS.has(n.kind));
-}
-
-export async function getNotifications(fieldUser = false) {
+export async function getNotifications() {
   const supabase = await db();
   if (supabase) {
     // RLS already scopes rows to the signed-in user.
@@ -507,7 +448,7 @@ export async function getNotifications(fieldUser = false) {
       .select("*")
       .order("created_at", { ascending: false })
       .limit(50);
-    const rows = (data ?? []).map((n: any) => ({
+    return (data ?? []).map((n: any) => ({
       id: String(n.id),
       title: n.title,
       body: n.body ?? "",
@@ -515,15 +456,11 @@ export async function getNotifications(fieldUser = false) {
       at: n.created_at,
       kind: n.kind,
     }));
-    return fieldUser ? rows.filter((n) => FIELD_NOTIFICATION_KINDS.has(n.kind)) : rows;
-  }
-  if (fieldUser) {
-    return MOCK_NOTIFICATIONS.filter((n) => FIELD_NOTIFICATION_KINDS.has(n.kind));
   }
   return MOCK_NOTIFICATIONS;
 }
 
-export async function getActivities(fieldUser = false) {
+export async function getActivities() {
   const supabase = await db();
   if (supabase) {
     const { data } = await supabase
@@ -531,7 +468,7 @@ export async function getActivities(fieldUser = false) {
       .select("*")
       .order("created_at", { ascending: false })
       .limit(30);
-    const rows = (data ?? []).map((a: any) => ({
+    return (data ?? []).map((a: any) => ({
       id: String(a.id),
       kind: a.entity ?? "profile",
       title: a.action,
@@ -539,10 +476,6 @@ export async function getActivities(fieldUser = false) {
       at: a.created_at,
       module: a.module ?? undefined,
     }));
-    return fieldUser ? rows.filter((a) => FIELD_ACTIVITY_KINDS.has(a.kind)) : rows;
-  }
-  if (fieldUser) {
-    return MOCK_ACTIVITIES.filter((a) => FIELD_ACTIVITY_KINDS.has(a.kind));
   }
   return MOCK_ACTIVITIES;
 }

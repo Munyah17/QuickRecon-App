@@ -101,8 +101,4 @@ export const emailTemplates = {
     subject: `Reconciliation published — ${period}`,
     text: `Dear ${agentName},\n\nYour ${period} reconciliation has been approved and published.\n\nRegards,\nEnpassent Team`,
   }),
-  assistantApproved: (name: string, agentName: string) => ({
-    subject: "Your assistant account is active",
-    text: `Hello ${name},\n\nYour assistant account linked to ${agentName} has been approved. You can now sign in to QuickRecon App.`,
-  }),
 };

@@ -125,12 +125,22 @@ function makeRecord(
 const AGENT_ID_KEYS = ["Agent ID", "AgentID", "Agent Code", "AgentCode", "Code"];
 const NAME_FALLBACK_KEYS = ["Agent", "Agent Name", "Name"];
 
+/**
+ * Module markers in sheet names. Workbooks ship per-module insurance sheets
+ * ("INSURANCE ECO" vs "INSURANCE ENPA") — each adapter must refuse the other
+ * module's sheets so an operator selecting the whole workbook can't feed
+ * Econet rows into an Enpassent batch (or vice versa).
+ */
+const ECONET_SHEET = /\beco\b|econet/i;
+const ENPASSENT_SHEET = /\benpa\b|enpassent/i;
+
 /** ---------------- Enpassent adapter ---------------- */
 
 export const enpassentAdapter: SourceAdapter = {
   module: "enpassent",
   supportsSheet(name) {
-    return /insurance|zinara|deposit|summary|transactions/i.test(name);
+    if (ECONET_SHEET.test(name)) return false;
+    return /insurance|zinara|deposit|summary|transactions|alteration|adjust/i.test(name);
   },
   normalise(sheetName, rows) {
     const isInsurance = /insur|summary|transactions/i.test(sheetName);
@@ -169,16 +179,20 @@ export const enpassentAdapter: SourceAdapter = {
 export const econetMoovahAdapter: SourceAdapter = {
   module: "econet-moovah",
   supportsSheet(name) {
-    return /insurance|zinara|deposit|pos|float/i.test(name);
+    if (ENPASSENT_SHEET.test(name)) return false;
+    return /insurance|zinara|deposit|pos|float|alteration|adjust/i.test(name);
   },
   normalise(sheetName, rows) {
     const isDeposit = /deposit|pos|float/i.test(sheetName);
     const isZinara = /zinara/i.test(sheetName);
+    const isAdjustment = /alteration|adjust/i.test(sheetName);
     const category: NormalizedRecord["category"] = isDeposit
       ? "deposit"
       : isZinara
         ? "zinara"
-        : "insurance";
+        : isAdjustment
+          ? "adjustment"
+          : "insurance";
     return rows
       .map((row, i) =>
         makeRecord(
@@ -187,7 +201,7 @@ export const econetMoovahAdapter: SourceAdapter = {
           row,
           category,
           ["Econet ID", "EcoCash ID", "MSISDN", ...AGENT_ID_KEYS, ...NAME_FALLBACK_KEYS],
-          ["Amount", "Float", "Value", "Total"],
+          ["Amount", "Premium Collected", "Premium", "Premium Amount", "Float", "Value", "Total"],
           ["Ref", "Reference", "Txn Ref", "Transaction Ref"]
         )
       )

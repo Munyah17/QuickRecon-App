@@ -37,16 +37,6 @@ const PREVIEW_USERS: Record<RoleCode, AppUser> = {
     status: "active",
     agentId: "AGT-000184",
   },
-  assistant: {
-    id: "usr-as-011",
-    fullName: "Simbarashe Dube",
-    email: "simba@example.com",
-    role: "assistant",
-    roleLabel: roleLabel("assistant"),
-    status: "active",
-    agentId: "AGT-000184",
-    parentAgentId: "AGT-000184",
-  },
   tech_support: {
     id: "usr-ts-001",
     fullName: "Taridzo Support",
@@ -66,7 +56,6 @@ const ROLE_ALIASES: Record<string, RoleCode> = {
   super_admin: "super_admin",
   admin: "admin",
   agent: "agent",
-  assistant: "assistant",
   tech_support: "tech_support",
 };
 
@@ -93,7 +82,7 @@ export const getSession = cache(async (): Promise<SessionInfo | null> => {
 
     const { data: profile } = await supabase
       .from("profiles")
-      .select("id, full_name, email, role, status, agent_id, parent_agent_id")
+      .select("id, full_name, email, role, status, agent_id")
       .eq("id", authUser.id)
       .single();
 
@@ -112,7 +101,6 @@ export const getSession = cache(async (): Promise<SessionInfo | null> => {
       roleLabel: roleLabel(role),
       status: profile?.status ?? "active",
       agentId: profile?.agent_id ?? undefined,
-      parentAgentId: profile?.parent_agent_id ?? undefined,
     };
     return {
       user,
@@ -122,8 +110,9 @@ export const getSession = cache(async (): Promise<SessionInfo | null> => {
   }
 
   const cookieStore = await cookies();
-  const role = (cookieStore.get("qr_preview_role")?.value ??
-    "super_admin") as RoleCode;
+  const rawRole = cookieStore.get("qr_preview_role")?.value ?? "super_admin";
+  // Guard against stale preview cookies for roles that no longer exist.
+  const role = (rawRole in PREVIEW_USERS ? rawRole : "super_admin") as RoleCode;
   const user = previewUser(role);
   return { user, permissions: permissionsForRole(role), source: "preview" };
 });
