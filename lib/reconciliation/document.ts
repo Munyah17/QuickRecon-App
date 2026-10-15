@@ -582,7 +582,10 @@ interface PdfMakeLike {
   /** pdfmake 0.3.x virtual filesystem. */
   virtualfs?: { storage: Record<string, string> };
   addVirtualFileSystem?: (vfs: Record<string, string>) => void;
-  createPdf: (def: unknown) => { getBuffer: (cb: (b: Uint8Array) => void) => void };
+  createPdf: (def: unknown) => {
+    /** ≤0.2 calls cb; 0.3 returns a Promise and ignores cb. */
+    getBuffer: (cb?: (b: Uint8Array) => void) => void | Promise<Uint8Array>;
+  };
 }
 
 /**
@@ -726,9 +729,16 @@ export async function documentsToPDF(docs: AgentReconDocument[]): Promise<Buffer
     content,
   };
 
+  // pdfmake 0.3 getBuffer() returns a Promise and never invokes the callback.
+  // Treating it as callback-only hangs the send route and the demo seeder on Node.
   return new Promise<Buffer>((resolve, reject) => {
     try {
-      pdfMake.createPdf(docDef).getBuffer((buf: Uint8Array) => resolve(Buffer.from(buf)));
+      const pending = pdfMake.createPdf(docDef).getBuffer((buf: Uint8Array) => {
+        resolve(Buffer.from(buf));
+      });
+      if (pending && typeof pending.then === "function") {
+        pending.then((buf) => resolve(Buffer.from(buf)), reject);
+      }
     } catch (e) {
       reject(e);
     }
