@@ -62,6 +62,28 @@ export async function POST(request: NextRequest) {
 
     const data = await res.json();
 
+    // Log the communication to the database
+    const sb = await createServiceClient();
+    if (sb) {
+      const { error: logError } = await sb.from("communications").insert({
+        message,
+        channel: "sms",
+        status: res.ok ? "sent" : "failed",
+        recipient_count: phones.length,
+        recipients: phones,
+        sent_by: session.user.id,
+        sent_at: new Date().toISOString(),
+        error_message: res.ok ? null : (data.message || "SMS send failed"),
+        metadata: {
+          sender_id: senderId || "QuickRecon",
+          api_response: data,
+        },
+      });
+      if (logError) {
+        console.error("Failed to log communication:", logError);
+      }
+    }
+
     if (!res.ok) {
       return NextResponse.json({ error: data.message || "SMS send failed" }, { status: res.status });
     }

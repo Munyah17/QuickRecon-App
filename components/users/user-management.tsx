@@ -3,7 +3,7 @@
 import * as React from "react";
 import { useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Ellipsis, Plus, ShieldCheck } from "lucide-react";
+import { Ellipsis, Plus, ShieldCheck, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { DataTable } from "@/components/data-table/data-table";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -267,6 +267,7 @@ function UserActions({ user }: { user: TeamUser }) {
   const [permsOpen, setPermsOpen] = React.useState(false);
   const [resetOpen, setResetOpen] = React.useState(false);
   const [suspendOpen, setSuspendOpen] = React.useState(false);
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [saving, setSaving] = React.useState(false);
 
   // Edit dialog fields
@@ -316,6 +317,12 @@ function UserActions({ user }: { user: TeamUser }) {
             onSelect={() => setSuspendOpen(true)}
           >
             {suspended ? "Reactivate" : "Suspend"}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            className="text-destructive focus:text-destructive"
+            onSelect={() => setDeleteOpen(true)}
+          >
+            Delete User
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
@@ -452,6 +459,47 @@ function UserActions({ user }: { user: TeamUser }) {
               }
             >
               {saving ? "Updating…" : suspended ? "Reactivate User" : "Suspend User"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Delete User Dialog */}
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>Delete User?</DialogTitle>
+            <DialogDescription>
+              This will permanently delete {user.fullName} ({user.email}) and all their data.
+              This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)} disabled={saving}>Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={saving}
+              onClick={async () => {
+                setSaving(true);
+                try {
+                  const res = await fetch("/api/users", {
+                    method: "DELETE",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ userId: user.id }),
+                  });
+                  const data = await res.json();
+                  if (!res.ok) throw new Error(data.error || "Delete failed");
+                  toast.success(`${user.fullName} has been deleted`);
+                  setDeleteOpen(false);
+                  router.refresh();
+                } catch (e) {
+                  toast.error(e instanceof Error ? e.message : "Delete failed");
+                } finally {
+                  setSaving(false);
+                }
+              }}
+            >
+              {saving ? "Deleting…" : "Delete User"}
             </Button>
           </DialogFooter>
         </DialogContent>

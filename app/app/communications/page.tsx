@@ -20,14 +20,9 @@ import {
 } from "@/components/ui/select";
 import { SMSSender } from "@/components/communications/sms-sender";
 import { WhatsAppConfig } from "@/components/communications/whatsapp-config";
+import { CommunicationsHistory } from "@/components/communications/communications-history";
 
 export const metadata: Metadata = { title: "Communications" };
-
-const HISTORY = [
-  { id: "MSG-1", text: "August reports are now available in your portal.", when: "11 Sep 2026, 15:40", scope: "All agents (236)", channel: "Email · WhatsApp" },
-  { id: "MSG-2", text: "Reminder: monthly field reports due by the 5th.", when: "03 Sep 2026, 09:00", scope: "All agents (236)", channel: "In-app" },
-  { id: "MSG-3", text: "KYC documents outstanding — please upload this week.", when: "28 Aug 2026, 11:12", scope: "Selected agents (41)", channel: "Email" },
-];
 
 const TEMPLATES = [
   { id: "T-1", name: "New report available", body: "Dear Agent,\n\nA new reconciliation report for {period} is ready in QuickRecon App.\n\nRegards,\nEnpassent Team" },
@@ -144,20 +139,8 @@ export default async function CommunicationsPage() {
           <WhatsAppConfig />
         </TabsContent>
 
-        <TabsContent value="history" className="mt-4 space-y-3">
-          {HISTORY.map((h) => (
-            <Card key={h.id} className="gap-0 py-0 shadow-xs">
-              <CardContent className="flex flex-wrap items-center gap-3 p-4">
-                <div className="min-w-[200px] flex-1">
-                  <p className="text-[13.5px] font-medium">{h.text}</p>
-                  <p className="mt-0.5 text-[12px] text-muted-foreground">
-                    {h.scope} · {h.channel} · {h.when}
-                  </p>
-                </div>
-                <Button variant="ghost" size="sm" className="text-[12px]">Details</Button>
-              </CardContent>
-            </Card>
-          ))}
+        <TabsContent value="history" className="mt-4">
+          <CommunicationsHistory />
         </TabsContent>
 
         <TabsContent value="templates" className="mt-4 grid gap-3 md:grid-cols-2">

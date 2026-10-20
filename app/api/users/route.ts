@@ -205,3 +205,33 @@ export async function PATCH(request: NextRequest) {
 
   return NextResponse.json({ ok: true });
 }
+
+/**
+ * DELETE /api/users — admin deletes a staff account.
+ * Deletes both the auth user and the profiles row. This is irreversible.
+ */
+export async function DELETE(request: NextRequest) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!permissionsForRole(session.user.role).includes("users.delete")) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+
+  const body = await request.json();
+  const { userId } = body ?? {};
+  if (!userId) {
+    return NextResponse.json({ error: "userId required" }, { status: 400 });
+  }
+  if (userId === session.user.id) {
+    return NextResponse.json({ error: "Cannot delete your own account" }, { status: 400 });
+  }
+
+  const sb = await createServiceClient();
+  if (!sb) return NextResponse.json({ ok: true, preview: true });
+
+  // Delete the auth user first (this cascades to profiles via ON DELETE CASCADE)
+  const { error } = await sb.auth.admin.deleteUser(userId);
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+
+  return NextResponse.json({ ok: true });
+}

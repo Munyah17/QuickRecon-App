@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Ellipsis, Eye, ShieldOff, UserPen } from "lucide-react";
+import { Ellipsis, Eye, ShieldOff, Trash2, UserPen } from "lucide-react";
 import { toast } from "sonner";
 import { DataTable } from "@/components/data-table/data-table";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -249,7 +249,9 @@ function AgentActions({ id, agent }: { id: string; agent: Agent }) {
   const router = useRouter();
   const [editOpen, setEditOpen] = React.useState(false);
   const [suspendOpen, setSuspendOpen] = React.useState(false);
+  const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [suspending, setSuspending] = React.useState(false);
+  const [deleting, setDeleting] = React.useState(false);
 
   const suspend = async () => {
     setSuspending(true);
@@ -268,6 +270,24 @@ function AgentActions({ id, agent }: { id: string; agent: Agent }) {
       toast.error(e instanceof Error ? e.message : "Suspend failed");
     } finally {
       setSuspending(false);
+    }
+  };
+
+  const deleteAgent = async () => {
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/agents/${id}`, {
+        method: "DELETE",
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Delete failed");
+      toast.success(`${agent.fullName} has been deleted`);
+      setDeleteOpen(false);
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setDeleting(false);
     }
   };
 
@@ -294,6 +314,12 @@ function AgentActions({ id, agent }: { id: string; agent: Agent }) {
           >
             <ShieldOff className="size-4" aria-hidden /> Suspend
           </DropdownMenuItem>
+          <DropdownMenuItem
+            className="gap-2 text-destructive focus:text-destructive"
+            onSelect={() => setDeleteOpen(true)}
+          >
+            <Trash2 className="size-4" aria-hidden /> Delete
+          </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>
 
@@ -315,6 +341,26 @@ function AgentActions({ id, agent }: { id: string; agent: Agent }) {
             </Button>
             <Button variant="destructive" onClick={suspend} disabled={suspending}>
               {suspending ? "Suspending…" : "Suspend Agent"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete agent?</DialogTitle>
+            <DialogDescription>
+              This will permanently delete {agent.fullName} ({agent.id}) and all their data
+              including reconciliations, booths, and module access. This action cannot be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setDeleteOpen(false)}>
+              Cancel
+            </Button>
+            <Button variant="destructive" onClick={deleteAgent} disabled={deleting}>
+              {deleting ? "Deleting…" : "Delete Agent"}
             </Button>
           </DialogFooter>
         </DialogContent>

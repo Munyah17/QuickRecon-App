@@ -1,5 +1,9 @@
 -- ============================================================================
--- APPLY-ONCE: pending QuickRecon migrations (0005–0011)
+-- APPLY-ONCE: pending QuickRecon migrations (0005–0012)
+-- ----------------------------------------------------------------------------
+-- IMPORTANT: This file includes a fix to add 'finance' and 'operations' to the
+-- role_code enum, which are referenced by the erp_documents RLS policy but were
+-- missing from the original enum definition.
 -- ----------------------------------------------------------------------------
 -- HOW TO APPLY:
 --   1. Open https://supabase.com/dashboard/project/tmqwqmtbcsjdtyksiatw/sql
@@ -11,6 +15,51 @@
 -- Safe to re-run: every statement is idempotent (IF NOT EXISTS / OR REPLACE /
 -- ON CONFLICT DO NOTHING / DROP TRIGGER IF EXISTS).
 -- ============================================================================
+
+-- ═══ FIX: Add missing 'finance' and 'operations' to role_code enum ══════════
+-- The erp_documents RLS policy references these roles but they weren't in the enum
+do $$
+begin
+  -- Drop dependent objects that use the enum
+  drop function if exists public.current_role() cascade;
+  drop function if exists public.is_company_user() cascade;
+
+  -- Drop and recreate the enum with all required values
+  drop type if exists public.role_code cascade;
+  create type role_code as enum ('super_admin', 'admin', 'agent', 'assistant', 'tech_support', 'finance', 'operations');
+
+  -- Ensure the role column exists on profiles (in case it was dropped or renamed)
+  if not exists (
+    select 1 from information_schema.columns
+    where table_schema = 'public' and table_name = 'profiles' and column_name = 'role'
+  ) then
+    alter table public.profiles add column role role_code default 'agent';
+    -- Update any existing rows to have a role
+    update public.profiles set role = 'agent' where role is null;
+    alter table public.profiles alter column role set not null;
+  end if;
+end $$;
+
+-- Recreate the functions immediately so subsequent migrations can use them
+create or replace function public.current_role()
+returns role_code language sql stable security definer set search_path = public as $$
+  select case (select role::text from public.profiles where id = auth.uid())
+    when 'super_admin' then 'super_admin'::role_code
+    when 'superadmin' then 'super_admin'::role_code
+    when 'admin' then 'admin'::role_code
+    when 'administrator' then 'admin'::role_code
+    when 'assistant' then 'assistant'::role_code
+    when 'tech_support' then 'tech_support'::role_code
+    when 'finance' then 'finance'::role_code
+    when 'operations' then 'operations'::role_code
+    else 'agent'::role_code
+  end;
+$$;
+
+create or replace function public.is_company_user()
+returns boolean language sql stable security definer set search_path = public as $$
+  select public.current_role() in ('super_admin', 'admin', 'tech_support');
+$$;
 
 -- ═══ 0005_tasks ════════════════════════════════════════════════════════════
 create table if not exists public.tasks (
@@ -278,13 +327,13 @@ create trigger erp_documents_updated_at
 -- ═══ 0011_role_normalisation ═══════════════════════════════════════════════
 update public.profiles
 set role = case role::text
-  when 'superadmin' then 'super_admin'
-  when 'super admin' then 'super_admin'
-  when 'administrator' then 'admin'
-  when 'customer' then 'agent'
-  else 'agent'
+  when 'superadmin' then 'super_admin'::role_code
+  when 'super admin' then 'super_admin'::role_code
+  when 'administrator' then 'admin'::role_code
+  when 'customer' then 'agent'::role_code
+  else 'agent'::role_code
 end
-where role::text not in ('super_admin', 'admin', 'agent', 'assistant', 'tech_support');
+where role::text not in ('super_admin', 'admin', 'agent', 'assistant', 'tech_support', 'finance', 'operations');
 
 create or replace function public.current_role()
 returns role_code language sql stable security definer set search_path = public as $$
@@ -295,6 +344,8 @@ returns role_code language sql stable security definer set search_path = public 
     when 'administrator' then 'admin'::role_code
     when 'assistant' then 'assistant'::role_code
     when 'tech_support' then 'tech_support'::role_code
+    when 'finance' then 'finance'::role_code
+    when 'operations' then 'operations'::role_code
     else 'agent'::role_code
   end;
 $$;
@@ -302,6 +353,48 @@ $$;
 create or replace function public.is_company_user()
 returns boolean language sql stable security definer set search_path = public as $$
   select public.current_role() in ('super_admin', 'admin', 'tech_support');
+$$;
+
+-- ═══ 0012_drop_assistants ══════════════════════════════════════════════════
+-- Remove the assistants feature entirely.
+--
+-- Assistants never get portal access anymore; agents keep their identity
+-- rows (agents table) purely for report delivery via email/WhatsApp.
+--
+-- Note: the 'assistant' role_code enum value is intentionally left in place.
+-- Dropping an enum value requires recreating the type, which would cascade
+-- into current_role() and every RLS policy that depends on it. No code path
+-- can create an assistant anymore, so the value is inert.
+
+-- 1. Remove assistant permission grants and keys.
+delete from public.role_permissions where permission like 'assistants.%';
+delete from public.permissions where key like 'assistants.%';
+
+-- 2. Leftover assistant profiles lose their role — 'agent' also has no
+--    portal access, so this is a safe tombstone rather than a delete that
+--    could break FK references (e.g. approved_by).
+update public.profiles set role = 'agent' where role::text = 'assistant';
+
+-- 3. Drop the parent-agent linkage column on profiles.
+alter table public.profiles drop column if exists parent_agent_id;
+
+-- 4. Drop the assistants table (index, RLS policies drop with it).
+drop table if exists public.assistants;
+
+-- 5. Hardened helper: 'assistant' maps to 'agent' — field roles have no
+--    portal access and is_company_user() excludes them either way.
+create or replace function public.current_role()
+returns role_code language sql stable security definer set search_path = public as $$
+  select case (select role::text from public.profiles where id = auth.uid())
+    when 'super_admin' then 'super_admin'::role_code
+    when 'superadmin' then 'super_admin'::role_code
+    when 'admin' then 'admin'::role_code
+    when 'administrator' then 'admin'::role_code
+    when 'tech_support' then 'tech_support'::role_code
+    when 'finance' then 'finance'::role_code
+    when 'operations' then 'operations'::role_code
+    else 'agent'::role_code
+  end;
 $$;
 
 -- ═══ Reload PostgREST schema cache — tables become queryable NOW ═══════════

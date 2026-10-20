@@ -33,7 +33,7 @@ export const PERMISSIONS = {
   reports: ["reports.view", "reports.export", "reports.send"],
   submissions: ["submissions.view", "submissions.review"],
   communications: ["communications.send", "communications.schedule"],
-  users: ["users.view", "users.create", "users.edit", "users.permissions"],
+  users: ["users.view", "users.create", "users.edit", "users.delete", "users.permissions"],
   settings: ["settings.manage"],
   audit: ["audit.view"],
   support: ["support.view", "support.manage"],
