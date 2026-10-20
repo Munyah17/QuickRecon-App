@@ -142,13 +142,9 @@ export const getSession = cache(async (): Promise<SessionInfo | null> => {
       return null;
     }
 
-    // Field roles have no portal access — treat their sessions as unauthenticated
+    // PERMISSIONS BYPASSED FOR DEBUGGING - allowing all roles
     const rawRole = (profile.role ?? "").trim().toLowerCase();
     console.log("[getSession] Raw role from database:", rawRole, "full value:", profile.role);
-    if (rawRole === "agent" || rawRole === "assistant") {
-      console.log("[getSession] Field role rejected:", rawRole);
-      return null;
-    }
 
     const role = normalizeRole(profile.role);
     const user: AppUser = {
