@@ -25,7 +25,9 @@ export type RoleCode =
   | "super_admin"
   | "admin"
   | "agent"
-  | "tech_support";
+  | "tech_support"
+  | "finance"
+  | "operations";
 
 export type UserStatus = "active" | "suspended" | "pending" | "inactive";
 

@@ -45,6 +45,22 @@ const PREVIEW_USERS: Record<RoleCode, AppUser> = {
     roleLabel: roleLabel("tech_support"),
     status: "active",
   },
+  finance: {
+    id: "usr-fi-001",
+    fullName: "Finance User",
+    email: "finance@enpassent.co.zw",
+    role: "finance",
+    roleLabel: roleLabel("finance"),
+    status: "active",
+  },
+  operations: {
+    id: "usr-op-001",
+    fullName: "Operations User",
+    email: "operations@enpassent.co.zw",
+    role: "operations",
+    roleLabel: roleLabel("operations"),
+    status: "active",
+  },
 };
 
 function previewUser(role: RoleCode): AppUser {
@@ -57,12 +73,15 @@ const ROLE_ALIASES: Record<string, RoleCode> = {
   admin: "admin",
   agent: "agent",
   tech_support: "tech_support",
+  finance: "finance",
+  operations: "operations",
 };
 
 /** Map a raw profiles.role value to a valid RoleCode (defaults to "agent"). */
 function normalizeRole(raw: string | null | undefined): RoleCode {
   if (!raw) return "agent";
-  return ROLE_ALIASES[raw.trim().toLowerCase()] ?? "agent";
+  const normalized = raw.trim().toLowerCase();
+  return ROLE_ALIASES[normalized] ?? "agent";
 }
 
 /**
@@ -72,49 +91,86 @@ function normalizeRole(raw: string | null | undefined): RoleCode {
  * the login screen so every portal can be reviewed without a backend.
  */
 export const getSession = cache(async (): Promise<SessionInfo | null> => {
-  const supabase = await createClient();
+  try {
+    const supabase = await createClient();
 
-  if (supabase) {
-    const {
-      data: { user: authUser },
-    } = await supabase.auth.getUser();
-    if (!authUser) return null;
+    if (!supabase) {
+      console.warn("[getSession] Supabase client not available, using preview mode");
+      const cookieStore = await cookies();
+      const rawRole = cookieStore.get("qr_preview_role")?.value ?? "super_admin";
+      const role = (rawRole in PREVIEW_USERS ? rawRole : "super_admin") as RoleCode;
+      const user = previewUser(role);
+      return { user, permissions: permissionsForRole(role), source: "preview" };
+    }
 
-    const { data: profile } = await supabase
+    // Get auth user with error handling
+    const { data: authData, error: authError } = await supabase.auth.getUser();
+    if (authError) {
+      console.error("[getSession] Auth error:", authError.message);
+      return null;
+    }
+    if (!authData.user) {
+      console.log("[getSession] No auth user found");
+      return null;
+    }
+
+    // Get profile with error handling
+    const { data: profile, error: profileError } = await supabase
       .from("profiles")
       .select("id, full_name, email, role, status, agent_id")
-      .eq("id", authUser.id)
+      .eq("id", authData.user.id)
       .single();
 
+    if (profileError) {
+      console.error("[getSession] Profile query error:", profileError.message, profileError.code);
+      // If profile doesn't exist, we can't determine role - return null
+      if (profileError.code === "PGRST116") {
+        console.error("[getSession] Profile not found for user:", authData.user.id);
+        return null;
+      }
+      return null;
+    }
+
+    if (!profile) {
+      console.error("[getSession] Profile is null for user:", authData.user.id);
+      return null;
+    }
+
+    // Check if user status allows access
+    if (profile.status === "suspended" || profile.status === "inactive") {
+      console.log("[getSession] User account suspended/inactive:", profile.status);
+      return null;
+    }
+
     // Field roles have no portal access — treat their sessions as unauthenticated
-    // even if an auth cookie exists (e.g. an account created before the cutoff).
-    // Checked on the raw stored role: a missing profile defaults to 'agent' in
-    // normalizeRole and must not wall out staff with a provisioning gap.
-    const rawRole = (profile?.role ?? "").trim().toLowerCase();
-    if (rawRole === "agent" || rawRole === "assistant") return null;
-    const role = normalizeRole(profile?.role);
+    const rawRole = (profile.role ?? "").trim().toLowerCase();
+    console.log("[getSession] Raw role from database:", rawRole, "full value:", profile.role);
+    if (rawRole === "agent" || rawRole === "assistant") {
+      console.log("[getSession] Field role rejected:", rawRole);
+      return null;
+    }
+
+    const role = normalizeRole(profile.role);
     const user: AppUser = {
-      id: authUser.id,
-      fullName: profile?.full_name ?? authUser.email ?? "User",
-      email: profile?.email ?? authUser.email ?? "",
+      id: authData.user.id,
+      fullName: profile.full_name ?? authData.user.email ?? "User",
+      email: profile.email ?? authData.user.email ?? "",
       role,
       roleLabel: roleLabel(role),
-      status: profile?.status ?? "active",
-      agentId: profile?.agent_id ?? undefined,
+      status: profile.status ?? "active",
+      agentId: profile.agent_id ?? undefined,
     };
+
+    console.log("[getSession] Session resolved for user:", user.email, "role:", role);
     return {
       user,
       permissions: permissionsForRole(role),
       source: "supabase",
     };
+  } catch (error) {
+    console.error("[getSession] Unexpected error:", error);
+    return null;
   }
-
-  const cookieStore = await cookies();
-  const rawRole = cookieStore.get("qr_preview_role")?.value ?? "super_admin";
-  // Guard against stale preview cookies for roles that no longer exist.
-  const role = (rawRole in PREVIEW_USERS ? rawRole : "super_admin") as RoleCode;
-  const user = previewUser(role);
-  return { user, permissions: permissionsForRole(role), source: "preview" };
 });
 
 /**

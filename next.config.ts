@@ -10,6 +10,10 @@ const nextConfig: NextConfig = {
       allowedOrigins: ["127.0.0.1", "127.0.0.1:60710", "localhost:3000"],
     },
   },
+  // Disable build caching to ensure fresh deployments
+  generateBuildId: async () => {
+    return Date.now().toString();
+  },
 };
 
 export default nextConfig;

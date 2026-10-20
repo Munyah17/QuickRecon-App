@@ -45,11 +45,13 @@ const ROLE_BADGE: Record<RoleCode, string> = {
   admin: "bg-violet-100 text-violet-700 dark:bg-violet-950 dark:text-violet-300",
   agent: "bg-success-soft text-success-foreground",
   tech_support: "bg-muted text-muted-foreground",
+  finance: "bg-amber-100 text-amber-700 dark:bg-amber-950 dark:text-amber-300",
+  operations: "bg-cyan-100 text-cyan-700 dark:bg-cyan-950 dark:text-cyan-300",
 };
 
 /** Roles that get a portal login — staff only. Agents are field
  *  roles without portal access and are managed from the Agents module. */
-const STAFF_ROLES: RoleCode[] = ["super_admin", "admin", "tech_support"];
+const STAFF_ROLES: RoleCode[] = ["super_admin", "admin", "tech_support", "finance", "operations"];
 
 const SEGMENTS = ["all", "active", "pending", "suspended"] as const;
 

@@ -2,44 +2,95 @@ import { NextResponse, type NextRequest } from "next/server";
 import { createServerClient } from "@supabase/ssr";
 
 /**
- * Keeps the Supabase session cookie fresh on navigation.
+ * Middleware for session management and authentication.
+ * This proxy keeps Supabase session cookies fresh and protects routes.
  * In preview mode (no env configured) requests pass straight through.
  */
 export async function proxy(request: NextRequest) {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) return NextResponse.next();
+
+  // Preview mode - no Supabase configured
+  if (!url || !key) {
+    console.log("[proxy] Preview mode - no Supabase credentials");
+    return NextResponse.next();
+  }
 
   const response = NextResponse.next({ request });
-  const supabase = createServerClient(url, key, {
-    cookies: {
-      getAll() {
-        return request.cookies.getAll();
+
+  try {
+    const supabase = createServerClient(url, key, {
+      cookies: {
+        getAll() {
+          return request.cookies.getAll();
+        },
+        setAll(cookiesToSet) {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            request.cookies.set(name, value);
+            response.cookies.set(name, value, options);
+          });
+        },
       },
-      setAll(cookiesToSet) {
-        cookiesToSet.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options)
-        );
-      },
-    },
-  });
+    });
 
-  // Refresh session if expired - this is critical for keeping users logged in
-  await supabase.auth.getSession();
+    // Get the current session without forcing a refresh
+    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+    if (sessionError) {
+      console.error("[proxy] Session error:", sessionError.message);
+      // Clear invalid session cookies
+      response.cookies.delete("sb-access-token");
+      response.cookies.delete("sb-refresh-token");
+    }
 
-  const isAuthRoute = request.nextUrl.pathname.startsWith("/login");
-  if (!user && !isAuthRoute) {
-    const redirectUrl = request.nextUrl.clone();
-    redirectUrl.pathname = "/login";
-    return NextResponse.redirect(redirectUrl);
+    const session = sessionData.session;
+    const isAuthRoute = request.nextUrl.pathname.startsWith("/login");
+    const isAppRoute = request.nextUrl.pathname.startsWith("/app");
+
+    // If no session and trying to access protected route, redirect to login
+    if (!session && isAppRoute && !isAuthRoute) {
+      console.log("[proxy] No session, redirecting to login");
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.pathname = "/login";
+      return NextResponse.redirect(redirectUrl);
+    }
+
+    // If session exists and accessing protected route, verify it's valid
+    if (session && isAppRoute) {
+      const { data: { user }, error: userError } = await supabase.auth.getUser();
+
+      if (userError || !user) {
+        console.error("[proxy] Invalid session, clearing cookies:", userError?.message);
+        // Clear invalid session
+        response.cookies.delete("sb-access-token");
+        response.cookies.delete("sb-refresh-token");
+        
+        if (!isAuthRoute) {
+          const redirectUrl = request.nextUrl.clone();
+          redirectUrl.pathname = "/login";
+          return NextResponse.redirect(redirectUrl);
+        }
+      } else {
+        console.log("[proxy] Valid session for user:", user.email);
+      }
+    }
+
+    // If on login page with valid session, redirect to dashboard
+    if (session && isAuthRoute) {
+      console.log("[proxy] User already logged in, redirecting to dashboard");
+      const redirectUrl = request.nextUrl.clone();
+      redirectUrl.pathname = "/app/dashboard";
+      return NextResponse.redirect(redirectUrl);
+    }
+
+    return response;
+  } catch (error) {
+    console.error("[proxy] Unexpected error:", error);
+    // On error, allow request to proceed but log the issue
+    return response;
   }
-  return response;
 }
 
 export const config = {
-  matcher: ["/app/:path*"],
+  matcher: ["/app/:path*", "/login"],
 };

@@ -106,6 +106,8 @@ export function roleLabel(role: RoleCode): string {
     admin: "Admin",
     agent: "Agent",
     tech_support: "Tech Support",
+    finance: "Finance",
+    operations: "Operations",
   };
   return labels[role] ?? role;
 }
