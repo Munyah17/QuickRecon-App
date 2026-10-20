@@ -39,7 +39,7 @@ export interface NavItem {
   children?: NavChild[];
 }
 
-const COMPANY_ROLES: RoleCode[] = ["super_admin", "admin", "tech_support"];
+const COMPANY_ROLES: RoleCode[] = ["super_admin", "admin", "tech_support", "finance", "operations"];
 
 export const NAV_ITEMS: NavItem[] = [
   { label: "Dashboard", href: "/app/dashboard", icon: LayoutDashboard, roles: COMPANY_ROLES, mobilePrimary: true },
