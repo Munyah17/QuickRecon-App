@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { logout } from "@/app/login/actions";
+import { toast } from "sonner";
 import { LogOut, Menu, Settings, UserRound, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,13 +38,15 @@ export function Topbar({
   user: AppUser;
   notifications: AppNotification[];
 }) {
-  const router = useRouter();
   const company = isCompanyRole(user.role);
 
   const signOut = async () => {
-    document.cookie = "qr_preview_role=; Max-Age=0; path=/";
-    router.push("/login");
-    router.refresh();
+    try {
+      const result = await logout();
+      if (result?.error) toast.error(result.error);
+    } catch {
+      toast.error("Unable to sign out. Please try again.");
+    }
   };
 
   return (

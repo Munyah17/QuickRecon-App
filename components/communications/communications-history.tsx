@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -44,31 +45,18 @@ interface Summary {
 }
 
 export function CommunicationsHistory() {
-  const [communications, setCommunications] = React.useState<Communication[]>([]);
-  const [summary, setSummary] = React.useState<Summary | null>(null);
-  const [loading, setLoading] = React.useState(true);
-  const [channelFilter, setChannelFilter] = React.useState<string>("all");
-
-  const fetchCommunications = React.useCallback(async () => {
-    setLoading(true);
-    try {
+  const [channelFilter, setChannelFilter] = React.useState("all");
+  const { data, isPending: loading, error, refetch } = useQuery({
+    queryKey: ["communications", channelFilter],
+    queryFn: async ({ signal }) => {
       const url = `/api/communications${channelFilter !== "all" ? `?channel=${channelFilter}` : ""}`;
-      const res = await fetch(url);
-      const data = await res.json();
-      if (res.ok) {
-        setCommunications(data.communications || []);
-        setSummary(data.summary || null);
-      }
-    } catch (error) {
-      console.error("Failed to fetch communications:", error);
-    } finally {
-      setLoading(false);
-    }
-  }, [channelFilter]);
-
-  React.useEffect(() => {
-    fetchCommunications();
-  }, [fetchCommunications]);
+      const res = await fetch(url, { signal });
+      if (!res.ok) throw new Error("Unable to load communications history.");
+      return await res.json() as { communications: Communication[]; summary: Summary | null };
+    },
+  });
+  const communications = data?.communications ?? [];
+  const summary = data?.summary;
 
   const formatDate = (dateStr: string | null) => {
     if (!dateStr) return "—";
@@ -92,6 +80,10 @@ export function CommunicationsHistory() {
     return labels[channel] || channel;
   };
 
+
+  if (error) {
+    return <div role="alert" className="space-y-3"><p>{error.message}</p><Button onClick={() => void refetch()}>Try again</Button></div>;
+  }
 
   if (loading) {
     return (
@@ -155,7 +147,7 @@ export function CommunicationsHistory() {
             <SelectItem value="in_app">In-app</SelectItem>
           </SelectContent>
         </Select>
-        <Button variant="outline" size="sm" className="h-9 text-[13px]" onClick={fetchCommunications}>
+        <Button variant="outline" size="sm" className="h-9 text-[13px]" onClick={() => void refetch()}>
           Refresh
         </Button>
       </div>

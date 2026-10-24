@@ -35,6 +35,12 @@ export async function POST(request: NextRequest) {
 
   const sb = await createServiceClient();
   if (!sb) {
+    if (process.env.NEXT_PUBLIC_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
+      return NextResponse.json(
+        { error: "Account creation is unavailable: the server's Supabase service role is not configured. Contact an administrator." },
+        { status: 503 }
+      );
+    }
     // Preview mode (no Supabase) — acknowledge without persisting.
     return NextResponse.json({ status: "pending", preview: true });
   }

@@ -1,3 +1,4 @@
+import { portalRole, profileAccessError } from "@/lib/auth/profile";
 import { cache } from "react";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
@@ -67,23 +68,6 @@ function previewUser(role: RoleCode): AppUser {
   return { ...PREVIEW_USERS[role] };
 }
 
-const ROLE_ALIASES: Record<string, RoleCode> = {
-  superadmin: "super_admin",
-  super_admin: "super_admin",
-  admin: "admin",
-  agent: "agent",
-  tech_support: "tech_support",
-  finance: "finance",
-  operations: "operations",
-};
-
-/** Map a raw profiles.role value to a valid RoleCode (defaults to "agent"). */
-function normalizeRole(raw: string | null | undefined): RoleCode {
-  if (!raw) return "agent";
-  const normalized = raw.trim().toLowerCase();
-  return ROLE_ALIASES[normalized] ?? "agent";
-}
-
 /**
  * Resolve the current session. When Supabase is configured this reads the
  * auth cookie and loads the profile + permissions. Otherwise the app runs
@@ -136,21 +120,9 @@ export const getSession = cache(async (): Promise<SessionInfo | null> => {
       return null;
     }
 
-    // Check if user status allows access
-    if (profile.status === "suspended" || profile.status === "inactive") {
-      console.log("[getSession] User account suspended/inactive:", profile.status);
-      return null;
-    }
-
-    // Field roles have no portal access — treat their sessions as unauthenticated
-    const rawRole = (profile.role ?? "").trim().toLowerCase();
-    console.log("[getSession] Raw role from database:", rawRole, "full value:", profile.role);
-    if (rawRole === "agent" || rawRole === "assistant") {
-      console.log("[getSession] Field role rejected:", rawRole);
-      return null;
-    }
-
-    const role = normalizeRole(profile.role);
+    if (profileAccessError(profile)) return null;
+    const role = portalRole(profile.role);
+    if (!role) return null;
     const user: AppUser = {
       id: authData.user.id,
       fullName: profile.full_name ?? authData.user.email ?? "User",
@@ -161,7 +133,6 @@ export const getSession = cache(async (): Promise<SessionInfo | null> => {
       agentId: profile.agent_id ?? undefined,
     };
 
-    console.log("[getSession] Session resolved for user:", user.email, "role:", role);
     return {
       user,
       permissions: permissionsForRole(role),

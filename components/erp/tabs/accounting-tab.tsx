@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   Calculator,
   Banknote,
@@ -65,33 +66,22 @@ interface ErpRequisition {
 }
 
 export default function AccountingTab() {
-  const [transactions, setTransactions] = React.useState<ErpTxn[]>([]);
-  const [requisitions, setRequisitions] = React.useState<ErpRequisition[]>([]);
-  const [loading, setLoading] = React.useState(true);
   const [txnDialog, setTxnDialog] = React.useState<null | { mode: "add" } | { mode: "edit"; txn: ErpTxn }>(null);
   const [reqOpen, setReqOpen] = React.useState(false);
-
-  const load = React.useCallback(async () => {
-    setLoading(true);
-    try {
+  const { data, isPending: loading, error, refetch: load } = useQuery({
+    queryKey: ["accounting"],
+    queryFn: async ({ signal }) => {
       const [txRes, reqRes] = await Promise.all([
-        fetch("/api/erp/transactions"),
-        fetch("/api/erp/requisitions"),
+        fetch("/api/erp/transactions", { signal }),
+        fetch("/api/erp/requisitions", { signal }),
       ]);
-      if (txRes.ok) {
-        const d = await txRes.json();
-        setTransactions(d.transactions ?? []);
-      }
-      if (reqRes.ok) {
-        const d = await reqRes.json();
-        setRequisitions(d.requisitions ?? []);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  React.useEffect(() => { load(); }, [load]);
+      if (!txRes.ok || !reqRes.ok) throw new Error("Unable to load accounting data.");
+      const [txData, reqData] = await Promise.all([txRes.json(), reqRes.json()]);
+      return { transactions: (txData.transactions ?? []) as ErpTxn[], requisitions: (reqData.requisitions ?? []) as ErpRequisition[] };
+    },
+  });
+  const transactions = data?.transactions ?? [];
+  const requisitions = data?.requisitions ?? [];
 
   const revenue = transactions.filter((t) => t.type === "income").reduce((s, t) => s + Number(t.amount), 0);
   const expenses = transactions.filter((t) => t.type === "expense").reduce((s, t) => s + Number(t.amount), 0);
@@ -131,6 +121,10 @@ export default function AccountingTab() {
       return;
     }
     window.open(d.url, "_blank", "noopener");
+  }
+
+  if (error) {
+    return <div role="alert" className="space-y-3"><p>{error.message}</p><Button onClick={() => void load()}>Try again</Button></div>;
   }
 
   return (

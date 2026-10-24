@@ -159,7 +159,7 @@ export function CurrencySettings() {
                 </SelectContent>
               </Select>
               <p className="text-[11.5px] text-muted-foreground">
-                Stat cards show one currency or both — "Both" uses the exchange rate below.
+                Stat cards show one currency or both — &quot;Both&quot; uses the exchange rate below.
               </p>
             </div>
           </CardContent>

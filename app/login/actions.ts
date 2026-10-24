@@ -3,6 +3,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
+import { profileAccessError } from "@/lib/auth/profile";
 import type { RoleCode } from "@/types";
 
 export interface LoginResult {
@@ -23,6 +24,7 @@ export async function loginWithPassword(
   email: string,
   password: string
 ): Promise<LoginResult> {
+  email = email.trim().toLowerCase();
   const supabase = await createClient();
   if (!supabase) {
     const cred = PREVIEW_CREDENTIALS[email.toLowerCase()];
@@ -61,19 +63,10 @@ export async function loginWithPassword(
     return { error: "Your account has no portal profile. Ask an admin to create one before signing in." };
   }
 
-  // Field roles have no portal access — agents receive their
-  // consolidated reconciliations via email/WhatsApp instead of a dashboard.
-  const role = (profile.role ?? "").toLowerCase();
-  if (role === "agent" || role === "assistant") {
+  const accessError = profileAccessError(profile);
+  if (accessError) {
     await supabase.auth.signOut();
-    return {
-      error:
-        "Portal access is limited to company staff. Reconciliation statements are delivered to agents by WhatsApp/email.",
-    };
-  }
-  if (profile.status === "suspended") {
-    await supabase.auth.signOut();
-    return { error: "This account is suspended. Contact an administrator." };
+    return { error: accessError };
   }
 
   redirect("/app/dashboard");
@@ -96,4 +89,16 @@ export async function loginAsPreviewRole(role: RoleCode): Promise<void> {
     maxAge: 60 * 60 * 24 * 7,
   });
   redirect("/app/dashboard");
+}
+
+/** End the current browser session on the server, including HTTP-only cookies. */
+export async function logout(): Promise<LoginResult> {
+  const supabase = await createClient();
+  if (supabase) {
+    const { error } = await supabase.auth.signOut({ scope: "local" });
+    if (error) return { error: "Unable to sign out. Please try again." };
+  }
+  const cookieStore = await cookies();
+  cookieStore.delete("qr_preview_role");
+  redirect("/login");
 }

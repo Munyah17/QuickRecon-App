@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import Link from "next/link";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -27,7 +28,7 @@ const PREVIEW_ROLES: { role: RoleCode; label: string }[] = [
   { role: "tech_support", label: "Tech Support" },
 ];
 
-export function LoginClient({ supabaseConfigured }: { supabaseConfigured: boolean }) {
+export function LoginClient({ supabaseConfigured, notice }: { supabaseConfigured: boolean; notice?: string }) {
   const [showPassword, setShowPassword] = React.useState(false);
   const [pending, setPending] = React.useState(false);
   const form = useForm<LoginValues>({
@@ -38,9 +39,14 @@ export function LoginClient({ supabaseConfigured }: { supabaseConfigured: boolea
 
   async function onSubmit(values: LoginValues) {
     setPending(true);
-    const result = await loginWithPassword(values.email, values.password);
-    setPending(false);
-    if (result?.error) toast.error(result.error);
+    try {
+      const result = await loginWithPassword(values.email, values.password);
+      if (result?.error) toast.error(result.error);
+    } catch {
+      toast.error("Unable to sign in. Check your connection and try again.");
+    } finally {
+      setPending(false);
+    }
   }
 
   return (
@@ -98,6 +104,8 @@ export function LoginClient({ supabaseConfigured }: { supabaseConfigured: boolea
             Sign in to your account
           </p>
 
+          {notice && <p role="status" className="mt-4 text-sm">{notice}</p>}
+
           <form onSubmit={form.handleSubmit(onSubmit)} className="mt-7 space-y-4" noValidate>
             <div className="space-y-1.5">
               <Label htmlFor="email" className="text-[13px]">Email or Username</Label>
@@ -149,9 +157,9 @@ export function LoginClient({ supabaseConfigured }: { supabaseConfigured: boolea
                 />
                 Remember me
               </label>
-              <span className="cursor-pointer text-[13px] font-medium text-primary hover:underline">
+              <Link href="/forgot-password" className="text-[13px] font-medium text-primary hover:underline">
                 Forgot password?
-              </span>
+              </Link>
             </div>
 
             <Button type="submit" className="h-11 w-full text-[14px] font-semibold" disabled={pending}>
@@ -181,7 +189,13 @@ export function LoginClient({ supabaseConfigured }: { supabaseConfigured: boolea
                     className="h-9 text-[12.5px]"
                     onClick={async () => {
                       setPending(true);
-                      await loginAsPreviewRole(r.role);
+                      try {
+                        await loginAsPreviewRole(r.role);
+                      } catch {
+                        toast.error("Unable to open the sample account. Please try again.");
+                      } finally {
+                        setPending(false);
+                      }
                     }}
                   >
                     {r.label}

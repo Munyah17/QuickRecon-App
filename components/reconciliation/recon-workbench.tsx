@@ -54,10 +54,33 @@ interface WorkState {
 
 type Store = Record<string, WorkState>;
 
-function loadStore(): Store {
-  if (typeof window === "undefined") return {};
+let memorySnapshot = "{}";
+const STORE_EVENT = "qr-recon-workbench-changed";
+
+function storeSnapshot(): string {
   try {
-    return JSON.parse(localStorage.getItem(STORE_KEY) ?? "{}") as Store;
+    return localStorage.getItem(STORE_KEY) ?? memorySnapshot;
+  } catch {
+    return memorySnapshot;
+  }
+}
+
+function subscribeStore(notify: () => void) {
+  const onStorage = (event: StorageEvent) => {
+    if (event.key === STORE_KEY || event.key === null) notify();
+  };
+  window.addEventListener("storage", onStorage);
+  window.addEventListener(STORE_EVENT, notify);
+  return () => {
+    window.removeEventListener("storage", onStorage);
+    window.removeEventListener(STORE_EVENT, notify);
+  };
+}
+
+function parseStore(snapshot: string): Store {
+  try {
+    const parsed = JSON.parse(snapshot);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
   } catch {
     return {};
   }
@@ -92,25 +115,21 @@ export function ReconWorkbench({
   exceptions: ReconException[];
 }) {
   const { module } = useWorkspace();
-  const [store, setStore] = React.useState<Store>({});
-  const [hydrated, setHydrated] = React.useState(false);
+  const snapshot = React.useSyncExternalStore(subscribeStore, storeSnapshot, () => "{}");
+  const store = React.useMemo(() => parseStore(snapshot), [snapshot]);
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const [query, setQuery] = React.useState("");
   const [filter, setFilter] = React.useState<QueueFilter>("all");
   const [busy, setBusy] = React.useState<string | null>(null);
 
-  React.useEffect(() => {
-    setStore(loadStore());
-    setHydrated(true);
-  }, []);
-
   const persist = React.useCallback((next: Store) => {
-    setStore(next);
+    memorySnapshot = JSON.stringify(next);
     try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(next));
+      localStorage.setItem(STORE_KEY, memorySnapshot);
     } catch {
-      /* storage full/blocked — keep in-memory state */
+      /* storage full/blocked — retain state in memory */
     }
+    window.dispatchEvent(new Event(STORE_EVENT));
   }, []);
 
   const scoped = React.useMemo(
@@ -343,7 +362,7 @@ export function ReconWorkbench({
           <Inspector
             key={selected.id}
             recon={selected}
-            work={hydrated ? workOf(selected.id) : emptyState()}
+            work={workOf(selected.id)}
             exceptions={exceptions.filter((e) => e.agentId === selected.agentId)}
             busy={busy}
             onUpdate={(patch) => update(selected.id, patch)}

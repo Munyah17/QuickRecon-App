@@ -15,7 +15,7 @@ export async function proxy(request: NextRequest) {
     return NextResponse.next();
   }
 
-  const response = NextResponse.next({ request });
+  let response = NextResponse.next({ request });
 
   try {
     const supabase = createServerClient(url, key, {
@@ -24,47 +24,30 @@ export async function proxy(request: NextRequest) {
           return request.cookies.getAll();
         },
         setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            request.cookies.set(name, value);
-            response.cookies.set(name, value, options);
-          });
+          cookiesToSet.forEach(({ name, value }) => request.cookies.set(name, value));
+          // Forward the refreshed cookies to Server Components as well as the browser.
+          response = NextResponse.next({ request });
+          cookiesToSet.forEach(({ name, value, options }) =>
+            response.cookies.set(name, value, options)
+          );
         },
       },
     });
 
-    // Get the current session without forcing a refresh
-    const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+    // Validate/refresh authentication. A cookie alone is not proof that the
+    // user still exists or that their profile permits portal access.
+    const { data: { user } } = await supabase.auth.getUser();
 
-    if (sessionError) {
-      console.error("[proxy] Session error:", sessionError.message);
-      // Clear invalid session cookies
-      response.cookies.delete("sb-access-token");
-      response.cookies.delete("sb-refresh-token");
-    }
-
-    const session = sessionData.session;
-    const isAuthRoute = request.nextUrl.pathname.startsWith("/login");
-    const isAppRoute = request.nextUrl.pathname.startsWith("/app");
-
-    // If no session and trying to access protected route, redirect to login
-    if (!session && isAppRoute && !isAuthRoute) {
+    if (!user && request.nextUrl.pathname.startsWith("/app")) {
       const redirectUrl = request.nextUrl.clone();
       redirectUrl.pathname = "/login";
-      return NextResponse.redirect(redirectUrl);
+      const redirectResponse = NextResponse.redirect(redirectUrl);
+      response.cookies.getAll().forEach((cookie) => redirectResponse.cookies.set(cookie));
+      return redirectResponse;
     }
 
-    // NOTE: routing decisions use the cookie session only. Validating the
-    // token with getUser() costs a Supabase roundtrip per request and
-    // duplicates the check getSession() performs in the app layout — where
-    // an invalid session already bounces to /login.
-
-    // If on login page with valid session, redirect to dashboard
-    if (session && isAuthRoute) {
-      const redirectUrl = request.nextUrl.clone();
-      redirectUrl.pathname = "/app/dashboard";
-      return NextResponse.redirect(redirectUrl);
-    }
-
+    // Keep /login reachable for expired sessions and unusable profiles.
+    // The dashboard performs the profile/status authorization check.
     return response;
   } catch (error) {
     console.error("[proxy] Unexpected error:", error);

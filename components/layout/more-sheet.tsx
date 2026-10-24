@@ -2,6 +2,8 @@
 
 import * as React from "react";
 import Link from "next/link";
+import { logout } from "@/app/login/actions";
+import { toast } from "sonner";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
 import { navForRole } from "@/lib/nav";
@@ -13,7 +15,6 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { LogOut } from "lucide-react";
-import { useRouter } from "next/navigation";
 import { AgentAvatar } from "@/components/shared/agent-avatar";
 import { ThemeToggle } from "./theme-toggle";
 import type { AppUser } from "@/types";
@@ -37,16 +38,18 @@ export function MoreSheet({
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
-  const router = useRouter();
   const all = navForRole(user.role);
   const items = all.filter((i) => !pinnedHrefs.includes(i.href));
   const [open, setOpen] = React.useState(false);
 
   const signOut = async () => {
     setOpen(false);
-    document.cookie = "qr_preview_role=; Max-Age=0; path=/";
-    router.push("/login");
-    router.refresh();
+    try {
+      const result = await logout();
+      if (result?.error) toast.error(result.error);
+    } catch {
+      toast.error("Unable to sign out. Please try again.");
+    }
   };
 
   return (

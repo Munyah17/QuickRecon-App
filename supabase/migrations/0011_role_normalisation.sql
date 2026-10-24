@@ -16,7 +16,7 @@ set role = (case role::text
   when 'customer' then 'agent'
   else 'agent'
 end)::role_code
-where role::text not in ('super_admin', 'admin', 'agent', 'assistant', 'tech_support');
+where role::text not in ('super_admin', 'admin', 'agent', 'assistant', 'tech_support', 'finance', 'operations');
 
 -- 2. Hardened helpers: read as text, map known aliases, fall back to 'agent'
 -- instead of erroring on unexpected values.

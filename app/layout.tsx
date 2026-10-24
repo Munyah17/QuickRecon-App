@@ -3,10 +3,8 @@ import { GeistSans } from "geist/font/sans";
 import { GeistMono } from "geist/font/mono";
 import { AppProviders } from "@/components/providers";
 import "./globals.css";
-import { Geist } from "next/font/google";
 import { cn } from "@/lib/utils";
 
-const geist = Geist({subsets:['latin'],variable:'--font-sans'});
 
 export const metadata: Metadata = {
   title: {
@@ -37,7 +35,7 @@ export default function RootLayout({
     <html
       lang="en"
       suppressHydrationWarning
-      className={cn(GeistSans.variable, GeistMono.variable, "font-sans", geist.variable)}
+      className={cn(GeistSans.variable, GeistMono.variable, "font-sans")}
     >
       <body className="min-h-screen bg-background text-foreground antialiased">
         <AppProviders>{children}</AppProviders>

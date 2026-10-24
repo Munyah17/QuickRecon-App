@@ -1,3 +1,4 @@
+import { isPreviewMode } from "./config";
 import { cookies } from "next/headers";
 import { createServerClient } from "@supabase/ssr";
 
@@ -10,9 +11,13 @@ export async function createClient() {
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
   const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
 
-  if (!url || !key) {
+  if (isPreviewMode()) {
     console.warn("[createClient] Supabase not configured");
     return null;
+  }
+
+  if (!url || !key) {
+    throw new Error("Both NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY are required.");
   }
 
   try {
@@ -39,7 +44,7 @@ export async function createClient() {
     return client;
   } catch (error) {
     console.error("[createClient] Client creation error:", error);
-    return null;
+    throw error;
   }
 }
 
@@ -54,7 +59,9 @@ export async function createServiceClient() {
   const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 
   if (!url || !serviceKey) {
-    console.warn("[createServiceClient] Service role not configured");
+    if (!isPreviewMode() || serviceKey) {
+      throw new Error("Supabase server configuration is incomplete: project URL and service role key are required for this operation.");
+    }
     return null;
   }
 
@@ -69,6 +76,6 @@ export async function createServiceClient() {
     return client;
   } catch (error) {
     console.error("[createServiceClient] Service client creation error:", error);
-    return null;
+    throw error;
   }
 }

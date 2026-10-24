@@ -10,7 +10,7 @@ alter type public.role_code add value if not exists 'operations';
 create or replace function public.is_company_user()
 returns boolean language sql stable security definer set search_path = public as $$
   select coalesce(
-    (select role in ('super_admin','admin','tech_support','finance','operations') from public.profiles where id = auth.uid()),
+    (select role::text in ('super_admin','admin','tech_support','finance','operations') from public.profiles where id = auth.uid()),
     false
   );
 $$;

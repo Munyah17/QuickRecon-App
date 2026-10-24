@@ -24,12 +24,9 @@ import {
 } from "./mock";
 
 async function db() {
-  try {
-    return await createClient();
-  } catch (error) {
-    console.error("[db] Error creating client:", error);
-    return null;
-  }
+  // Only an unconfigured backend may use fixtures. A real backend failure
+  // must reach the error boundary rather than display sample financial data.
+  return createClient();
 }
 
 /* eslint-disable @typescript-eslint/no-explicit-any */
