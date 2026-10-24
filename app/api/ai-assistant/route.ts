@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getSession } from "@/lib/auth/session";
 
 const GROQ_API_KEY = process.env.GROQ_API_KEY || "";
 const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
@@ -19,6 +20,11 @@ Keep responses concise, professional, and actionable. ALWAYS format with markdow
 
 export async function POST(req: NextRequest) {
   try {
+    const session = await getSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     if (!GROQ_API_KEY) {
       return NextResponse.json(
         { error: "AI service is not configured (missing GROQ_API_KEY)." },

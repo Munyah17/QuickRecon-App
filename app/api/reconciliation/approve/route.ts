@@ -71,10 +71,9 @@ export async function POST(request: NextRequest) {
         const userId = Array.isArray(ag) ? ag[0]?.user_id : ag?.user_id;
         return userId ? {
           user_id: userId,
-          type: "reconciliation_published",
+          kind: "reconciliation_published",
           title: `Reconciliation published — ${batch.period}`,
           body: "Your consolidated reconciliation document is ready. Open Reports to view it.",
-          link: "/app/reports",
         } : null;
       })
       .filter((n): n is NonNullable<typeof n> => n !== null);
@@ -84,11 +83,12 @@ export async function POST(request: NextRequest) {
   }
 
   await sb.from("audit_logs").insert({
-    user_id: session.user.id,
+    actor_id: session.user.id,
     action: "reconciliation.batch_published",
-    entity_type: "reconciliation_batch",
+    entity: "reconciliation_batches",
     entity_id: batch.id,
-    details: { period: batch.period, module: batch.module, agents: published.length },
+    next: { period: batch.period, agents: published.length },
+    module: batch.module,
   });
 
   return NextResponse.json({ ok: true, batchId: batch.id, published: published.length });

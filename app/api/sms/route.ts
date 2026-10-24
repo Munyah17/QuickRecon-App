@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { createServiceClient } from "@/lib/supabase/server";
+import { isCompanyRole } from "@/lib/nav";
 
 const AFROSOFT_API_KEY = process.env.AFROSOFT_API_KEY || "";
 const AFROSOFT_API_URL = process.env.AFROSOFT_API_URL || "https://api.afrosoft.co.zw/sms/v1/send";
@@ -12,6 +13,9 @@ export async function POST(request: NextRequest) {
     const session = await getSession();
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    if (!isCompanyRole(session.user.role)) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 
     const body = await request.json();
