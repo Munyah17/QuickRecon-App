@@ -6,9 +6,9 @@ import type { RoleCode } from "@/types";
 
 export const runtime = "nodejs";
 
-const VALID_ROLES: RoleCode[] = ["super_admin", "admin", "agent", "tech_support"];
+const VALID_ROLES: RoleCode[] = ["super_admin", "admin", "agent", "tech_support", "finance", "operations"];
 /** Roles that hold a portal login. Field roles never appear on profiles. */
-const STAFF_ROLES: RoleCode[] = ["super_admin", "admin", "tech_support"];
+const STAFF_ROLES: RoleCode[] = ["super_admin", "admin", "tech_support", "finance", "operations"];
 
 /**
  * POST /api/users — create a staff account or onboard a field agent.
@@ -140,7 +140,7 @@ export async function PATCH(request: NextRequest) {
   }
   if (role && !STAFF_ROLES.includes(role)) {
     return NextResponse.json(
-      { error: "Staff accounts can only hold staff roles (super_admin, admin, tech_support). Field roles have no portal login." },
+      { error: "Staff accounts can only hold staff roles (super_admin, admin, tech_support, finance, operations). Field roles have no portal login." },
       { status: 400 }
     );
   }

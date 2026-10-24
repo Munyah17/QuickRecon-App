@@ -54,6 +54,40 @@ const AGENT_BASE: Permission[] = [
   "support.view",
 ];
 
+/** Finance: full view of money flows plus approval/publish authority. */
+const FINANCE_BASE: Permission[] = [
+  "agents.view",
+  "imports.preview",
+  "reconciliation.view",
+  "reconciliation.view_all",
+  "reconciliation.approve",
+  "reconciliation.publish",
+  "reports.view",
+  "reports.export",
+  "reports.send",
+  "submissions.view",
+  "audit.view",
+  "support.view",
+];
+
+/** Operations: field-network and intake machinery — agents, imports, exceptions. */
+const OPERATIONS_BASE: Permission[] = [
+  "agents.view",
+  "agents.edit",
+  "agents.manage_modules",
+  "agents.manage_booths",
+  "imports.create",
+  "imports.preview",
+  "imports.process",
+  "reconciliation.view",
+  "reconciliation.view_all",
+  "reconciliation.resolve_exceptions",
+  "submissions.view",
+  "submissions.review",
+  "communications.send",
+  "support.view",
+];
+
 const TECH_SUPPORT_BASE: Permission[] = [
   "agents.view",
   "imports.preview",
@@ -95,6 +129,10 @@ export function permissionsForRole(role: RoleCode): Permission[] {
       return AGENT_BASE;
     case "tech_support":
       return TECH_SUPPORT_BASE;
+    case "finance":
+      return FINANCE_BASE;
+    case "operations":
+      return OPERATIONS_BASE;
     default:
       return [];
   }
