@@ -12,7 +12,6 @@ export async function proxy(request: NextRequest) {
 
   // Preview mode - no Supabase configured
   if (!url || !key) {
-    console.log("[proxy] Preview mode - no Supabase credentials");
     return NextResponse.next();
   }
 
@@ -49,35 +48,18 @@ export async function proxy(request: NextRequest) {
 
     // If no session and trying to access protected route, redirect to login
     if (!session && isAppRoute && !isAuthRoute) {
-      console.log("[proxy] No session, redirecting to login");
       const redirectUrl = request.nextUrl.clone();
       redirectUrl.pathname = "/login";
       return NextResponse.redirect(redirectUrl);
     }
 
-    // If session exists and accessing protected route, verify it's valid
-    if (session && isAppRoute) {
-      const { data: { user }, error: userError } = await supabase.auth.getUser();
-
-      if (userError || !user) {
-        console.error("[proxy] Invalid session, clearing cookies:", userError?.message);
-        // Clear invalid session
-        response.cookies.delete("sb-access-token");
-        response.cookies.delete("sb-refresh-token");
-        
-        if (!isAuthRoute) {
-          const redirectUrl = request.nextUrl.clone();
-          redirectUrl.pathname = "/login";
-          return NextResponse.redirect(redirectUrl);
-        }
-      } else {
-        console.log("[proxy] Valid session for user:", user.email);
-      }
-    }
+    // NOTE: routing decisions use the cookie session only. Validating the
+    // token with getUser() costs a Supabase roundtrip per request and
+    // duplicates the check getSession() performs in the app layout — where
+    // an invalid session already bounces to /login.
 
     // If on login page with valid session, redirect to dashboard
     if (session && isAuthRoute) {
-      console.log("[proxy] User already logged in, redirecting to dashboard");
       const redirectUrl = request.nextUrl.clone();
       redirectUrl.pathname = "/app/dashboard";
       return NextResponse.redirect(redirectUrl);

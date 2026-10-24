@@ -1,39 +1,29 @@
 import { redirect } from "next/navigation";
 import type { Metadata } from "next";
 import { getSession } from "@/lib/auth/session";
+import { getActivities, getAdminDashboardSummary } from "@/lib/data";
+import { isCompanyRole } from "@/lib/nav";
+import { AdminDashboard } from "@/components/dashboard/admin-dashboard";
 
 export const metadata: Metadata = { title: "Dashboard" };
 
 export default async function DashboardPage() {
-  console.log("[DashboardPage] Starting dashboard page load");
   const session = await getSession();
-  console.log("[DashboardPage] Session:", session?.user.email, "role:", session?.user.role);
-  
-  if (!session) {
-    console.log("[DashboardPage] No session, redirecting to login");
-    redirect("/login");
-  }
+  if (!session) redirect("/login");
+  // Field roles have no portal access — hard guard in case a stale
+  // session or preview cookie slips through.
+  if (!isCompanyRole(session.user.role)) redirect("/login");
 
-  console.log("[DashboardPage] Rendering simple dashboard");
-  
+  const [summary, activities] = await Promise.all([
+    getAdminDashboardSummary(),
+    getActivities(),
+  ]);
+
   return (
-    <div style={{ padding: "2rem" }}>
-      <h1 style={{ fontSize: "2rem", marginBottom: "1rem" }}>Dashboard</h1>
-      <div style={{ marginBottom: "1rem" }}>
-        <strong>Welcome, {session.user.fullName}</strong>
-      </div>
-      <div style={{ marginBottom: "0.5rem" }}>
-        Email: {session.user.email}
-      </div>
-      <div style={{ marginBottom: "0.5rem" }}>
-        Role: {session.user.role}
-      </div>
-      <div style={{ marginBottom: "0.5rem" }}>
-        Status: {session.user.status}
-      </div>
-      <div style={{ marginTop: "2rem", padding: "1rem", backgroundColor: "#f0f0f0", borderRadius: "8px" }}>
-        <p>If you can see this, the dashboard is loading successfully!</p>
-      </div>
-    </div>
+    <AdminDashboard
+      firstName={session.user.fullName.split(" ")[0]}
+      activities={activities}
+      summary={summary}
+    />
   );
 }

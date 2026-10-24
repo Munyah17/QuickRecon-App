@@ -16,7 +16,10 @@ export default async function AppLayout({
   // rows via the auth cookie, so the query doesn't need the resolved session.
   const [session, notifications] = await Promise.all([
     getSession(),
-    getNotifications(),
+    getNotifications().catch((err) => {
+      console.error("[AppLayout] Notifications error:", err);
+      return [];
+    }),
   ]);
   if (!session) redirect("/login");
 

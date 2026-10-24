@@ -26,7 +26,8 @@ import {
 async function db() {
   try {
     return await createClient();
-  } catch {
+  } catch (error) {
+    console.error("[db] Error creating client:", error);
     return null;
   }
 }

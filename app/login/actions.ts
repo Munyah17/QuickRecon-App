@@ -23,16 +23,12 @@ export async function loginWithPassword(
   email: string,
   password: string
 ): Promise<LoginResult> {
-  console.log("[loginWithPassword] Attempting login for:", email);
   const supabase = await createClient();
   if (!supabase) {
-    console.log("[loginWithPassword] Preview mode - no Supabase client");
     const cred = PREVIEW_CREDENTIALS[email.toLowerCase()];
     if (!cred || cred.password !== password) {
-      console.log("[loginWithPassword] Invalid preview credentials");
       return { error: "Invalid email or password" };
     }
-    console.log("[loginWithPassword] Preview login successful, role:", cred.role);
     const cookieStore = await cookies();
     cookieStore.set("qr_preview_role", cred.role, {
       httpOnly: true,
@@ -40,19 +36,46 @@ export async function loginWithPassword(
       path: "/",
       maxAge: 60 * 60 * 24 * 7,
     });
-    console.log("[loginWithPassword] Redirecting to /app/dashboard");
     redirect("/app/dashboard");
   }
-  console.log("[loginWithPassword] Supabase client available, signing in");
   const { data: auth, error } = await supabase.auth.signInWithPassword({ email, password });
-  if (error) {
-    console.error("[loginWithPassword] Sign in error:", error.message);
-    return { error: error.message };
-  }
-  console.log("[loginWithPassword] Sign in successful, user ID:", auth.user.id);
+  if (error) return { error: error.message };
 
-  // PERMISSIONS BYPASSED FOR DEBUGGING - allowing all roles
-  console.log("[loginWithPassword] Redirecting to /app/dashboard");
+  // Verify a usable profile exists before letting them in — otherwise the
+  // session resolves to null on the next request and they bounce back to
+  // /login with no explanation.
+  const { data: profile, error: profileError } = await supabase
+    .from("profiles")
+    .select("id, role, status")
+    .eq("id", auth.user.id)
+    .maybeSingle();
+
+  if (profileError) {
+    console.error("[loginWithPassword] profile lookup failed:", profileError.message);
+    await supabase.auth.signOut();
+    return { error: "Could not load your account profile. Please try again or contact support." };
+  }
+  if (!profile) {
+    console.error("[loginWithPassword] no profile row for user:", auth.user.id);
+    await supabase.auth.signOut();
+    return { error: "Your account has no portal profile. Ask an admin to create one before signing in." };
+  }
+
+  // Field roles have no portal access — agents receive their
+  // consolidated reconciliations via email/WhatsApp instead of a dashboard.
+  const role = (profile.role ?? "").toLowerCase();
+  if (role === "agent" || role === "assistant") {
+    await supabase.auth.signOut();
+    return {
+      error:
+        "Portal access is limited to company staff. Reconciliation statements are delivered to agents by WhatsApp/email.",
+    };
+  }
+  if (profile.status === "suspended") {
+    await supabase.auth.signOut();
+    return { error: "This account is suspended. Contact an administrator." };
+  }
+
   redirect("/app/dashboard");
 }
 
