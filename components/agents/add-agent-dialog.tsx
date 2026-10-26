@@ -24,6 +24,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Checkbox } from "@/components/ui/checkbox";
+import { AGENT_POS_BANKS } from "@/types";
 
 const PROVINCES = [
   "Harare",
@@ -48,6 +49,8 @@ export function AddAgentDialog() {
   const [location, setLocation] = React.useState("");
   const [enpassent, setEnpassent] = React.useState(true);
   const [econet, setEconet] = React.useState(false);
+  const [posIds, setPosIds] = React.useState<Record<string, string>>({});
+  const [zinaraAccount, setZinaraAccount] = React.useState("");
   const [creating, setCreating] = React.useState(false);
   const [created, setCreated] = React.useState<{
     agentId?: string;
@@ -61,12 +64,14 @@ export function AddAgentDialog() {
     setLocation("");
     setEnpassent(true);
     setEconet(false);
+    setPosIds({});
+    setZinaraAccount("");
     setCreated(null);
   };
 
   const handleCreate = async () => {
-    if (!fullName.trim() || !email.trim() || !phone.trim()) {
-      toast.error("Please fill in all required fields");
+    if (!fullName.trim() || !phone.trim()) {
+      toast.error("Full name and phone are required");
       return;
     }
     if (!enpassent && !econet) {
@@ -88,6 +93,11 @@ export function AddAgentDialog() {
           location,
           role: "agent",
           moduleAccess,
+          bankPos: AGENT_POS_BANKS.map((bank) => ({
+            bank,
+            posId: (posIds[bank] ?? "").trim(),
+          })).filter((p) => p.posId),
+          zinaraAccount: zinaraAccount.trim(),
         }),
       });
       const data = await res.json();
@@ -136,9 +146,7 @@ export function AddAgentDialog() {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="add-email">
-                Email <span className="text-destructive">*</span>
-              </Label>
+              <Label htmlFor="add-email">Email</Label>
               <Input
                 id="add-email"
                 type="email"
@@ -185,6 +193,15 @@ export function AddAgentDialog() {
               />
             </div>
           </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="add-zinara">ZINARA Account</Label>
+            <Input
+              id="add-zinara"
+              placeholder="e.g. ZW019BJJ"
+              value={zinaraAccount}
+              onChange={(e) => setZinaraAccount(e.target.value)}
+            />
+          </div>
           <div className="space-y-2">
             <Label>Module Access</Label>
             <div className="flex items-center gap-4">
@@ -202,6 +219,31 @@ export function AddAgentDialog() {
                 />
                 Econet Moovah
               </label>
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Bank POS IDs</Label>
+            <p className="text-[11.5px] text-muted-foreground">
+              Each bank issues its own POS device — the ID below must match
+              that bank&apos;s statement.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              {AGENT_POS_BANKS.map((bank) => (
+                <div key={bank} className="space-y-1">
+                  <Label htmlFor={`add-pos-${bank}`} className="text-[11.5px] text-muted-foreground">
+                    {bank}
+                  </Label>
+                  <Input
+                    id={`add-pos-${bank}`}
+                    className="font-mono text-[12.5px]"
+                    placeholder={`${bank} POS ID`}
+                    value={posIds[bank] ?? ""}
+                    onChange={(e) =>
+                      setPosIds((s) => ({ ...s, [bank]: e.target.value }))
+                    }
+                  />
+                </div>
+              ))}
             </div>
           </div>
         </div>

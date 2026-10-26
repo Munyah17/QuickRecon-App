@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { permissionsForRole } from "@/lib/auth/permissions";
 import { createServiceClient } from "@/lib/supabase/server";
-import type { RoleCode } from "@/types";
+import { AGENT_POS_BANKS, posSchemeForBank, type RoleCode } from "@/types";
 
 export const runtime = "nodejs";
 
@@ -24,13 +24,18 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { fullName, email, phone, nationalId, location, province, role, moduleAccess, password } = body ?? {};
+  const { fullName, email, phone, nationalId, location, province, role, moduleAccess, zinaraAccount, bankPos, password } = body ?? {};
 
-  if (!fullName?.trim() || !email?.trim()) {
-    return NextResponse.json({ error: "Full name and email are required" }, { status: 400 });
+  if (!fullName?.trim()) {
+    return NextResponse.json({ error: "Full name is required" }, { status: 400 });
   }
   if (!VALID_ROLES.includes(role)) {
     return NextResponse.json({ error: "Invalid role" }, { status: 400 });
+  }
+  // Staff roles need an email — it becomes their portal login. Field agents
+  // have no login, so email is optional (WhatsApp/phone delivery still works).
+  if (role !== "agent" && !email?.trim()) {
+    return NextResponse.json({ error: "Email is required for staff accounts" }, { status: 400 });
   }
 
   const sb = await createServiceClient();
@@ -57,7 +62,7 @@ export async function POST(request: NextRequest) {
       id: agentId,
       user_id: null,
       full_name: fullName.trim(),
-      email: email.trim().toLowerCase(),
+      email: email?.trim() ? email.trim().toLowerCase() : null,
       phone: phone || null,
       province: province || location || null,
       location: location || null,
@@ -78,6 +83,80 @@ export async function POST(request: NextRequest) {
       await sb.from("agent_modules").insert(
         modules.map((m: string) => ({ agent_id: agentId, module: m }))
       );
+    }
+    // ZINARA account is an external identity — the engine resolves ZINARA
+    // transaction rows to this agent via agent_external_ids. Same scheme the
+    // bulk importer writes ("zinara_user").
+    const zinaraId = typeof zinaraAccount === "string" ? zinaraAccount.trim() : "";
+    if (zinaraId) {
+      // Index the bare code too when the value carries a " - NAME" suffix —
+      // source files often carry only "ZW019BJJ". Same variant logic as the
+      // bulk importer.
+      const variants = [zinaraId];
+      const dash = zinaraId.indexOf(" - ");
+      if (dash > 0) variants.push(zinaraId.slice(0, dash).trim());
+      const idRows = [...new Set(variants.filter(Boolean))].map((v) => ({
+        agent_id: agentId,
+        scheme: "zinara_user",
+        value: v,
+      }));
+      let { error: extError } = await sb.from("agent_external_ids").insert(idRows);
+      if (extError?.code === "23505") {
+        if (session.user.role !== "super_admin") {
+          return NextResponse.json(
+            { error: `Agent created, but ZINARA code ${zinaraId} is already assigned to another agent — only a super admin can reassign it.` },
+            { status: 500 }
+          );
+        }
+        // Super-admin override: ZINARA re-issues codes slowly, so ops sometimes
+        // hands a new agent a code still claimed by another agent. Upsert
+        // re-points the existing row (and inserts any missing variants) here.
+        const { error: reError } = await sb
+          .from("agent_external_ids")
+          .upsert(idRows, { onConflict: "scheme,value" });
+        extError = reError;
+      }
+      if (extError) {
+        return NextResponse.json(
+          { error: `Agent created but ZINARA account could not be saved: ${extError.message}` },
+          { status: 500 }
+        );
+      }
+    }
+    // Per-bank POS IDs — each bank issues its own POS device & statement.
+    // Stored as <bank>_pos schemes so rows on each bank's statement resolve
+    // to this agent during reconciliation.
+    if (Array.isArray(bankPos)) {
+      const validBanks = new Set<string>(AGENT_POS_BANKS);
+      const posRows = (bankPos as { bank?: unknown; posId?: unknown }[])
+        .map((p) => ({
+          bank: p?.bank,
+          posId: typeof p?.posId === "string" ? p.posId.trim() : "",
+        }))
+        .filter(
+          (p): p is { bank: string; posId: string } =>
+            typeof p.bank === "string" && validBanks.has(p.bank) && Boolean(p.posId)
+        );
+      if (posRows.length) {
+        const { error: posError } = await sb.from("agent_external_ids").insert(
+          posRows.map((p) => ({
+            agent_id: agentId,
+            scheme: posSchemeForBank(p.bank),
+            value: p.posId,
+          }))
+        );
+        if (posError) {
+          return NextResponse.json(
+            {
+              error:
+                posError.code === "23505"
+                  ? "Agent created, but a POS ID is already assigned to another agent"
+                  : `Agent created but POS IDs could not be saved: ${posError.message}`,
+            },
+            { status: 500 }
+          );
+        }
+      }
     }
     return NextResponse.json({ status: "pending", agentId });
   }

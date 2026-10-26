@@ -17,6 +17,7 @@ import {
   UserPen,
   Plus,
   Store,
+  Landmark,
 } from "lucide-react";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -45,12 +46,13 @@ import { MoneyValue } from "@/components/shared/money-value";
 import { ActivityFeed } from "@/components/shared/activity-feed";
 import { isCompanyRole, } from "@/lib/nav";
 import { formatDate, moduleName } from "@/lib/format";
-import type {
-  ActivityItem,
-  Agent,
-  Booth,
-  Reconciliation,
-  AppUser,
+import {
+  AGENT_POS_BANKS,
+  type ActivityItem,
+  type Agent,
+  type Booth,
+  type Reconciliation,
+  type AppUser,
 } from "@/types";
 
 function InfoRow({
@@ -208,6 +210,23 @@ export function AgentProfile({
               <InfoRow icon={MapPin} label="Location" value={`${agent.location}, ${agent.province}`} />
               <InfoRow icon={CalendarDays} label="Joined" value={formatDate(agent.joinedAt, "dd MMM yyyy")} />
             </div>
+
+            {(agent.bankPos?.length ?? 0) > 0 && (
+              <>
+                <Separator className="my-4" />
+                <p className="mb-1.5 text-[11px] font-semibold tracking-wide text-muted-foreground uppercase">
+                  Bank POS
+                </p>
+                <div className="space-y-0.5">
+                  {(agent.bankPos ?? []).map((p) => (
+                    <InfoRow key={p.bank} icon={Landmark} label={p.bank} value={p.posId} mono />
+                  ))}
+                </div>
+                <p className="mt-1 text-[11px] text-muted-foreground">
+                  Each bank issues its own POS &amp; statement.
+                </p>
+              </>
+            )}
           </CardContent>
         </Card>
 
@@ -362,20 +381,28 @@ function EditAgentDialog({
     icecashId: agent.iceCashId ?? "",
   });
   const [form, setForm] = React.useState(seed);
+  const [posIds, setPosIds] = React.useState<Record<string, string>>(
+    Object.fromEntries((agent.bankPos ?? []).map((p) => [p.bank, p.posId]))
+  );
 
   // Re-seed the form whenever a different agent / fresh data is opened.
   const [prev, setPrev] = React.useState({ open, agent });
   if (open !== prev.open || agent !== prev.agent) {
     setPrev({ open, agent });
-    if (open) setForm(seed());
+    if (open) {
+      setForm(seed());
+      setPosIds(
+        Object.fromEntries((agent.bankPos ?? []).map((p) => [p.bank, p.posId]))
+      );
+    }
   }
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement>) =>
     setForm((f) => ({ ...f, [k]: e.target.value }));
 
   async function save() {
-    if (!form.fullName.trim() || !form.email.trim()) {
-      toast.error("Name and email are required");
+    if (!form.fullName.trim()) {
+      toast.error("Name is required");
       return;
     }
     setSaving(true);
@@ -391,6 +418,10 @@ function EditAgentDialog({
           location: form.location.trim(),
           nationalId: form.nationalId.trim(),
           icecashId: form.icecashId.trim(),
+          bankPos: AGENT_POS_BANKS.map((bank) => ({
+            bank,
+            posId: (posIds[bank] ?? "").trim(),
+          })).filter((p) => p.posId),
         }),
       });
       const data = await res.json().catch(() => ({}));
@@ -418,7 +449,7 @@ function EditAgentDialog({
             <Input id="ea-name" value={form.fullName} onChange={set("fullName")} />
           </div>
           <div className="space-y-1.5 sm:col-span-2">
-            <Label htmlFor="ea-email">Email <span className="text-destructive">*</span></Label>
+            <Label htmlFor="ea-email">Email</Label>
             <Input id="ea-email" type="email" value={form.email} onChange={set("email")} />
           </div>
           <div className="space-y-1.5">
@@ -440,6 +471,31 @@ function EditAgentDialog({
           <div className="space-y-1.5 sm:col-span-2">
             <Label htmlFor="ea-icecash">IceCash ID</Label>
             <Input id="ea-icecash" value={form.icecashId} onChange={set("icecashId")} />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label>Bank POS IDs</Label>
+            <p className="text-[11.5px] text-muted-foreground">
+              Each bank issues its own POS device — the ID below must match
+              that bank&apos;s statement.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              {AGENT_POS_BANKS.map((bank) => (
+                <div key={bank} className="space-y-1">
+                  <Label htmlFor={`ea-pos-${bank}`} className="text-[11.5px] text-muted-foreground">
+                    {bank}
+                  </Label>
+                  <Input
+                    id={`ea-pos-${bank}`}
+                    className="font-mono text-[12.5px]"
+                    placeholder={`${bank} POS ID`}
+                    value={posIds[bank] ?? ""}
+                    onChange={(e) =>
+                      setPosIds((s) => ({ ...s, [bank]: e.target.value }))
+                    }
+                  />
+                </div>
+              ))}
+            </div>
           </div>
         </div>
         <DialogFooter>

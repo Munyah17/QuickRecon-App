@@ -54,6 +54,35 @@ export interface AgentModuleAccess {
   enabled: boolean;
 }
 
+/**
+ * Banks that issue each agent a dedicated POS terminal. Every bank has its
+ * own POS device and its own statement — the POS ID printed on that
+ * statement is what links bank rows back to the agent's float.
+ * Stored in agent_external_ids under the "<bank>_pos" scheme.
+ */
+export const AGENT_POS_BANKS = ["NMB", "CBZ", "NBS", "FBC", "Steward"] as const;
+export type AgentPosBank = (typeof AGENT_POS_BANKS)[number];
+
+/** agent_external_ids scheme for a bank's POS ID (e.g. "nmb_pos"). */
+export const posSchemeForBank = (bank: string): string =>
+  `${bank.toLowerCase()}_pos`;
+
+/** Reverse of posSchemeForBank — returns undefined for non-POS schemes. */
+export const bankFromPosScheme = (scheme: string): AgentPosBank | undefined => {
+  if (!scheme.endsWith("_pos")) return undefined;
+  const bank = scheme.slice(0, -4).toUpperCase();
+  return (AGENT_POS_BANKS as readonly string[]).includes(bank)
+    ? (bank as AgentPosBank)
+    : undefined;
+};
+
+/** A bank's POS ID assignment on an agent. */
+export interface AgentBankPos {
+  bank: AgentPosBank;
+  /** POS/terminal ID printed on this bank's statement. */
+  posId: string;
+}
+
 export interface Agent {
   id: string; // AGT-000184
   fullName: string;
@@ -63,6 +92,8 @@ export interface Agent {
   location: string;
   status: AgentStatus;
   modules: AgentModuleAccess[];
+  /** Per-bank POS IDs — each bank has its own POS device & statement. */
+  bankPos: AgentBankPos[];
   boothsCount: number;
   joinedAt: string;
   nationalId?: string;
@@ -93,7 +124,8 @@ export interface AgentExternalId {
     | "bank_pos_terminal"
     | "nmb_id"
     | "nbs_id"
-    | "cbz_id";
+    | "cbz_id"
+    | `${string}_pos`;
   value: string;
 }
 
@@ -178,6 +210,7 @@ export type ReconExceptionType =
   | "unrecognised_payment_source"
   | "possible_duplicate_import"
   | "calculation_warning"
+  | "statistical_anomaly"
   | "unbalanced_reconciliation";
 
 export interface ReconException {
@@ -192,6 +225,10 @@ export interface ReconException {
   description: string;
   status: ReconExceptionStatus;
   resolution?: string;
+  /** Set when the decision engine picked the owner automatically. */
+  assignedByEngine?: boolean;
+  assigneeName?: string;
+  assignmentReason?: string;
   createdAt: string;
 }
 

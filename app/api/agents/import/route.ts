@@ -65,6 +65,13 @@ const EXTERNAL_ID_COLUMNS: { scheme: string; headers: string[] }[] = [
   { scheme: "fbc", headers: ["FBC", "FBC Account"] },
   { scheme: "enpassent_user_id", headers: ["Enpassent ID", "Enpassent User ID", "EP ID"] },
   { scheme: "econet_id", headers: ["Econet ID", "EcoCash ID", "MSISDN"] },
+  // Per-bank POS IDs — each bank issues its own POS device & statement, so
+  // POS columns map onto dedicated <bank>_pos schemes.
+  { scheme: "nmb_pos", headers: ["NMB POS", "NMB POS ID", "NMB Terminal"] },
+  { scheme: "cbz_pos", headers: ["CBZ POS", "CBZ POS ID", "CBZ Terminal"] },
+  { scheme: "nbs_pos", headers: ["NBS POS", "NBS POS ID", "NBS Terminal"] },
+  { scheme: "fbc_pos", headers: ["FBC POS", "FBC POS ID", "FBC Terminal"] },
+  { scheme: "steward_pos", headers: ["Steward POS", "Steward POS ID", "Steward Terminal"] },
 ];
 
 /** Split a multi-code cell into trimmed, non-empty values. */
@@ -78,10 +85,11 @@ function splitCodes(raw: string): string[] {
 /**
  * POST /api/agents/import
  * Bulk-create agents from an .xlsx/.csv upload. Expected columns (header row,
- * case-insensitive): Full Name* | Email* | Phone | Province | Location |
+ * case-insensitive): Full Name* | Email | Phone | Province | Location |
  * National ID | IceCash ID | Modules | Status — plus optional external-ID
- * columns (Zinara User, NMB, NMB USD, CBZ, NBS, FBC, Enpassent ID, Econet ID)
- * saved to agent_external_ids for transaction matching.
+ * columns (Zinara User, NMB, NMB USD, CBZ, NBS, FBC, Enpassent ID, Econet ID,
+ * and per-bank <BANK> POS columns) saved to agent_external_ids for
+ * transaction matching.
  * Each row gets an agents row plus its agent_modules grants — no login is
  * provisioned (agents receive consolidated reconciliations on their contact
  * channels). Per-row outcomes are returned; one bad row never aborts the batch.
@@ -163,8 +171,8 @@ export async function POST(request: NextRequest) {
     }
 
     const base: RowOutcome = { row: i + 2, name: fullName, email, ok: false };
-    if (!fullName || !email) {
-      outcomes.push({ ...base, error: "Full Name and Email are required" });
+    if (!fullName) {
+      outcomes.push({ ...base, error: "Full Name is required" });
       continue;
     }
 
@@ -179,7 +187,7 @@ export async function POST(request: NextRequest) {
           id: agentId,
           user_id: null,
           full_name: fullName,
-          email,
+          email: email || null,
           phone: phone || null,
           province: province || location || null,
           location: location || null,
@@ -198,12 +206,17 @@ export async function POST(request: NextRequest) {
       let ids = 0;
       if (aliasRows.length) {
         // ignoreDuplicates: a code already claimed by another agent stays put
-        // rather than being silently re-pointed at the new row.
+        // rather than being silently re-pointed at the new row — unless the
+        // importer is a super admin, who may legitimately reassign codes while
+        // ZINARA re-issues replacements.
         const { data: inserted } = await sb
           .from("agent_external_ids")
           .upsert(
             aliasRows.map((a) => ({ agent_id: agentId, ...a })),
-            { onConflict: "scheme,value", ignoreDuplicates: true }
+            {
+              onConflict: "scheme,value",
+              ignoreDuplicates: session.user.role !== "super_admin",
+            }
           )
           .select("id");
         ids = inserted?.length ?? 0;

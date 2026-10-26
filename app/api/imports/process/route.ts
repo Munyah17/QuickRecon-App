@@ -4,6 +4,7 @@ import { getSession } from "@/lib/auth/session";
 import { permissionsForRole } from "@/lib/auth/permissions";
 import { runReconciliationEngine } from "@/lib/reconciliation/engine";
 import { generateAgentDocuments, documentToCSV } from "@/lib/reconciliation/document";
+import { runDecisionEngine } from "@/lib/engine/run";
 import { getAgents, getIdentityAliases } from "@/lib/data";
 import type { ModuleCode } from "@/types";
 import type { SourceRow } from "@/lib/reconciliation/types";
@@ -140,6 +141,7 @@ export async function POST(request: NextRequest) {
     // collected and returned so the operator sees that nothing was saved
     // instead of a false "staged successfully".
     const persistenceErrors: string[] = [];
+    let engineSummary: Awaited<ReturnType<typeof runDecisionEngine>> | null = null;
     if (sb) {
       const importId = `IMP-${period.replace("-", "")}-${moduleCode === "enpassent" ? "ENP" : "ECN"}-${Date.now() % 10000}`;
       const { error: impErr } = await sb.from("import_batches").insert({
@@ -246,6 +248,7 @@ export async function POST(request: NextRequest) {
 
       // Persist engine exceptions so the Exception Centre / validation step
       // shows them — previously they only lived in this response and vanished.
+      const persistedExceptions: { id: string; type: string; severity: string; agent_id: string | null }[] = [];
       if (output.exceptions.length) {
         const excRows = output.exceptions.map((e, i) => ({
           id: `EXC-${Date.now().toString(36)}-${String(i).padStart(3, "0")}`,
@@ -261,6 +264,27 @@ export async function POST(request: NextRequest) {
         }));
         const { error: excErr } = await sb.from("reconciliation_exceptions").insert(excRows);
         if (excErr) persistenceErrors.push(`reconciliation_exceptions: ${excErr.message}`);
+        else persistedExceptions.push(...excRows.map((r) => ({ id: r.id, type: r.type, severity: r.severity, agent_id: r.agent_id })));
+      }
+
+      // Decision engine: import anomalies → risk scores → exception triage.
+      // Engine failures never fail the import — they're reported alongside
+      // the other persistence diagnostics instead.
+      if (!batchErr) {
+        try {
+          engineSummary = await runDecisionEngine(sb, {
+            output,
+            batchId: batchDocs.batchId,
+            importBatchId: impErr ? null : importId,
+            exceptionRows: persistedExceptions,
+            actorId: session.user.id,
+          });
+          persistenceErrors.push(...engineSummary.errors);
+        } catch (engErr) {
+          persistenceErrors.push(
+            `decision_engine: ${engErr instanceof Error ? engErr.message : "failed"}`
+          );
+        }
       }
 
       if (!impErr) {
@@ -281,6 +305,7 @@ export async function POST(request: NextRequest) {
       documents: batchDocs.documents,
       persisted: persistenceErrors.length === 0,
       persistenceErrors,
+      engine: engineSummary,
     });
   } catch (err) {
     const message = err instanceof Error ? err.message : "Processing failed";

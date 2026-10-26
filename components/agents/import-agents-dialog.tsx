@@ -51,9 +51,9 @@ export function ImportAgentsDialog() {
 
   const downloadTemplate = () => {
     const header =
-      "Full Name,Email,Phone,Province,Location,National ID,IceCash ID,Modules,Status,Zinara User,NMB,NMB USD,CBZ,NBS,FBC";
+      "Full Name,Email,Phone,Province,Location,National ID,IceCash ID,Modules,Status,Zinara User,NMB,NMB USD,CBZ,NBS,FBC,NMB POS,CBZ POS,NBS POS,FBC POS,Steward POS";
     const sample =
-      'Tendai Moyo,tendai.moyo@example.com,+263771234567,Harare,CBD,63-123456A78,ICX-8821,both,pending,ZW019BJJ - TENDAI MOYO,N1411T01,Q1411T01,89021434,NBSP0633,29014121';
+      'Tendai Moyo,tendai.moyo@example.com,+263771234567,Harare,CBD,63-123456A78,ICX-8821,both,pending,ZW019BJJ - TENDAI MOYO,N1411T01,Q1411T01,89021434,NBSP0633,29014121,NMB-POS-1122,CBZ-POS-8899,,,';
     const blob = new Blob([`${header}\n${sample}\n`], { type: "text/csv" });
     const a = document.createElement("a");
     a.href = URL.createObjectURL(blob);
@@ -99,9 +99,11 @@ export function ImportAgentsDialog() {
           <DialogDescription>
             Upload an .xlsx or .csv with one agent per row — no logins are
             created; agents receive statements via WhatsApp/email. Required:
-            Full Name, Email. Optional: Phone, Province, Location, National ID,
+            Full Name. Optional: Email, Phone, Province, Location, National ID,
             IceCash ID, Modules, Status — plus bank/Zinara code columns (Zinara
-            User, NMB, NMB USD, CBZ, NBS, FBC) used to match transactions.
+            User, NMB, NMB USD, CBZ, NBS, FBC) and per-bank POS ID columns
+            (NMB POS, CBZ POS, NBS POS, FBC POS, Steward POS) used to match
+            transactions.
           </DialogDescription>
         </DialogHeader>
 

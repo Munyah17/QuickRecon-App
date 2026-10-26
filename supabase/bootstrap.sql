@@ -99,7 +99,7 @@ create table if not exists public.agents (
   id text primary key,                    -- AGT-000184
   user_id uuid references public.profiles (id),
   full_name text not null,
-  email text not null,
+  email text,                             -- optional: WhatsApp/phone delivery
   phone text,
   province text,
   location text,

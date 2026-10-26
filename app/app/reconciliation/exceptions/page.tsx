@@ -56,9 +56,29 @@ export default async function ExceptionsPage() {
                   <span className="rounded-full bg-info-soft px-2 py-0.5 text-[10.5px] font-semibold text-info-foreground">
                     {e.type.replaceAll("_", " ")}
                   </span>
+                  {e.assignedByEngine && (
+                    <span className="rounded-full bg-primary-soft px-2 py-0.5 text-[10.5px] font-semibold text-primary">
+                      AUTO-ASSIGNED
+                    </span>
+                  )}
                 </div>
                 <StatusBadge status={e.status} />
               </div>
+
+              {e.assigneeName && (
+                <p
+                  className="mt-1.5 text-[12px] font-medium text-primary"
+                  title={e.assignmentReason ?? undefined}
+                >
+                  Owner: {e.assigneeName}
+                  {e.assignedByEngine ? " (engine)" : ""}
+                </p>
+              )}
+              {e.assignedByEngine && e.assignmentReason && (
+                <p className="mt-0.5 text-[11px] text-muted-foreground">
+                  Why: {e.assignmentReason}
+                </p>
+              )}
 
               <p className="mt-2 text-[13.5px] font-medium">{e.description}</p>
               <p className="mt-1 text-[12px] text-muted-foreground">

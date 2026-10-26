@@ -33,6 +33,11 @@ export const MOCK_AGENTS: Agent[] = [
       { module: "econet-moovah", enabled: true },
     ],
     boothsCount: 2,
+    bankPos: [
+      { bank: "NMB", posId: "NMB-POS-44120" },
+      { bank: "CBZ", posId: "CBZ-T-08912" },
+      { bank: "FBC", posId: "FBC-5517" },
+    ],
     joinedAt: "2023-01-12",
     nationalId: "63-123456-Z-12",
     iceCashId: "IC12345678",
@@ -63,6 +68,10 @@ export const MOCK_AGENTS: Agent[] = [
       { module: "econet-moovah", enabled: false },
     ],
     boothsCount: 1,
+    bankPos: [
+      { bank: "NMB", posId: "NMB-POS-61277" },
+      { bank: "NBS", posId: "NBS-03442" },
+    ],
     joinedAt: "2023-04-02",
     nationalId: "63-443211-Z-45",
     kycStatus: "verified",
@@ -88,6 +97,10 @@ export const MOCK_AGENTS: Agent[] = [
       { module: "econet-moovah", enabled: true },
     ],
     boothsCount: 1,
+    bankPos: [
+      { bank: "CBZ", posId: "CBZ-T-11560" },
+      { bank: "Steward", posId: "STW-2291" },
+    ],
     joinedAt: "2023-07-19",
     kycStatus: "pending",
     metrics: {
@@ -112,6 +125,11 @@ export const MOCK_AGENTS: Agent[] = [
       { module: "econet-moovah", enabled: true },
     ],
     boothsCount: 3,
+    bankPos: [
+      { bank: "NMB", posId: "NMB-POS-77331" },
+      { bank: "CBZ", posId: "CBZ-T-90214" },
+      { bank: "NBS", posId: "NBS-11807" },
+    ],
     joinedAt: "2022-11-05",
     kycStatus: "verified",
     metrics: {
@@ -136,6 +154,9 @@ export const MOCK_AGENTS: Agent[] = [
       { module: "econet-moovah", enabled: true },
     ],
     boothsCount: 1,
+    bankPos: [
+      { bank: "FBC", posId: "FBC-9021" },
+    ],
     joinedAt: "2024-02-14",
     kycStatus: "pending",
     metrics: {
@@ -497,6 +518,18 @@ export const MOCK_EXTERNAL_IDS: IdentityAlias[] = [
   { scheme: "econet_id", value: "EC-775551", agentId: "AGT-000186" },
   { scheme: "enpassent_user_id", value: "EP-101187", agentId: "AGT-000187" },
   { scheme: "enpassent_user_id", value: "EP-101188", agentId: "AGT-000188" },
+  // Per-bank POS IDs (each bank has its own POS device & statement).
+  { scheme: "nmb_pos", value: "NMB-POS-44120", agentId: "AGT-000184" },
+  { scheme: "cbz_pos", value: "CBZ-T-08912", agentId: "AGT-000184" },
+  { scheme: "fbc_pos", value: "FBC-5517", agentId: "AGT-000184" },
+  { scheme: "nmb_pos", value: "NMB-POS-61277", agentId: "AGT-000185" },
+  { scheme: "nbs_pos", value: "NBS-03442", agentId: "AGT-000185" },
+  { scheme: "cbz_pos", value: "CBZ-T-11560", agentId: "AGT-000186" },
+  { scheme: "steward_pos", value: "STW-2291", agentId: "AGT-000186" },
+  { scheme: "nmb_pos", value: "NMB-POS-77331", agentId: "AGT-000187" },
+  { scheme: "cbz_pos", value: "CBZ-T-90214", agentId: "AGT-000187" },
+  { scheme: "nbs_pos", value: "NBS-11807", agentId: "AGT-000187" },
+  { scheme: "fbc_pos", value: "FBC-9021", agentId: "AGT-000188" },
 ];
 
 /** Monthly series used by Super Admin revenue trend chart. */

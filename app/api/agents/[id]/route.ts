@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { isCompanyRole } from "@/lib/nav";
 import { createServiceClient } from "@/lib/supabase/server";
+import { AGENT_POS_BANKS, posSchemeForBank } from "@/types";
 
 export const runtime = "nodejs";
 
@@ -21,7 +22,9 @@ const EDITABLE = [
  * Company staff update an agent's profile fields. The agents table has no
  * UPDATE RLS policy, so this goes through the service client after an
  * explicit role check.
- * Body: { fullName?, email?, phone?, province?, location?, nationalId?, icecashId?, status? }
+ * Body: { fullName?, email?, phone?, province?, location?, nationalId?, icecashId?, status?, bankPos? }
+ * bankPos replaces the agent's per-bank POS IDs (agent_external_ids *_pos
+ * schemes) — each bank issues its own POS device & statement.
  */
 export async function PATCH(
   request: NextRequest,
@@ -56,21 +59,74 @@ export async function PATCH(
   if (patch.status && !["active", "suspended", "inactive"].includes(String(patch.status))) {
     return NextResponse.json({ error: "Invalid status" }, { status: 400 });
   }
-  if (Object.keys(patch).length === 0) {
+
+  // Per-bank POS IDs — [{ bank, posId }] with blank posIds removed. When the
+  // key is present at all (even []), the agent's *_pos rows are replaced.
+  const hasBankPos = Array.isArray(body.bankPos);
+  const validBanks = new Set<string>(AGENT_POS_BANKS);
+  const bankPos: { bank: string; posId: string }[] = [];
+  if (hasBankPos) {
+    for (const entry of body.bankPos as unknown[]) {
+      const e = entry as { bank?: unknown; posId?: unknown };
+      if (typeof e?.bank !== "string" || !validBanks.has(e.bank)) {
+        return NextResponse.json(
+          { error: `Invalid bank in bankPos — expected one of ${AGENT_POS_BANKS.join(", ")}` },
+          { status: 400 }
+        );
+      }
+      const posId = typeof e.posId === "string" ? e.posId.trim() : "";
+      if (posId) bankPos.push({ bank: e.bank, posId });
+    }
+  }
+
+  if (Object.keys(patch).length === 0 && !hasBankPos) {
     return NextResponse.json({ error: "No editable fields provided" }, { status: 400 });
   }
 
   const service = await createServiceClient();
   if (!service) return NextResponse.json({ error: "Database not configured" }, { status: 503 });
 
-  const { data, error } = await service
-    .from("agents")
-    .update(patch)
-    .eq("id", id)
-    .select("id")
-    .maybeSingle();
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-  if (!data) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+  if (Object.keys(patch).length > 0) {
+    const { data, error } = await service
+      .from("agents")
+      .update(patch)
+      .eq("id", id)
+      .select("id")
+      .maybeSingle();
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+    if (!data) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
+  }
+
+  if (hasBankPos) {
+    // Replace this agent's POS schemes wholesale — banks left blank are
+    // removed rather than left stale.
+    const { error: delError } = await service
+      .from("agent_external_ids")
+      .delete()
+      .eq("agent_id", id)
+      .in("scheme", AGENT_POS_BANKS.map((b) => posSchemeForBank(b)));
+    if (delError) return NextResponse.json({ error: delError.message }, { status: 500 });
+    if (bankPos.length) {
+      const { error: insError } = await service.from("agent_external_ids").insert(
+        bankPos.map((p) => ({
+          agent_id: id,
+          scheme: posSchemeForBank(p.bank),
+          value: p.posId,
+        }))
+      );
+      if (insError) {
+        return NextResponse.json(
+          {
+            error:
+              insError.code === "23505"
+                ? "One of the POS IDs is already assigned to another agent"
+                : insError.message,
+          },
+          { status: insError.code === "23505" ? 409 : 500 }
+        );
+      }
+    }
+  }
 
   return NextResponse.json({ ok: true });
 }

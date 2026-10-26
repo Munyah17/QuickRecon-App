@@ -34,7 +34,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ExportButton } from "@/components/shared/export-button";
-import type { Agent } from "@/types";
+import { AGENT_POS_BANKS, type Agent, type AgentPosBank } from "@/types";
 
 const STATUS_TABS = ["all", "active", "suspended", "inactive", "pending"] as const;
 
@@ -47,6 +47,14 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
     () => Array.from(new Set(agents.map((a) => a.province))).sort(),
     [agents]
   );
+
+  /** Banks that actually have a POS ID on at least one agent — each gets its
+   * own column, ordered like AGENT_POS_BANKS. */
+  const posBanks = React.useMemo<AgentPosBank[]>(() => {
+    const present = new Set<AgentPosBank>();
+    for (const a of agents) for (const p of a.bankPos ?? []) present.add(p.bank);
+    return AGENT_POS_BANKS.filter((b) => present.has(b));
+  }, [agents]);
 
   const filtered = React.useMemo(
     () =>
@@ -94,6 +102,22 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
           </span>
         ),
       },
+      // One POS ID column per bank — each bank issues its own POS device
+      // whose ID appears on that bank's statement.
+      ...posBanks.map(
+        (bank): ColumnDef<Agent, unknown> => ({
+          id: `pos-${bank.toLowerCase()}`,
+          header: `${bank} POS`,
+          cell: ({ row }) => {
+            const posId = row.original.bankPos?.find((p) => p.bank === bank)?.posId;
+            return (
+              <span className="whitespace-nowrap font-mono text-[12px] text-muted-foreground">
+                {posId ?? "—"}
+              </span>
+            );
+          },
+        })
+      ),
       {
         accessorKey: "modules",
         header: "Modules",
@@ -141,7 +165,7 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
         size: 40,
       },
     ],
-    []
+    [posBanks]
   );
 
   const counts = React.useMemo(() => {
@@ -224,11 +248,18 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
               label="Export"
               title="QuickRecon — Agents"
               data={{
-                columns: ["#", "Name", "Agent ID", "Modules", "Booths", "Phone", "Email", "Status"],
+                columns: [
+                  "#", "Name", "Agent ID",
+                  ...posBanks.map((b) => `${b} POS`),
+                  "Modules", "Booths", "Phone", "Email", "Status",
+                ],
                 rows: filtered.map((a, i) => [
                   i + 1,
                   a.fullName,
                   a.id,
+                  ...posBanks.map(
+                    (b) => a.bankPos?.find((p) => p.bank === b)?.posId ?? "—"
+                  ),
                   a.modules.filter((m) => m.enabled).map((m) => (m.module === "econet-moovah" ? "Econet" : "Enpassent")).join(", "),
                   a.boothsCount,
                   a.phone,
@@ -383,6 +414,9 @@ function EditAgentDialog({
   const [phone, setPhone] = React.useState(agent.phone);
   const [province, setProvince] = React.useState(agent.province);
   const [location, setLocation] = React.useState(agent.location);
+  const [posIds, setPosIds] = React.useState<Record<string, string>>(
+    Object.fromEntries((agent.bankPos ?? []).map((p) => [p.bank, p.posId]))
+  );
   const [saving, setSaving] = React.useState(false);
   const router = useRouter();
 
@@ -392,7 +426,17 @@ function EditAgentDialog({
       const res = await fetch(`/api/agents/${agent.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ fullName, email, phone, province, location }),
+        body: JSON.stringify({
+          fullName,
+          email,
+          phone,
+          province,
+          location,
+          bankPos: AGENT_POS_BANKS.map((bank) => ({
+            bank,
+            posId: (posIds[bank] ?? "").trim(),
+          })).filter((p) => p.posId),
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Update failed");
@@ -459,6 +503,31 @@ function EditAgentDialog({
                 value={location}
                 onChange={(e) => setLocation(e.target.value)}
               />
+            </div>
+          </div>
+          <div className="space-y-2">
+            <Label>Bank POS IDs</Label>
+            <p className="text-[11.5px] text-muted-foreground">
+              Each bank issues its own POS device — the ID below must match
+              that bank&apos;s statement.
+            </p>
+            <div className="grid grid-cols-2 gap-3">
+              {AGENT_POS_BANKS.map((bank) => (
+                <div key={bank} className="space-y-1">
+                  <Label htmlFor={`edit-pos-${bank}`} className="text-[11.5px] text-muted-foreground">
+                    {bank}
+                  </Label>
+                  <Input
+                    id={`edit-pos-${bank}`}
+                    className="font-mono text-[12.5px]"
+                    placeholder={`${bank} POS ID`}
+                    value={posIds[bank] ?? ""}
+                    onChange={(e) =>
+                      setPosIds((s) => ({ ...s, [bank]: e.target.value }))
+                    }
+                  />
+                </div>
+              ))}
             </div>
           </div>
         </div>

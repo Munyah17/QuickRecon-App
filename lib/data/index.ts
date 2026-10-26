@@ -4,7 +4,7 @@
  * ever call these functions — they never read the fixture file directly.
  */
 import { createClient } from "@/lib/supabase/server";
-import type { ModuleCode } from "@/types";
+import { bankFromPosScheme, type AgentBankPos, type ModuleCode } from "@/types";
 import {
   MOCK_AGENTS,
   MOCK_BOOTHS,
@@ -41,6 +41,9 @@ function mapAgent(row: any): (typeof MOCK_AGENTS)[number] {
     location: row.location ?? "",
     status: row.status,
     modules: (row.agent_modules ?? []).map((m: any) => ({ module: m.module, enabled: m.enabled })),
+    bankPos: (row.agent_external_ids ?? [])
+      .map((e: any) => ({ bank: bankFromPosScheme(e.scheme), posId: e.value }))
+      .filter((p: { bank?: string; posId: string }): p is AgentBankPos => Boolean(p.bank)),
     boothsCount: row.booths?.[0]?.count ?? 0,
     joinedAt: row.joined_at ?? row.created_at,
     nationalId: row.national_id ?? undefined,
@@ -54,7 +57,7 @@ export async function getAgents() {
   if (supabase) {
     const { data, error } = await supabase
       .from("agents")
-      .select("*, agent_modules(module, enabled), booths:booths(count)")
+      .select("*, agent_modules(module, enabled), agent_external_ids(scheme, value), booths:booths(count)")
       .order("full_name", { ascending: true });
     if (error) console.error("getAgents query failed:", error.message);
     return (data ?? []).map(mapAgent);
@@ -237,7 +240,7 @@ export async function getExceptions(batchId?: string) {
   if (supabase) {
     let q = supabase
       .from("reconciliation_exceptions")
-      .select("*, agents(full_name)")
+      .select("*, agents(full_name), assignee_profile:profiles!reconciliation_exceptions_assignee_fkey(full_name)")
       .order("created_at", { ascending: false });
     if (batchId) q = q.eq("import_batch_id", batchId);
     const { data, error } = await q;
@@ -254,12 +257,44 @@ export async function getExceptions(batchId?: string) {
       description: e.description,
       status: e.status,
       resolution: e.resolution ?? undefined,
+      assignedByEngine: e.assigned_by_engine ?? false,
+      assigneeName: e.assignee_profile?.full_name ?? undefined,
+      assignmentReason: e.assignment_reason ?? undefined,
       createdAt: e.created_at,
     }));
   }
   return batchId
     ? MOCK_EXCEPTIONS.filter((e) => e.batchId === batchId)
     : MOCK_EXCEPTIONS;
+}
+
+/** Latest decision-engine risk score per module for one agent. */
+export async function getAgentRiskScores(agentId: string) {
+  const supabase = await db();
+  if (!supabase) return [] as {
+    module: string; period: string; score: number;
+    level: "low" | "medium" | "high" | "critical";
+    factors: { factor: string; weight: number; detail: string }[];
+    computedAt: string;
+  }[];
+  const { data } = await supabase
+    .from("agent_risk_scores")
+    .select("*")
+    .eq("agent_id", agentId)
+    .order("computed_at", { ascending: false })
+    .limit(10);
+  const latest = new Map<string, any>();
+  for (const r of (data ?? []) as any[]) {
+    if (!latest.has(r.module)) latest.set(r.module, r);
+  }
+  return [...latest.values()].map((r) => ({
+    module: r.module as string,
+    period: r.period as string,
+    score: r.score as number,
+    level: r.level as "low" | "medium" | "high" | "critical",
+    factors: (r.factors ?? []) as { factor: string; weight: number; detail: string }[],
+    computedAt: r.computed_at as string,
+  }));
 }
 
 export async function getImportBatches() {
