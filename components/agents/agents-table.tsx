@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ColumnDef } from "@tanstack/react-table";
-import { Ellipsis, Eye, ShieldOff, Trash2, UserPen } from "lucide-react";
+import { CircleCheck, Ellipsis, Eye, ShieldOff, Trash2, UserPen } from "lucide-react";
 import { toast } from "sonner";
 import { DataTable } from "@/components/data-table/data-table";
 import { StatusBadge } from "@/components/shared/status-badge";
@@ -39,9 +39,12 @@ import { AGENT_POS_BANKS, type Agent, type AgentPosBank } from "@/types";
 const STATUS_TABS = ["all", "active", "suspended", "inactive", "pending"] as const;
 
 export function AgentsTable({ agents }: { agents: Agent[] }) {
+  const router = useRouter();
   const [moduleFilter, setModuleFilter] = React.useState("all");
   const [statusFilter, setStatusFilter] = React.useState<string>("all");
   const [provinceFilter, setProvinceFilter] = React.useState("all");
+  const [activateOpen, setActivateOpen] = React.useState(false);
+  const [activating, setActivating] = React.useState(false);
 
   const provinces = React.useMemo(
     () => Array.from(new Set(agents.map((a) => a.province))).sort(),
@@ -176,6 +179,28 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
     return c;
   }, [agents]);
 
+  /** Flip every agent still "pending" (e.g. straight after a bulk import)
+   * to "active" via the bulk PATCH endpoint. */
+  const activatePending = async () => {
+    setActivating(true);
+    try {
+      const res = await fetch("/api/agents", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ fromStatus: "pending", status: "active" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Activation failed");
+      toast.success(`${data.updated} agent${data.updated === 1 ? "" : "s"} activated`);
+      setActivateOpen(false);
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Activation failed");
+    } finally {
+      setActivating(false);
+    }
+  };
+
   return (
     <div className="space-y-3">
       {/* Mobile segmented status filter (per mobile mockup) */}
@@ -205,7 +230,18 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
         pageSize={10}
         initialSorting={[{ id: "fullName", desc: false }]}
         toolbar={
-          <div className="hidden flex-wrap items-center gap-2 lg:flex">
+          <>
+            {counts.pending > 0 && (
+              <Button
+                variant="outline"
+                className="h-9 gap-1.5 text-[12.5px]"
+                onClick={() => setActivateOpen(true)}
+              >
+                <CircleCheck className="size-4" aria-hidden />
+                Activate {counts.pending} pending
+              </Button>
+            )}
+            <div className="hidden flex-wrap items-center gap-2 lg:flex">
             <Select value={moduleFilter} onValueChange={setModuleFilter}>
               <SelectTrigger className="h-9 w-36 bg-card text-[12.5px]">
                 <SelectValue placeholder="All Modules" />
@@ -268,10 +304,33 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
                 ]),
               }}
             />
-          </div>
+            </div>
+          </>
         }
         renderMobileCard={(a) => <AgentMobileCard agent={a} />}
       />
+
+      {/* Bulk activate — flips every agent still "pending" to active. */}
+      <Dialog open={activateOpen} onOpenChange={setActivateOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Activate pending agents?</DialogTitle>
+            <DialogDescription>
+              This marks all {counts.pending} agent{counts.pending === 1 ? "" : "s"} currently
+              pending as active. Active agents are included in reconciliation
+              runs and statement delivery.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setActivateOpen(false)}>
+              Cancel
+            </Button>
+            <Button onClick={activatePending} disabled={activating}>
+              {activating ? "Activating…" : `Activate ${counts.pending}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -283,6 +342,26 @@ function AgentActions({ id, agent }: { id: string; agent: Agent }) {
   const [deleteOpen, setDeleteOpen] = React.useState(false);
   const [suspending, setSuspending] = React.useState(false);
   const [deleting, setDeleting] = React.useState(false);
+  const [activating, setActivating] = React.useState(false);
+
+  const activate = async () => {
+    setActivating(true);
+    try {
+      const res = await fetch(`/api/agents/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "active" }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Activate failed");
+      toast.success(`${agent.fullName} is now active`);
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Activate failed");
+    } finally {
+      setActivating(false);
+    }
+  };
 
   const suspend = async () => {
     setSuspending(true);
@@ -339,12 +418,24 @@ function AgentActions({ id, agent }: { id: string; agent: Agent }) {
           <DropdownMenuItem className="gap-2" onSelect={() => setEditOpen(true)}>
             <UserPen className="size-4" aria-hidden /> Edit agent
           </DropdownMenuItem>
-          <DropdownMenuItem
-            className="gap-2 text-destructive focus:text-destructive"
-            onSelect={() => setSuspendOpen(true)}
-          >
-            <ShieldOff className="size-4" aria-hidden /> Suspend
-          </DropdownMenuItem>
+          {agent.status !== "active" && (
+            <DropdownMenuItem
+              className="gap-2"
+              onSelect={activate}
+              disabled={activating}
+            >
+              <CircleCheck className="size-4" aria-hidden />
+              {activating ? "Activating…" : "Activate"}
+            </DropdownMenuItem>
+          )}
+          {agent.status !== "suspended" && (
+            <DropdownMenuItem
+              className="gap-2 text-destructive focus:text-destructive"
+              onSelect={() => setSuspendOpen(true)}
+            >
+              <ShieldOff className="size-4" aria-hidden /> Suspend
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem
             className="gap-2 text-destructive focus:text-destructive"
             onSelect={() => setDeleteOpen(true)}

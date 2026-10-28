@@ -81,7 +81,10 @@ export const getSession = cache(async (): Promise<SessionInfo | null> => {
     if (!supabase) {
       console.warn("[getSession] Supabase client not available, using preview mode");
       const cookieStore = await cookies();
-      const rawRole = cookieStore.get("qr_preview_role")?.value ?? "super_admin";
+      // No preview-role cookie → not signed in. Redirects to /login rather
+      // than silently granting a session.
+      const rawRole = cookieStore.get("qr_preview_role")?.value;
+      if (!rawRole) return null;
       const role = (rawRole in PREVIEW_USERS ? rawRole : "super_admin") as RoleCode;
       const user = previewUser(role);
       return { user, permissions: permissionsForRole(role), source: "preview" };

@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { isCompanyRole } from "@/lib/nav";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -43,4 +43,53 @@ export async function GET() {
     closing_position: fin.get(a.id)?.closing ?? 0,
   }));
   return NextResponse.json({ agents });
+}
+
+const AGENT_STATUSES = ["active", "suspended", "inactive", "pending"] as const;
+/** Statuses a bulk update may SET — "pending" is import-only, never assigned here. */
+const SETTABLE_STATUSES = ["active", "suspended", "inactive"] as const;
+
+/**
+ * PATCH /api/agents — company staff bulk-update agent status.
+ * Body: { status, ids?: string[], fromStatus?: string }
+ * `ids` limits the update to those agents; `fromStatus` selects every agent
+ * currently in that state — e.g. { fromStatus: "pending", status: "active" }
+ * activates everything left pending by a bulk import. At least one selector
+ * is required so a bare payload can't flip the whole table.
+ */
+export async function PATCH(request: NextRequest) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!isCompanyRole(session.user.role)) {
+    return NextResponse.json({ error: "Only company staff can update agents" }, { status: 403 });
+  }
+
+  const body = await request.json().catch(() => null);
+  const status = String(body?.status ?? "");
+  if (!(SETTABLE_STATUSES as readonly string[]).includes(status)) {
+    return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+  }
+  const ids = Array.isArray(body?.ids)
+    ? (body.ids as unknown[]).filter(
+        (i): i is string => typeof i === "string" && i.trim().length > 0
+      )
+    : [];
+  const fromStatus = typeof body?.fromStatus === "string" ? body.fromStatus : null;
+  if (ids.length === 0 && !fromStatus) {
+    return NextResponse.json({ error: "Provide ids[] or fromStatus" }, { status: 400 });
+  }
+  if (fromStatus && !(AGENT_STATUSES as readonly string[]).includes(fromStatus)) {
+    return NextResponse.json({ error: "Invalid fromStatus" }, { status: 400 });
+  }
+
+  const sb = await createServiceClient();
+  if (!sb) return NextResponse.json({ error: "Database not configured" }, { status: 503 });
+
+  const query = sb.from("agents").update({ status });
+  const { data, error } = await (ids.length
+    ? query.in("id", ids)
+    : query.eq("status", fromStatus!)
+  ).select("id");
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  return NextResponse.json({ ok: true, updated: data?.length ?? 0 });
 }

@@ -45,13 +45,15 @@ export function ActivityFeed({ items }: { items: ActivityItem[] }) {
   return (
     <ul className="divide-y">
       {items.map((item) => {
-        const Icon = KIND_ICON[item.kind];
+        // Fallbacks: an unmapped kind must never render `undefined` (React #130).
+        const Icon = KIND_ICON[item.kind] ?? UserRound;
+        const tone = KIND_TONE[item.kind] ?? "bg-muted text-muted-foreground";
         return (
           <li key={item.id} className="flex items-start gap-3 px-1 py-3 first:pt-0 last:pb-0">
             <span
               className={cn(
                 "mt-0.5 flex size-7.5 shrink-0 items-center justify-center rounded-lg",
-                KIND_TONE[item.kind]
+                tone
               )}
             >
               <Icon className="size-3.5" aria-hidden />

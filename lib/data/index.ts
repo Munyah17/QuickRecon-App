@@ -4,7 +4,12 @@
  * ever call these functions — they never read the fixture file directly.
  */
 import { createClient } from "@/lib/supabase/server";
-import { bankFromPosScheme, type AgentBankPos, type ModuleCode } from "@/types";
+import {
+  bankFromPosScheme,
+  type ActivityKind,
+  type AgentBankPos,
+  type ModuleCode,
+} from "@/types";
 import {
   MOCK_AGENTS,
   MOCK_BOOTHS,
@@ -493,6 +498,21 @@ export async function getNotifications() {
   return MOCK_NOTIFICATIONS;
 }
 
+/** audit_logs stores the raw table name in `entity`; the UI kind vocabulary
+ * is smaller, so unknown entities fall back to a neutral kind rather than
+ * leaking an unmapped value to the icon/tone maps in ActivityFeed. */
+const ENTITY_TO_KIND: Record<string, ActivityKind> = {
+  import_batches: "import",
+  reconciliation_batches: "reconciliation",
+  reconciliations: "reconciliation",
+  reconciliation_exceptions: "exception",
+  reports: "report",
+  agents: "agent",
+  agent_external_ids: "agent",
+  profiles: "profile",
+  submissions: "submission",
+};
+
 export async function getActivities() {
   const supabase = await db();
   if (supabase) {
@@ -503,7 +523,7 @@ export async function getActivities() {
       .limit(30);
     return (data ?? []).map((a: any) => ({
       id: String(a.id),
-      kind: a.entity ?? "profile",
+      kind: ENTITY_TO_KIND[a.entity] ?? "profile",
       title: a.action,
       description: a.entity_id ?? "",
       at: a.created_at,
