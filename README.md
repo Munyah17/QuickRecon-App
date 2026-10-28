@@ -76,9 +76,9 @@ Use User Management for future staff accounts. To link an existing confirmed
 Auth account without replacing its password or overwriting an existing profile:
 
 ```sh
-node scripts/repair-staff-profile.mjs --email munyamuzvidziwa19@gmail.com --role super_admin
+node scripts/repair-staff-profile.mjs --email staff@your-domain.example --role super_admin
 # After reviewing the dry-run result:
-node scripts/repair-staff-profile.mjs --email munyamuzvidziwa19@gmail.com --role super_admin --apply
+node scripts/repair-staff-profile.mjs --email staff@your-domain.example --role super_admin --apply
 ```
 
 The command reads credentials from the environment. For local `.env.local`, use

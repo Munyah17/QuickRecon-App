@@ -1005,20 +1005,22 @@ drop policy if exists "staff_company" on public.staff;
 create policy "staff_company" on public.staff for all
   using (public.is_company_user())
   with check (public.is_company_user());
--- Seed the current executive team so the directory isn't empty on rollout.
+-- Seed a sample staff directory so the directory isn't empty on rollout.
+-- Sample data only — enter real employees (and their remuneration details)
+-- through the HR portal; PII must never live in source control.
 insert into public.staff (id, full_name, job_title, department, salary, status, phone, email) values
-  ('EMP-001','Munyah Griezmann','CTO','Executive',65000,'active','+263 77 123 4567','munyamuzvidziwa19@gmail.com'),
-  ('EMP-002','Tererai Chiweshe','Chief Operations Officer','Executive',48000,'active','+263 77 234 5678','tererai@quickrecon.co.zw'),
-  ('EMP-003','Rumbi Chiweshe','Chief Financial Officer','Executive',45000,'active','+263 77 345 6789','rumbi@quickrecon.co.zw'),
-  ('EMP-004','Tafadzwa Ncube','Chief Technology Officer','Executive',42000,'active','+263 77 456 7890','tafadzwa@quickrecon.co.zw'),
-  ('EMP-005','Farai Mlambo','Underwriting Manager','Underwriting',35000,'active','+263 77 567 8901','farai@quickrecon.co.zw'),
-  ('EMP-006','Nyasha Dube','Claims Manager','Claims',32000,'active','+263 77 678 9012','nyasha@quickrecon.co.zw'),
-  ('EMP-007','Tariro Moyo','Risk Manager','Risk',30000,'active','+263 77 789 0123','tariro@quickrecon.co.zw'),
-  ('EMP-008','Kudzai Sibanda','Risk Assessor','Risk',25000,'active','+263 77 890 1234','kudzai@quickrecon.co.zw'),
-  ('EMP-009','Chipo Mhondoro','Accountant','Finance',28000,'active','+263 77 901 2345','chipo@quickrecon.co.zw'),
-  ('EMP-010','Tendai Support','Tech Support','IT',22000,'active','+263 77 012 3456','tendai@quickrecon.co.zw'),
-  ('EMP-011','Rumbi Taruvinga','Clerk','Operations',18000,'active','+263 77 123 4567','rumbi.t@quickrecon.co.zw'),
-  ('EMP-012','Tinashe Kamwendo','Insurer','Insurance',24000,'on_leave','+263 77 234 5678','tinashe@quickrecon.co.zw')
+  ('EMP-001','Sample Executive','Chief Executive','Executive',65000,'active','+263 00 000 0001','emp001@preview.local'),
+  ('EMP-002','Sample Operations Lead','Chief Operations Officer','Executive',48000,'active','+263 00 000 0002','emp002@preview.local'),
+  ('EMP-003','Sample Finance Lead','Chief Financial Officer','Executive',45000,'active','+263 00 000 0003','emp003@preview.local'),
+  ('EMP-004','Sample Technology Lead','Chief Technology Officer','Executive',42000,'active','+263 00 000 0004','emp004@preview.local'),
+  ('EMP-005','Sample Underwriting Manager','Underwriting Manager','Underwriting',35000,'active','+263 00 000 0005','emp005@preview.local'),
+  ('EMP-006','Sample Claims Manager','Claims Manager','Claims',32000,'active','+263 00 000 0006','emp006@preview.local'),
+  ('EMP-007','Sample Risk Manager','Risk Manager','Risk',30000,'active','+263 00 000 0007','emp007@preview.local'),
+  ('EMP-008','Sample Risk Assessor','Risk Assessor','Risk',25000,'active','+263 00 000 0008','emp008@preview.local'),
+  ('EMP-009','Sample Accountant','Accountant','Finance',28000,'active','+263 00 000 0009','emp009@preview.local'),
+  ('EMP-010','Sample Tech Support','Tech Support','IT',22000,'active','+263 00 000 0010','emp010@preview.local'),
+  ('EMP-011','Sample Clerk','Clerk','Operations',18000,'active','+263 00 000 0011','emp011@preview.local'),
+  ('EMP-012','Sample Insurer','Insurer','Insurance',24000,'on_leave','+263 00 000 0012','emp012@preview.local')
 on conflict (id) do nothing;
 -- ── Payment methods (remuneration banking details) ──────────────────────────
 -- One row per method so a profile can hold 3+ optional accounts: bank accounts,

@@ -10,15 +10,9 @@ export interface LoginResult {
   error?: string;
 }
 
-const PREVIEW_CREDENTIALS: Record<string, { password: string; role: RoleCode }> = {
-  "munyamuzvidziwa19@gmail.com": { password: "@@Griezmann177#$", role: "super_admin" },
-  "support@enpassent.co.zw": { password: "support123", role: "tech_support" },
-  "ops@enpassent.co.zw": { password: "admin123", role: "admin" },
-};
-
 /**
  * Standard password sign-in via Supabase Auth.
- * In preview mode (no Supabase), validates against PREVIEW_CREDENTIALS.
+ * Every credential check hits the database — no credentials are stored in code.
  */
 export async function loginWithPassword(
   email: string,
@@ -27,18 +21,8 @@ export async function loginWithPassword(
   email = email.trim().toLowerCase();
   const supabase = await createClient();
   if (!supabase) {
-    const cred = PREVIEW_CREDENTIALS[email.toLowerCase()];
-    if (!cred || cred.password !== password) {
-      return { error: "Invalid email or password" };
-    }
-    const cookieStore = await cookies();
-    cookieStore.set("qr_preview_role", cred.role, {
-      httpOnly: true,
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7,
-    });
-    redirect("/app/dashboard");
+    // Preview mode has no credential store — use a sample account instead.
+    return { error: "Password sign-in needs a configured backend. Use a sample account below." };
   }
   const { data: auth, error } = await supabase.auth.signInWithPassword({ email, password });
   if (error) return { error: error.message };

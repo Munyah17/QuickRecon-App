@@ -15,7 +15,9 @@ export function ResetPasswordClient() {
     <main className="flex min-h-screen items-center justify-center px-5">
       <div className="w-full max-w-sm space-y-5">
         <h1 className="text-2xl font-bold">Choose a new password</h1>
-        <form className="space-y-4" onSubmit={async (event) => {
+        {/* method="post": a pre-hydration native submit must not GET
+            ?password=&confirm= into the URL/history/server logs. */}
+        <form className="space-y-4" method="post" onSubmit={async (event) => {
           event.preventDefault(); setError("");
           if (password !== confirm) { setError("Passwords do not match."); return; }
           setPending(true);

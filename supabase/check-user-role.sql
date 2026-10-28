@@ -1,2 +1,2 @@
--- Check current role for munyamuzvidziwa19@gmail.com
-select id, full_name, email, role, status from public.profiles where email = 'munyamuzvidziwa19@gmail.com';
+-- Check current role for a staff account. Replace the placeholder before running.
+select id, full_name, email, role, status from public.profiles where email = '<staff-email-here>';

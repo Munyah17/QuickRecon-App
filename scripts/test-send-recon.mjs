@@ -21,22 +21,22 @@ const env = Object.fromEntries(
     })
 );
 
-const RECIPIENTS = [
-  "leon@enpassent.co.zw",
-  "cady@motions.co.zw",
-  "insurer.shocks11@gmail.com",
-  "munyamuzvidziwa19@gmail.com",
-  "harold@enpassent.co.zw",
-  "a.antipas@enpassent.co.zw",
-  "info@motions.co.zw",
-  "admin@enpassent.co.zw",
-  "innocent@enpassent.co.zw",
-];
+// Recipients come from the environment — no real mailboxes live in source.
+// TEST_RECIPIENTS="a@example.com,b@example.com" node scripts/test-send-recon.mjs
+const RECIPIENTS = (env.TEST_RECIPIENTS ?? "")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
 
-// --- Musa Zhou — real August 2026 RECON row from the source workbook ---------
+if (RECIPIENTS.length === 0) {
+  console.error("Set TEST_RECIPIENTS in .env.local (comma-separated) before running this test.");
+  process.exit(1);
+}
+
+// --- Sample recon row for end-to-end testing --------------------------------
 const doc = {
   agentId: "AGT-000184",
-  agentName: "Musa Zhou",
+  agentName: "Sample Agent",
   module: "enpassent",
   period: "2026-08",
   currency: "ZWG",
@@ -54,14 +54,14 @@ const doc = {
   closingVariance: 30672.01,
   status: "warning",
   transactions: [
-    { date: "2026-08-01", agentName: "Musa Zhou", amount: 3837.88, bankAccount: "Ecocash", narration: "T4472586", reference: "TRN-46030" },
-    { date: "2026-08-20", agentName: "Musa Zhou", amount: 1015, bankAccount: "Ecocash", narration: "T2071716", reference: "TRN-46041" },
-    { date: "2026-08-21", agentName: "Musa Zhou", amount: 3365.76, bankAccount: "Ecocash", narration: "T9610489", reference: "TRN-46089" },
-    { date: "2026-08-25", agentName: "Musa Zhou", amount: 13000, bankAccount: "CBZ", narration: "CBZ deposit", reference: "CBZ-0813" },
-    { date: "2026-08-25", agentName: "Musa Zhou", amount: 1300, bankAccount: "CBZ", narration: "CBZ deposit", reference: "CBZ-0814" },
-    { date: "2026-08-28", agentName: "Musa Zhou", amount: 10000, bankAccount: "Nedbank", narration: "Bank transfer", reference: "NDB-46089" },
-    { date: "2026-08-30", agentName: "Musa Zhou", amount: 1965.76, bankAccount: "Ecocash", narration: "T7832617", reference: "TRN-46120" },
-    { date: "2026-08-31", agentName: "Musa Zhou", amount: 5320, bankAccount: "CBZ", narration: "CBZ deposit", reference: "CBZ-46181" },
+    { date: "2026-08-01", agentName: "Sample Agent", amount: 3837.88, bankAccount: "Ecocash", narration: "T4472586", reference: "TRN-46030" },
+    { date: "2026-08-20", agentName: "Sample Agent", amount: 1015, bankAccount: "Ecocash", narration: "T2071716", reference: "TRN-46041" },
+    { date: "2026-08-21", agentName: "Sample Agent", amount: 3365.76, bankAccount: "Ecocash", narration: "T9610489", reference: "TRN-46089" },
+    { date: "2026-08-25", agentName: "Sample Agent", amount: 13000, bankAccount: "CBZ", narration: "CBZ deposit", reference: "CBZ-0813" },
+    { date: "2026-08-25", agentName: "Sample Agent", amount: 1300, bankAccount: "CBZ", narration: "CBZ deposit", reference: "CBZ-0814" },
+    { date: "2026-08-28", agentName: "Sample Agent", amount: 10000, bankAccount: "Nedbank", narration: "Bank transfer", reference: "NDB-46089" },
+    { date: "2026-08-30", agentName: "Sample Agent", amount: 1965.76, bankAccount: "Ecocash", narration: "T7832617", reference: "TRN-46120" },
+    { date: "2026-08-31", agentName: "Sample Agent", amount: 5320, bankAccount: "CBZ", narration: "CBZ deposit", reference: "CBZ-46181" },
   ],
 };
 

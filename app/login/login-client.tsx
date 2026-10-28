@@ -106,7 +106,9 @@ export function LoginClient({ supabaseConfigured, notice }: { supabaseConfigured
 
           {notice && <p role="status" className="mt-4 text-sm">{notice}</p>}
 
-          <form onSubmit={form.handleSubmit(onSubmit)} className="mt-7 space-y-4" noValidate>
+          {/* method="post": if JS isn't hydrated yet, a native submit POSTs
+              (405, no credential leak) instead of GETting ?email=&password= */}
+          <form onSubmit={form.handleSubmit(onSubmit)} method="post" className="mt-7 space-y-4" noValidate>
             <div className="space-y-1.5">
               <Label htmlFor="email" className="text-[13px]">Email or Username</Label>
               <Input
