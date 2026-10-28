@@ -134,42 +134,235 @@ const NAME_FALLBACK_KEYS = ["Agent", "Agent Name", "Name"];
 const ECONET_SHEET = /\beco\b|econet/i;
 const ENPASSENT_SHEET = /\benpa\b|enpassent/i;
 
+/** ---------------- bank-statement extractors ----------------
+ * Deposit evidence arrives as raw bank statements whose layouts share nothing
+ * with the transaction sheets: NMB MPOS lines embed the agent's terminal code
+ * in the narration, NBS reports per-terminal TIDs, CBZ lists terminal ids with
+ * agent names. Each resolves through agent_external_ids (value match — the
+ * importer stores the same codes under the nmb/nbs/cbz schemes). */
+
+const hasCols = (row: SourceRow, ...names: string[]) =>
+  names.every((n) =>
+    Object.keys(row).some((k) => k.trim().toLowerCase() === n.toLowerCase())
+  );
+
+/** MPOS narration embeds the terminal code: ".../N1411T17/Enpasent...". */
+const MPOS_CODE = /\/([A-Z]?\d{4}T\d{2})/i;
+
+/** Columns holding the workbook's own USD→ZIG converted value (not a rate). */
+const CONVERSION_COLS = [
+  "USD - ZIG CONVERSION",
+  "USD- ZWG Conversion",
+  "Usd to ZIG conversion",
+  "USD to ZWG Conversion",
+];
+
+/**
+ * When a sheet carries its own converted figure, that value is what the ops
+ * recon counts — use it as the ZWG amount and keep the USD amount separately.
+ * Without one, USD sheets stay USD so the engine flags mixed currency instead
+ * of silently summing unconverted figures.
+ */
+function applyConversion(
+  rec: NormalizedRecord,
+  row: SourceRow,
+  sheetName: string
+): NormalizedRecord {
+  const conv = toNumber(cell(row, ...CONVERSION_COLS));
+  if (conv > 0) {
+    return { ...rec, usdAmount: rec.amount, amount: conv, currency: "ZWG" };
+  }
+  if (/usd/i.test(sheetName) && rec.amount !== 0) {
+    return { ...rec, usdAmount: rec.amount, currency: "USD" };
+  }
+  return rec;
+}
+
+/** NMB statement rows: agent = MPOS code in narration, deposit = credit. */
+function nmbStatementRecord(sheetName: string, i: number, row: SourceRow): NormalizedRecord | null {
+  const credit = toNumber(cell(row, "CreditAmount", "Credit Amount", "Credit"));
+  if (credit === 0) return null; // debit/balance rows aren't deposits
+  const narration = String(cell(row, "Narration", "Narrative", "Details") ?? "");
+  const code = MPOS_CODE.exec(narration)?.[1]?.toUpperCase();
+  const ref = cell(row, "Ref. No.", "Ref", "Reference");
+  const rec = makeRecord(
+    sheetName, i, row, "deposit", [],
+    ["CreditAmount", "Credit Amount"], ["Ref. No.", "Ref", "Reference"]
+  );
+  return applyConversion(
+    {
+      ...rec,
+      externalId: code,
+      bankAccount: /usd/i.test(sheetName) ? "NMB USD" : "NMB",
+      narration: narration.trim() || rec.narration,
+      reference: String(ref ?? `NMB:${i}`),
+      date: toDate(cell(row, "Transaction Date", "Date", "Value Date")) ?? rec.date,
+    },
+    row, sheetName
+  );
+}
+
+/** NBS settlement report: agent = TID (terminal id), deposit = TOTAL (USD on USD sheets). */
+function nbsStatementRecord(sheetName: string, i: number, row: SourceRow): NormalizedRecord {
+  const tid = String(cell(row, "TID", "Terminal ID") ?? "").trim();
+  const rec = makeRecord(sheetName, i, row, "deposit", ["TID"], ["TOTAL", "Total"], ["TID"]);
+  const merchant = String(cell(row, "MERCHANT NAME", "Merchant Name") ?? "").trim();
+  const amount = toNumber(cell(row, "TOTAL", "Total"));
+  return applyConversion(
+    {
+      ...rec,
+      externalId: tid || undefined,
+      amount,
+      bankAccount: /usd/i.test(sheetName) ? "NBS USD" : "NBS",
+      narration: merchant || rec.narration,
+      reference: `NBS:${tid || i}`,
+    },
+    row, sheetName
+  );
+}
+
+/** CBZ POS report: agent = TERMINAL ID (with AGENT NAME as the name fallback). */
+function cbzStatementRecord(sheetName: string, i: number, row: SourceRow): NormalizedRecord {
+  const terminal = String(cell(row, "TERMINAL ID", "Terminal ID", "TID") ?? "").trim();
+  const rec = makeRecord(
+    sheetName, i, row, "deposit",
+    ["TERMINAL ID", "Terminal ID", "TID", "AGENT NAME", "Agent Name"],
+    ["AMOUNT", "Amount"], ["TERMINAL ID", "Ref", "Reference"]
+  );
+  return {
+    ...rec,
+    externalId: terminal || rec.externalId,
+    bankAccount: "CBZ",
+    reference: `CBZ:${terminal || i}`,
+  };
+}
+
+/**
+ * Detect bank-statement sheets by their header shape (names vary: "NMB ZWG",
+ * "NBS USD", "CBZ ") and extract deposit records. Returns null for ordinary
+ * transaction sheets so the caller falls back to the generic path.
+ */
+function bankStatementRecords(sheetName: string, rows: SourceRow[]): NormalizedRecord[] | null {
+  if (rows.length === 0) return null;
+  const sample = rows[0];
+  if (hasCols(sample, "Narration") && (hasCols(sample, "CreditAmount") || hasCols(sample, "Credit Amount"))) {
+    return rows
+      .map((r, i) => nmbStatementRecord(sheetName, i, r))
+      .filter((r): r is NormalizedRecord => r !== null)
+      .filter((r) => r.amount !== 0 || r.externalId || r.usdAmount);
+  }
+  if (hasCols(sample, "TID") && hasCols(sample, "MERCHANT NAME")) {
+    return rows
+      .map((r, i) => nbsStatementRecord(sheetName, i, r))
+      .filter((r) => r.amount !== 0 || r.externalId || r.usdAmount);
+  }
+  if (hasCols(sample, "TERMINAL ID") && hasCols(sample, "AGENT NAME")) {
+    return rows
+      .map((r, i) => cbzStatementRecord(sheetName, i, r))
+      .filter((r) => r.amount !== 0 || r.externalId || r.usdAmount);
+  }
+  return null;
+}
+
+/** Bare code half of "ZW018ZLN - SHOWNE ZULU" style cells (ZINARA users). */
+function bareCode(v: string | undefined): { code?: string; name?: string } {
+  if (!v) return {};
+  const idx = v.indexOf(" - ");
+  if (idx <= 0) return { code: v.trim() || undefined };
+  return { code: v.slice(0, idx).trim() || undefined, name: v.slice(idx + 3).trim() || undefined };
+}
+
 /** ---------------- Enpassent adapter ---------------- */
 
 export const enpassentAdapter: SourceAdapter = {
   module: "enpassent",
   supportsSheet(name) {
     if (ECONET_SHEET.test(name)) return false;
-    return /insurance|zinara|deposit|summary|transactions|alteration|adjust/i.test(name);
+    return /insurance|zinara|deposit|settlement|transfer|ecocash|alteration|adjust|nmb|nbs|cbz|steward|summary|transactions|statement/i.test(
+      name
+    );
   },
   normalise(sheetName, rows) {
-    const isInsurance = /insur|summary|transactions/i.test(sheetName);
-    const isZinara = /zinara/i.test(sheetName);
-    const isDeposit = /deposit|settlement|bank/i.test(sheetName);
-    const category: NormalizedRecord["category"] = isDeposit
-      ? "deposit"
-      : isZinara
-        ? "zinara"
-        : isInsurance
-          ? "insurance"
-          : "adjustment";
+    // Bank statements / POS reports have their own layouts — extract them
+    // before the generic column guessing below.
+    const bank = bankStatementRecords(sheetName, rows);
+    if (bank) return bank;
 
-    // "USD- ZWG Conversion" is a rate column, not an amount — reading it as
-    // money silently corrupts deposits when the real Amount column is absent.
-    const amountKeys = isDeposit
-      ? ["Amount", "Deposit", "Settled", "Settled Amount", "Value", "Deposited"]
+    const isZinara = /zinara/i.test(sheetName);
+    const isDeposit = /deposit|settlement|bank|transfer|ecocash/i.test(sheetName);
+    const isInsurance = /insur|summary|transactions/i.test(sheetName);
+    const isAdjustment = /alteration|adjust/i.test(sheetName);
+
+    // ZINARA licensing report: the agent is the "User" cell
+    // ("ZW018ZLN - SHOWNE ZULU") — "Agent" is the shared merchant name, not an
+    // agent. RECON confirms the revenue figure is the gross licensing totals
+    // E+F (collections net of cancellations); the Deposit (G)/Payment Amount
+    // columns are settlement, counted on the bank sheets.
+    if (isZinara) {
+      return rows
+        .map((row, i) => {
+          const rec = makeRecord(
+            sheetName, i, row, "zinara",
+            ["User", "ZINARA User", "ZINARA Account", "Account ID", "Zinara ID", ...AGENT_ID_KEYS],
+            ["__none__"],
+            ["Registration Number", "Ref", "Reference", "Receipt No"]
+          );
+          const { code, name } = bareCode(rec.externalId);
+          const amount =
+            toNumber(cell(row, "Vehicle Licensing Total (E=A-C)", "Vehicle Licensing Total")) +
+            toNumber(cell(row, "Radio / TV Licensing Total (F=B-D)", "Radio / TV Licensing Total"));
+          return {
+            ...rec,
+            amount,
+            externalId: code ?? rec.externalId,
+            agentNameHint: name ?? rec.agentNameHint,
+            zinaraAccountId: code ?? rec.zinaraAccountId,
+          };
+        })
+        .filter((r) => r.amount !== 0 || r.externalId || r.usdAmount);
+    }
+
+    if (isDeposit) {
+      return rows
+        .map((row, i) =>
+          applyConversion(
+            makeRecord(
+              sheetName, i, row, "deposit",
+              [...AGENT_ID_KEYS, ...NAME_FALLBACK_KEYS],
+              ["Amount", "Deposit", "Settled", "Settled Amount", "Value", "Deposited"],
+              ["Ref", "Reference", "Receipt No", "Ecocash Reference", "Narration /Ref"]
+            ),
+            row, sheetName
+          )
+        )
+        .filter((r) => r.amount !== 0 || r.externalId || r.usdAmount);
+    }
+
+    const category: NormalizedRecord["category"] = isInsurance ? "insurance" : "adjustment";
+    const amountKeys = isInsurance
+      ? ["Premium_Collected", "Premium Collected", "Premium", "Premium Amount", "Amount", "Value", "Total"]
       : ["Amount", "Premium", "Premium Collected", "Premium Amount", "Value", "Total"];
 
     return rows
-      .map((row, i) =>
-        makeRecord(sheetName, i, row, category, [...AGENT_ID_KEYS, ...NAME_FALLBACK_KEYS], amountKeys, [
+      .filter((row) => !(isInsurance && /^cancelled$/i.test(String(cell(row, "Status") ?? "").trim())))
+      .map((row, i) => {
+        const rec = makeRecord(sheetName, i, row, category, [...AGENT_ID_KEYS, ...NAME_FALLBACK_KEYS], amountKeys, [
+          "Policy No",
+          "Policy_No",
           "Ref",
           "Reference",
-          "Policy No",
           "Receipt No",
           "Narration /Ref",
-        ])
-      )
+        ]);
+        // Enpassent commission is 10% of policy cover when the sheet doesn't
+        // carry an explicit Commission column (validated against RECON).
+        const cover = toNumber(cell(row, "Policy Cover", "Policy_Cover", "Cover"));
+        const commission = rec.commission ?? (isInsurance && cover ? cover * 0.1 : undefined);
+        // The workbook's Variance = Expected − Deposits − Alterations, so
+        // alteration amounts enter the engine as negatives.
+        const amount = isAdjustment ? -rec.amount : rec.amount;
+        return { ...rec, amount, commission };
+      })
       .filter((r) => r.amount !== 0 || r.externalId || r.usdAmount);
   },
 };
@@ -180,10 +373,15 @@ export const econetMoovahAdapter: SourceAdapter = {
   module: "econet-moovah",
   supportsSheet(name) {
     if (ENPASSENT_SHEET.test(name)) return false;
-    return /insurance|zinara|deposit|pos|float|alteration|adjust/i.test(name);
+    return /insurance|zinara|deposit|settlement|transfer|ecocash|pos|float|alteration|adjust|nmb|nbs|cbz|steward|statement/i.test(
+      name
+    );
   },
   normalise(sheetName, rows) {
-    const isDeposit = /deposit|pos|float/i.test(sheetName);
+    const bank = bankStatementRecords(sheetName, rows);
+    if (bank) return bank;
+
+    const isDeposit = /deposit|pos|float|transfer|ecocash|bank/i.test(sheetName);
     const isZinara = /zinara/i.test(sheetName);
     const isAdjustment = /alteration|adjust/i.test(sheetName);
     const category: NormalizedRecord["category"] = isDeposit
@@ -194,8 +392,8 @@ export const econetMoovahAdapter: SourceAdapter = {
           ? "adjustment"
           : "insurance";
     return rows
-      .map((row, i) =>
-        makeRecord(
+      .map((row, i) => {
+        const rec = makeRecord(
           sheetName,
           i,
           row,
@@ -203,8 +401,9 @@ export const econetMoovahAdapter: SourceAdapter = {
           ["Econet ID", "EcoCash ID", "MSISDN", ...AGENT_ID_KEYS, ...NAME_FALLBACK_KEYS],
           ["Amount", "Premium Collected", "Premium", "Premium Amount", "Float", "Value", "Total"],
           ["Ref", "Reference", "Txn Ref", "Transaction Ref"]
-        )
-      )
+        );
+        return category === "deposit" ? applyConversion(rec, row, sheetName) : rec;
+      })
       .filter((r) => r.amount !== 0 || r.externalId);
   },
 };

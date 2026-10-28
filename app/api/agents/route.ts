@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { fkConflictMessage } from "@/lib/api/fk-conflict";
 import { getSession } from "@/lib/auth/session";
 import { isCompanyRole } from "@/lib/nav";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -92,4 +93,57 @@ export async function PATCH(request: NextRequest) {
   ).select("id");
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   return NextResponse.json({ ok: true, updated: data?.length ?? 0 });
+}
+
+/**
+ * DELETE /api/agents — company staff bulk-delete agents.
+ * Body: { ids: string[] } — required so a bare payload can't wipe the table.
+ *
+ * Each agent is deleted individually: agents that are part of the audit trail
+ * (reconciliations, exceptions…) are FK-restricted and must not abort the
+ * whole batch. The response reports both sides: { deleted, failures[] }.
+ */
+export async function DELETE(request: NextRequest) {
+  const session = await getSession();
+  if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!isCompanyRole(session.user.role)) {
+    return NextResponse.json({ error: "Only company staff can remove agents" }, { status: 403 });
+  }
+
+  const body = await request.json().catch(() => null);
+  const ids = Array.isArray(body?.ids)
+    ? (body.ids as unknown[]).filter(
+        (i): i is string => typeof i === "string" && i.trim().length > 0
+      )
+    : [];
+  if (ids.length === 0) {
+    return NextResponse.json({ error: "ids[] required" }, { status: 400 });
+  }
+
+  const sb = await createServiceClient();
+  if (!sb) return NextResponse.json({ error: "Database not configured" }, { status: 503 });
+
+  // payment_methods.owner_id is polymorphic text (owner_type + owner_id) with
+  // no FK — orphan rows would survive the deletes, so clear them first.
+  const { error: pmError } = await sb
+    .from("payment_methods")
+    .delete()
+    .eq("owner_type", "agent")
+    .in("owner_id", ids);
+  if (pmError) return NextResponse.json({ error: pmError.message }, { status: 500 });
+
+  const failures: { id: string; error: string }[] = [];
+  let deleted = 0;
+  for (const id of ids) {
+    const { error } = await sb.from("agents").delete().eq("id", id);
+    if (!error) {
+      deleted += 1;
+      continue;
+    }
+    failures.push({
+      id,
+      error: fkConflictMessage(error, "agent", "set it to Inactive") ?? error.message,
+    });
+  }
+  return NextResponse.json({ ok: true, deleted, failures });
 }

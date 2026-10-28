@@ -57,7 +57,8 @@ const STATUS_MAP: Record<string, string> = {
  * A cell may hold several codes separated by ";" or ",".
  */
 const EXTERNAL_ID_COLUMNS: { scheme: string; headers: string[] }[] = [
-  { scheme: "zinara_user", headers: ["Zinara User", "ZINARA User", "Zinara ID", "ZINARA Account", "ZINARA Account ID"] },
+  // "ZINARA" alone covers the RECON tab's code column (" ZINARA " → trimmed).
+  { scheme: "zinara_user", headers: ["Zinara User", "ZINARA User", "ZINARA", "Zinara ID", "ZINARA Account", "ZINARA Account ID"] },
   { scheme: "nmb", headers: ["NMB", "NMB ZWG", "NMB ZiG"] },
   { scheme: "nmb_usd", headers: ["NMB USD", "NMB US$"] },
   { scheme: "cbz", headers: ["CBZ", "CBZ Account"] },
@@ -139,7 +140,8 @@ export async function POST(request: NextRequest) {
 
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
-    const fullName = pick(r, "Full Name", "Name", "Agent Name", "FullName");
+    const fullName = pick(r, "Full Name", "Name", "Agent Name", "FullName", "Agent");
+    const openingPosition = pick(r, "Balance B/d", "Opening Position", "Opening Balance", "Balance Brought Forward");
     const email = pick(r, "Email", "Email Address", "E-mail").toLowerCase();
     const phone = pick(r, "Phone", "Phone Number", "Mobile", "Contact", "Tel");
     const province = pick(r, "Province", "Region", "State");
@@ -183,6 +185,7 @@ export async function POST(request: NextRequest) {
       for (let attempt = 0; attempt < 3; attempt++) {
         seq += 1;
         agentId = `AGT-${String(seq).padStart(6, "0")}`;
+        const openingNum = Number(String(openingPosition).replace(/[^0-9.\-]/g, ""));
         const { error: agentError } = await sb.from("agents").insert({
           id: agentId,
           user_id: null,
@@ -193,6 +196,7 @@ export async function POST(request: NextRequest) {
           location: location || null,
           national_id: nationalId || null,
           icecash_id: icecashId || null,
+          opening_position: openingPosition && Number.isFinite(openingNum) ? openingNum : 0,
           status,
           kyc_status: "pending",
         });

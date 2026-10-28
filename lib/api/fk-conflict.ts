@@ -12,11 +12,11 @@ import { NextResponse } from "next/server";
  * @param noun what the user tried to delete ("agent", "employee", …)
  * @param hint optional alternative to suggest ("set it to Inactive")
  */
-export function fkConflictResponse(
+export function fkConflictMessage(
   error: { code?: string; message?: string } | null | undefined,
   noun: string,
   hint?: string
-): NextResponse | null {
+): string | null {
   const msg = error?.message ?? "";
   const isFkViolation =
     error?.code === "23503" || /foreign key constraint/i.test(msg);
@@ -29,13 +29,22 @@ export function fkConflictResponse(
     ? `outstanding ${table.replace(/_/g, " ")} records`
     : "outstanding linked records";
 
+  return (
+    `Can't delete this ${noun} — it still has ${linked}. ` +
+    `Clear the outstanding work first${hint ? `, or ${hint}` : ""}, then try again.`
+  );
+}
+
+export function fkConflictResponse(
+  error: { code?: string; message?: string } | null | undefined,
+  noun: string,
+  hint?: string
+): NextResponse | null {
+  const message = fkConflictMessage(error, noun, hint);
+  if (!message) return null;
+
   return NextResponse.json(
-    {
-      error:
-        `Can't delete this ${noun} — it still has ${linked}. ` +
-        `Clear the outstanding work first${hint ? `, or ${hint}` : ""}, then try again.`,
-      code: "has_linked_records",
-    },
+    { error: message, code: "has_linked_records" },
     { status: 409 }
   );
 }

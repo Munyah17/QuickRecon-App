@@ -48,7 +48,7 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
   const [activateOpen, setActivateOpen] = React.useState(false);
   const [activating, setActivating] = React.useState(false);
   const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({});
-  const [bulkAction, setBulkAction] = React.useState<"active" | "suspended" | null>(null);
+  const [bulkAction, setBulkAction] = React.useState<"active" | "suspended" | "delete" | null>(null);
   const [bulkBusy, setBulkBusy] = React.useState(false);
 
   const selectedIds = React.useMemo(() => Object.keys(rowSelection), [rowSelection]);
@@ -246,6 +246,44 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
     }
   };
 
+  /** Permanently delete the checked agents via the bulk DELETE endpoint.
+   * Agents blocked by linked records are reported and stay selected. */
+  const applyBulkDelete = async () => {
+    if (selectedIds.length === 0) return;
+    setBulkBusy(true);
+    try {
+      const res = await fetch("/api/agents", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: selectedIds }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Delete failed");
+      const failures = (data.failures ?? []) as { id: string; error: string }[];
+      if (data.deleted > 0) {
+        toast.success(`${data.deleted} agent${data.deleted === 1 ? "" : "s"} deleted`);
+      }
+      if (failures.length > 0) {
+        for (const f of failures.slice(0, 3)) {
+          toast.error(`${f.id}: ${f.error}`);
+        }
+        if (failures.length > 3) {
+          toast.error(`…and ${failures.length - 3} more couldn't be removed`);
+        }
+        // Keep the blocked agents selected so it's clear what's left.
+        setRowSelection(Object.fromEntries(failures.map((f) => [f.id, true])));
+      } else {
+        setRowSelection({});
+      }
+      setBulkAction(null);
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Delete failed");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   /** Flip every agent still "pending" (e.g. straight after a bulk import)
    * to "active" via the bulk PATCH endpoint. */
   const activatePending = async () => {
@@ -319,6 +357,13 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
                   onClick={() => setBulkAction("suspended")}
                 >
                   <ShieldOff className="size-4" aria-hidden /> Suspend
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-9 gap-1.5 text-[12.5px] text-destructive hover:text-destructive"
+                  onClick={() => setBulkAction("delete")}
+                >
+                  <Trash2 className="size-4" aria-hidden /> Delete
                 </Button>
                 <Button
                   variant="ghost"
@@ -415,13 +460,15 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              {bulkAction === "active" ? "Activate" : "Suspend"} {selectedIds.length} selected agent
-              {selectedIds.length === 1 ? "" : "s"}?
+              {bulkAction === "delete" ? "Delete" : bulkAction === "active" ? "Activate" : "Suspend"}{" "}
+              {selectedIds.length} selected agent{selectedIds.length === 1 ? "" : "s"}?
             </DialogTitle>
             <DialogDescription>
-              {bulkAction === "active"
-                ? "Active agents are included in reconciliation runs and statement delivery."
-                : "Suspended agents lose access until reactivated. This action is audit-logged."}
+              {bulkAction === "delete"
+                ? "This permanently deletes the selected agents and their data. Agents with linked records can't be removed — set them to Inactive instead."
+                : bulkAction === "active"
+                  ? "Active agents are included in reconciliation runs and statement delivery."
+                  : "Suspended agents lose access until reactivated. This action is audit-logged."}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -429,13 +476,13 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
               Cancel
             </Button>
             <Button
-              variant={bulkAction === "suspended" ? "destructive" : "default"}
-              onClick={applyBulkStatus}
+              variant={bulkAction === "active" ? "default" : "destructive"}
+              onClick={bulkAction === "delete" ? applyBulkDelete : applyBulkStatus}
               disabled={bulkBusy}
             >
               {bulkBusy
                 ? "Working…"
-                : `${bulkAction === "active" ? "Activate" : "Suspend"} ${selectedIds.length}`}
+                : `${bulkAction === "delete" ? "Delete" : bulkAction === "active" ? "Activate" : "Suspend"} ${selectedIds.length}`}
             </Button>
           </DialogFooter>
         </DialogContent>
