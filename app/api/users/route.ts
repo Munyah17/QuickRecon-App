@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { permissionsForRole } from "@/lib/auth/permissions";
 import { createServiceClient } from "@/lib/supabase/server";
+import { fkConflictResponse } from "@/lib/api/fk-conflict";
 import { AGENT_POS_BANKS, posSchemeForBank, type RoleCode } from "@/types";
 
 export const runtime = "nodejs";
@@ -316,7 +317,11 @@ export async function DELETE(request: NextRequest) {
 
   // Delete the auth user first (this cascades to profiles via ON DELETE CASCADE)
   const { error } = await sb.auth.admin.deleteUser(userId);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    const conflict = fkConflictResponse(error, "user", "suspend their account");
+    if (conflict) return conflict;
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
 
   return NextResponse.json({ ok: true });
 }

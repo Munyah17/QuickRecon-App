@@ -62,11 +62,20 @@ function formatMoneySingle(amount: number, cur: Currency): string {
 }
 
 /** "ZiG 1,248,320" / "USD 1,250.00" — never silently mix currencies.
- * When the display mode is "both", renders dual ("ZiG 12,000 · USD 400"). */
+ * When the display mode is "both", renders dual ("ZiG 12,000 · USD 400").
+ * When the record's base currency differs from the display currency,
+ * converts via the configured USD↔ZiG rate so the floating currency
+ * switch produces real converted values everywhere money is shown. */
 export function formatMoney(amount: number, currency?: Currency): string {
-  const cur = currency ?? getDefaultCurrency();
-  if (getDisplayMode() === "both") return formatMoneyDual(amount, cur);
-  return formatMoneySingle(amount, cur);
+  const base = currency ?? getDefaultCurrency();
+  if (getDisplayMode() === "both") return formatMoneyDual(amount, base);
+  const display = getDefaultCurrency();
+  if (base !== display) {
+    const rate = getUsdZwgRate();
+    const converted = base === "ZWG" ? amount / rate : amount * rate;
+    return formatMoneySingle(converted, display);
+  }
+  return formatMoneySingle(amount, base);
 }
 
 export function formatNumber(value: number): string {

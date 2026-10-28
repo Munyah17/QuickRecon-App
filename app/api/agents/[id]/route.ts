@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { isCompanyRole } from "@/lib/nav";
 import { createServiceClient } from "@/lib/supabase/server";
+import { fkConflictResponse } from "@/lib/api/fk-conflict";
 import { AGENT_POS_BANKS, posSchemeForBank } from "@/types";
 
 export const runtime = "nodejs";
@@ -193,7 +194,22 @@ export async function DELETE(
   const service = await createServiceClient();
   if (!service) return NextResponse.json({ error: "Database not configured" }, { status: 503 });
 
+  // payment_methods.owner_id is polymorphic text (owner_type + owner_id) with
+  // no FK — orphan rows would survive the agent delete, so clear them first.
+  const { error: pmError } = await service
+    .from("payment_methods")
+    .delete()
+    .eq("owner_type", "agent")
+    .eq("owner_id", id);
+  if (pmError) return NextResponse.json({ error: pmError.message }, { status: 500 });
+
   const { error } = await service.from("agents").delete().eq("id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    // FK-restricted dependents (reconciliations, reports, exceptions,
+    // normalised records…) make the agent part of the audit trail.
+    const conflict = fkConflictResponse(error, "agent", "set it to Inactive");
+    if (conflict) return conflict;
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
   return NextResponse.json({ ok: true });
 }

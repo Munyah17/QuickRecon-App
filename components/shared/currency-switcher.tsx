@@ -1,6 +1,7 @@
 "use client";
 
 import * as React from "react";
+import { useRouter } from "next/navigation";
 import { CURRENCY_SETTINGS_KEY } from "@/lib/format";
 import type { Currency } from "@/types";
 
@@ -38,6 +39,7 @@ function setDisplayCurrency(cur: Currency) {
  * convert amounts (conversion is the reconciliation engine's job).
  */
 export function CurrencySwitcher() {
+  const router = useRouter();
   const currency = React.useSyncExternalStore(
     (cb) => { window.addEventListener(CURRENCY_EVENT, cb); return () => window.removeEventListener(CURRENCY_EVENT, cb); },
     getDisplayCurrency,
@@ -57,7 +59,13 @@ export function CurrencySwitcher() {
       {(["USD", "ZWG"] as const).map((c) => (
         <button
           key={c}
-          onClick={() => setDisplayCurrency(c)}
+          onClick={() => {
+            setDisplayCurrency(c);
+            // Re-run server components — the CurrencyRemount key-bump only
+            // covers client-rendered formatMoney() calls, while money
+            // formatted during SSR needs a fresh RSC payload.
+            router.refresh();
+          }}
           aria-pressed={currency === c}
           className={
             currency === c

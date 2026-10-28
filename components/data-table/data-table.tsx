@@ -9,6 +9,8 @@ import {
   getSortedRowModel,
   useReactTable,
   type ColumnDef,
+  type OnChangeFn,
+  type RowSelectionState,
   type SortingState,
 } from "@tanstack/react-table";
 import { ArrowDown, ArrowUp, ChevronLeft, ChevronRight, Search } from "lucide-react";
@@ -40,6 +42,9 @@ export function DataTable<TData>({
   className,
   emptyMessage = "No records found.",
   initialSorting,
+  rowSelection,
+  onRowSelectionChange,
+  getRowId,
 }: {
   columns: ColumnDef<TData, unknown>[];
   data: TData[];
@@ -47,11 +52,19 @@ export function DataTable<TData>({
   searchKeys?: string[];
   toolbar?: React.ReactNode;
   /** When provided, renders card list under `lg` breakpoint. */
-  renderMobileCard?: (row: TData) => React.ReactNode;
+  renderMobileCard?: (
+    row: TData,
+    ctx: { selected: boolean; toggleSelected: () => void }
+  ) => React.ReactNode;
   pageSize?: number;
   className?: string;
   emptyMessage?: string;
   initialSorting?: SortingState;
+  /** Controlled row selection — pair with a checkbox column. */
+  rowSelection?: RowSelectionState;
+  onRowSelectionChange?: OnChangeFn<RowSelectionState>;
+  /** Stable row id for selection (e.g. record id) — defaults to row index. */
+  getRowId?: (originalRow: TData, index: number) => string;
 }) {
   const [sorting, setSorting] = React.useState<SortingState>(initialSorting ?? []);
   const [globalFilter, setGlobalFilter] = React.useState("");
@@ -60,9 +73,16 @@ export function DataTable<TData>({
   const table = useReactTable({
     data,
     columns,
-    state: { sorting, globalFilter },
+    state: {
+      sorting,
+      globalFilter,
+      ...(rowSelection !== undefined ? { rowSelection } : {}),
+    },
     onSortingChange: setSorting,
     onGlobalFilterChange: setGlobalFilter,
+    onRowSelectionChange,
+    enableRowSelection: onRowSelectionChange !== undefined,
+    getRowId,
     globalFilterFn: (row, _columnId, filterValue) => {
       const needle = String(filterValue).toLowerCase();
       return searchKeys.some((key) =>
@@ -134,7 +154,11 @@ export function DataTable<TData>({
           <TableBody>
             {rows.length ? (
               rows.map((row) => (
-                <TableRow key={row.id} className="hover:bg-surface-hover">
+                <TableRow
+                  key={row.id}
+                  data-state={row.getIsSelected() ? "selected" : undefined}
+                  className="hover:bg-surface-hover data-[state=selected]:bg-primary/5"
+                >
                   {row.getVisibleCells().map((cell) => (
                     <TableCell key={cell.id} className="px-3 py-2.5 text-[13px]">
                       {flexRender(cell.column.columnDef.cell, cell.getContext())}
@@ -158,7 +182,12 @@ export function DataTable<TData>({
         <div className="space-y-3 lg:hidden">
           {rows.length ? (
             rows.map((row) => (
-              <div key={`m-${row.id}`}>{renderMobileCard(row.original)}</div>
+              <div key={`m-${row.id}`}>
+                {renderMobileCard(row.original, {
+                  selected: row.getIsSelected(),
+                  toggleSelected: () => row.toggleSelected(),
+                })}
+              </div>
             ))
           ) : (
             <p className="rounded-xl border border-dashed py-8 text-center text-[13px] text-muted-foreground">

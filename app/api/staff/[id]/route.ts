@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { isCompanyRole } from "@/lib/nav";
 import { createServiceClient } from "@/lib/supabase/server";
+import { fkConflictResponse } from "@/lib/api/fk-conflict";
 
 export const runtime = "nodejs";
 
@@ -67,6 +68,10 @@ export async function DELETE(
 
   const { id } = await params;
   const { error } = await sb.from("staff").delete().eq("id", id);
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 });
+  if (error) {
+    const conflict = fkConflictResponse(error, "employee", "mark them as exited");
+    if (conflict) return conflict;
+    return NextResponse.json({ error: error.message }, { status: 500 });
+  }
   return NextResponse.json({ ok: true });
 }

@@ -3,10 +3,12 @@
 import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { ColumnDef } from "@tanstack/react-table";
+import type { ColumnDef, RowSelectionState } from "@tanstack/react-table";
 import { CircleCheck, Ellipsis, Eye, ShieldOff, Trash2, UserPen } from "lucide-react";
 import { toast } from "sonner";
 import { DataTable } from "@/components/data-table/data-table";
+import { Checkbox } from "@/components/ui/checkbox";
+import { cn } from "@/lib/utils";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { AgentAvatar } from "@/components/shared/agent-avatar";
 import {
@@ -45,6 +47,11 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
   const [provinceFilter, setProvinceFilter] = React.useState("all");
   const [activateOpen, setActivateOpen] = React.useState(false);
   const [activating, setActivating] = React.useState(false);
+  const [rowSelection, setRowSelection] = React.useState<RowSelectionState>({});
+  const [bulkAction, setBulkAction] = React.useState<"active" | "suspended" | null>(null);
+  const [bulkBusy, setBulkBusy] = React.useState(false);
+
+  const selectedIds = React.useMemo(() => Object.keys(rowSelection), [rowSelection]);
 
   const provinces = React.useMemo(
     () => Array.from(new Set(agents.map((a) => a.province))).sort(),
@@ -75,6 +82,39 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
 
   const columns = React.useMemo<ColumnDef<Agent, unknown>[]>(
     () => [
+      {
+        id: "select",
+        header: ({ table }) => {
+          // Select-all covers every filtered row, not just the current page.
+          const all = table.getFilteredRowModel().rows;
+          const allSelected = all.length > 0 && all.every((r) => r.getIsSelected());
+          const someSelected = all.some((r) => r.getIsSelected());
+          return (
+            <Checkbox
+              checked={allSelected ? true : someSelected ? "indeterminate" : false}
+              onCheckedChange={(v) => {
+                if (v) {
+                  const next: RowSelectionState = {};
+                  for (const r of all) next[r.id] = true;
+                  table.setRowSelection(next);
+                } else {
+                  table.resetRowSelection();
+                }
+              }}
+              aria-label="Select all agents"
+            />
+          );
+        },
+        cell: ({ row }) => (
+          <Checkbox
+            checked={row.getIsSelected()}
+            onCheckedChange={() => row.toggleSelected()}
+            aria-label={`Select ${row.original.fullName}`}
+          />
+        ),
+        enableSorting: false,
+        size: 36,
+      },
       {
         id: "idx",
         header: "#",
@@ -179,6 +219,33 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
     return c;
   }, [agents]);
 
+  /** Apply a status change to the checked agents via the bulk PATCH endpoint. */
+  const applyBulkStatus = async () => {
+    if (!bulkAction || selectedIds.length === 0) return;
+    setBulkBusy(true);
+    try {
+      const res = await fetch("/api/agents", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids: selectedIds, status: bulkAction }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Update failed");
+      toast.success(
+        `${data.updated} agent${data.updated === 1 ? "" : "s"} ${
+          bulkAction === "active" ? "activated" : "suspended"
+        }`
+      );
+      setBulkAction(null);
+      setRowSelection({});
+      router.refresh();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Update failed");
+    } finally {
+      setBulkBusy(false);
+    }
+  };
+
   /** Flip every agent still "pending" (e.g. straight after a bulk import)
    * to "active" via the bulk PATCH endpoint. */
   const activatePending = async () => {
@@ -229,8 +296,39 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
         searchKeys={["fullName", "id", "phone", "email"]}
         pageSize={10}
         initialSorting={[{ id: "fullName", desc: false }]}
+        rowSelection={rowSelection}
+        onRowSelectionChange={setRowSelection}
+        getRowId={(a) => a.id}
         toolbar={
           <>
+            {selectedIds.length > 0 && (
+              <div className="flex items-center gap-2">
+                <span className="text-[12.5px] font-medium text-muted-foreground">
+                  {selectedIds.length} selected
+                </span>
+                <Button
+                  variant="outline"
+                  className="h-9 gap-1.5 text-[12.5px]"
+                  onClick={() => setBulkAction("active")}
+                >
+                  <CircleCheck className="size-4" aria-hidden /> Activate
+                </Button>
+                <Button
+                  variant="outline"
+                  className="h-9 gap-1.5 text-[12.5px] text-destructive hover:text-destructive"
+                  onClick={() => setBulkAction("suspended")}
+                >
+                  <ShieldOff className="size-4" aria-hidden /> Suspend
+                </Button>
+                <Button
+                  variant="ghost"
+                  className="h-9 text-[12.5px]"
+                  onClick={() => setRowSelection({})}
+                >
+                  Clear
+                </Button>
+              </div>
+            )}
             {counts.pending > 0 && (
               <Button
                 variant="outline"
@@ -307,8 +405,41 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
             </div>
           </>
         }
-        renderMobileCard={(a) => <AgentMobileCard agent={a} />}
+        renderMobileCard={(a, ctx) => (
+          <AgentMobileCard agent={a} selected={ctx.selected} onToggle={ctx.toggleSelected} />
+        )}
       />
+
+      {/* Bulk status change for the checked agents. */}
+      <Dialog open={bulkAction !== null} onOpenChange={(o) => !o && setBulkAction(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>
+              {bulkAction === "active" ? "Activate" : "Suspend"} {selectedIds.length} selected agent
+              {selectedIds.length === 1 ? "" : "s"}?
+            </DialogTitle>
+            <DialogDescription>
+              {bulkAction === "active"
+                ? "Active agents are included in reconciliation runs and statement delivery."
+                : "Suspended agents lose access until reactivated. This action is audit-logged."}
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setBulkAction(null)}>
+              Cancel
+            </Button>
+            <Button
+              variant={bulkAction === "suspended" ? "destructive" : "default"}
+              onClick={applyBulkStatus}
+              disabled={bulkBusy}
+            >
+              {bulkBusy
+                ? "Working…"
+                : `${bulkAction === "active" ? "Activate" : "Suspend"} ${selectedIds.length}`}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Bulk activate — flips every agent still "pending" to active. */}
       <Dialog open={activateOpen} onOpenChange={setActivateOpen}>
@@ -636,10 +767,38 @@ function EditAgentDialog({
 }
 
 /** Card layout used below lg — mirrors the mobile admin agent list. */
-function AgentMobileCard({ agent }: { agent: Agent }) {
+function AgentMobileCard({
+  agent,
+  selected,
+  onToggle,
+}: {
+  agent: Agent;
+  selected?: boolean;
+  onToggle?: () => void;
+}) {
   return (
     <Link href={`/app/agents/${agent.id}`} className="block">
-      <div className="flex items-center gap-3 rounded-xl border bg-card p-3.5">
+      <div
+        className={cn(
+          "flex items-center gap-3 rounded-xl border bg-card p-3.5",
+          selected && "border-primary/50 bg-primary/5"
+        )}
+      >
+        {onToggle ? (
+          // stopPropagation + preventDefault so the tap never triggers Link nav
+          <span
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+            }}
+          >
+            <Checkbox
+              checked={selected}
+              onCheckedChange={() => onToggle()}
+              aria-label={`Select ${agent.fullName}`}
+            />
+          </span>
+        ) : null}
         <AgentAvatar name={agent.fullName} size="md" />
         <div className="min-w-0 flex-1">
           <p className="truncate text-[13.5px] font-semibold">{agent.fullName}</p>

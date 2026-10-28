@@ -79,10 +79,21 @@ export function ImportWizard({
 }: {
   agents?: { id: string; fullName: string }[];
 }) {
-  const { module: workspaceModule } = useWorkspace();
+  const { module: workspaceModule, setModule: setWorkspaceModule } = useWorkspace();
   const [module, setModule] = React.useState<ModuleCode>(
     workspaceModule === "all" ? "enpassent" : workspaceModule
   );
+
+  // Keep the import target in sync when the module changes elsewhere
+  // (the workspace selector or the bubbles under the upload box).
+  React.useEffect(() => {
+    if (workspaceModule !== "all") setModule(workspaceModule);
+  }, [workspaceModule]);
+
+  function selectModule(m: ModuleCode) {
+    setModule(m);
+    setWorkspaceModule(m);
+  }
   const [period, setPeriod] = React.useState(monthOptions()[0]);
   const [agentScope, setAgentScope] = React.useState("all");
   const [runValidation, setRunValidation] = React.useState(true);
@@ -153,24 +164,6 @@ export function ImportWizard({
 
   return (
     <div className="space-y-4">
-      {/* Module segmented toggle (per PC mockup) */}
-      <div className="flex justify-center lg:justify-end">
-        <div className="inline-flex rounded-full bg-muted p-1">
-          {(["enpassent", "econet-moovah"] as const).map((m) => (
-            <button
-              key={m}
-              onClick={() => setModule(m)}
-              className={cn(
-                "h-8 rounded-full px-4 text-[12.5px] font-medium transition-colors",
-                module === m ? "bg-card text-primary shadow-sm" : "text-muted-foreground"
-              )}
-            >
-              {moduleName(m)}
-            </button>
-          ))}
-        </div>
-      </div>
-
       {/* Steps indicator */}
       <ol className="flex items-start justify-between gap-1 sm:gap-2">
         {STEPS.map((s, i) => (
@@ -214,6 +207,33 @@ export function ImportWizard({
                 onFile={(f) => setFile(f)}
                 hint="Supports .xlsx, .xls, .csv files (Max 1000MB)"
               />
+
+              {/* Module bubbles — pick the workbook's module; also switches
+                  the workspace module so Recent Imports below filters. */}
+              <div className="mt-4">
+                <p className="mb-1.5 text-center text-[11.5px] font-medium text-muted-foreground">
+                  Import module
+                </p>
+                <div className="flex justify-center">
+                  <div className="inline-flex rounded-full bg-muted p-1">
+                    {(["enpassent", "econet-moovah"] as const).map((m) => (
+                      <button
+                        key={m}
+                        type="button"
+                        onClick={() => selectModule(m)}
+                        className={cn(
+                          "h-8 rounded-full px-4 text-[12.5px] font-medium transition-colors",
+                          module === m
+                            ? "bg-card text-primary shadow-sm"
+                            : "text-muted-foreground"
+                        )}
+                      >
+                        {moduleName(m)}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </CardContent>
           </Card>
 
