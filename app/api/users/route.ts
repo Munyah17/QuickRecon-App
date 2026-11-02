@@ -65,6 +65,15 @@ export async function POST(request: NextRequest) {
   // receive their consolidated reconciliations by email/WhatsApp, so we
   // create the agents row directly (user_id stays null).
   if (role === "agent") {
+    // One agent, one source company — validate before creating the row so a
+    // rejected request leaves nothing behind.
+    const modules = staffModules(moduleAccess);
+    if (!modules || modules.length !== 1) {
+      return NextResponse.json(
+        { error: "Agents must be assigned exactly one source company (Enpassent or Econet Moovah)." },
+        { status: 400 }
+      );
+    }
     const { count } = await sb
       .from("agents")
       .select("id", { count: "exact", head: true });
@@ -87,14 +96,9 @@ export async function POST(request: NextRequest) {
         { status: 500 }
       );
     }
-    const modules = moduleAccess === "both"
-      ? ["enpassent", "econet-moovah"]
-      : [moduleAccess].filter(Boolean);
-    if (modules.length) {
-      await sb.from("agent_modules").insert(
-        modules.map((m: string) => ({ agent_id: agentId, module: m }))
-      );
-    }
+    await sb.from("agent_modules").insert(
+      modules.map((m: string) => ({ agent_id: agentId, module: m, enabled: true }))
+    );
     // ZINARA account is an external identity — the engine resolves ZINARA
     // transaction rows to this agent via agent_external_ids. Same scheme the
     // bulk importer writes ("zinara_user").

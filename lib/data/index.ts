@@ -476,6 +476,7 @@ export async function getTeamUsers() {
       agentId: u.agent_id ?? undefined,
       nationalId: u.national_id ?? undefined,
       lastLoginAt: u.last_login_at ?? undefined,
+      modules: Array.isArray(u.modules) ? u.modules : undefined,
     }));
   }
   return MOCK_TEAM_USERS;

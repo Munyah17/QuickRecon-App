@@ -23,7 +23,6 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Checkbox } from "@/components/ui/checkbox";
 import { AGENT_POS_BANKS } from "@/types";
 
 const PROVINCES = [
@@ -47,8 +46,7 @@ export function AddAgentDialog() {
   const [phone, setPhone] = React.useState("");
   const [province, setProvince] = React.useState("");
   const [location, setLocation] = React.useState("");
-  const [enpassent, setEnpassent] = React.useState(true);
-  const [econet, setEconet] = React.useState(false);
+  const [company, setCompany] = React.useState("enpassent");
   const [posIds, setPosIds] = React.useState<Record<string, string>>({});
   const [zinaraAccount, setZinaraAccount] = React.useState("");
   const [creating, setCreating] = React.useState(false);
@@ -62,8 +60,7 @@ export function AddAgentDialog() {
     setPhone("");
     setProvince("");
     setLocation("");
-    setEnpassent(true);
-    setEconet(false);
+    setCompany("enpassent");
     setPosIds({});
     setZinaraAccount("");
     setCreated(null);
@@ -74,12 +71,10 @@ export function AddAgentDialog() {
       toast.error("Full name and phone are required");
       return;
     }
-    if (!enpassent && !econet) {
-      toast.error("Select at least one module");
+    if (!company) {
+      toast.error("Assign the agent to a company");
       return;
     }
-    const moduleAccess =
-      enpassent && econet ? "both" : econet ? "econet-moovah" : "enpassent";
     setCreating(true);
     try {
       const res = await fetch("/api/users", {
@@ -92,7 +87,7 @@ export function AddAgentDialog() {
           province,
           location,
           role: "agent",
-          moduleAccess,
+          moduleAccess: company,
           bankPos: AGENT_POS_BANKS.map((bank) => ({
             bank,
             posId: (posIds[bank] ?? "").trim(),
@@ -202,24 +197,22 @@ export function AddAgentDialog() {
               onChange={(e) => setZinaraAccount(e.target.value)}
             />
           </div>
-          <div className="space-y-2">
-            <Label>Module Access</Label>
-            <div className="flex items-center gap-4">
-              <label className="flex items-center gap-2 text-[13px]">
-                <Checkbox
-                  checked={enpassent}
-                  onCheckedChange={(v) => setEnpassent(v === true)}
-                />
-                Enpassent
-              </label>
-              <label className="flex items-center gap-2 text-[13px]">
-                <Checkbox
-                  checked={econet}
-                  onCheckedChange={(v) => setEconet(v === true)}
-                />
-                Econet Moovah
-              </label>
-            </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="add-company">
+              Company <span className="text-destructive">*</span>
+            </Label>
+            <p className="text-[11.5px] text-muted-foreground">
+              The source company this agent works — one agent, one company.
+            </p>
+            <Select value={company} onValueChange={setCompany}>
+              <SelectTrigger id="add-company">
+                <SelectValue placeholder="Select company" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="enpassent">Enpassent</SelectItem>
+                <SelectItem value="econet-moovah">Econet Moovah</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           <div className="space-y-2">
             <Label>Bank POS IDs</Label>

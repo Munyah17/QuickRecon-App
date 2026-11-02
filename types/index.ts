@@ -416,6 +416,8 @@ export interface TeamUser {
   status: UserStatus;
   nationalId?: string;
   lastLoginAt?: string;
+  /** Source companies this staff member may work (profiles.modules). */
+  modules?: ModuleCode[];
 }
 
 export interface TaskMilestone {

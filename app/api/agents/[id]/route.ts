@@ -92,6 +92,13 @@ export async function PATCH(
       const enabled = typeof raw === "string" ? true : (raw as { enabled?: unknown }).enabled !== false;
       if (enabled) enabledModules.add(m);
     }
+    // One agent, one source company.
+    if (enabledModules.size > 1) {
+      return NextResponse.json(
+        { error: "An agent works a single source company — enable one module only." },
+        { status: 400 }
+      );
+    }
   }
 
   // ZINARA account ID — replaces the agent's zinara_* external-id rows.
@@ -254,6 +261,27 @@ export async function PUT(
 
   const service = await createServiceClient();
   if (!service) return NextResponse.json({ error: "Database not configured" }, { status: 503 });
+
+  // One agent, one source company — PUT toggles individual modules, so the
+  // check must merge the payload with the agent's current enabled set.
+  const { data: existing } = await service
+    .from("agent_modules")
+    .select("module, enabled")
+    .eq("agent_id", id);
+  const enabledNow = new Set(
+    (existing ?? []).filter((r) => r.enabled).map((r) => r.module as string)
+  );
+  for (const r of rows) {
+    if (r.enabled) enabledNow.add(r.module);
+    else enabledNow.delete(r.module);
+  }
+  if (enabledNow.size > 1) {
+    return NextResponse.json(
+      { error: "An agent works a single source company — disable the other module first." },
+      { status: 400 }
+    );
+  }
+
   const { error } = await service
     .from("agent_modules")
     .upsert(rows, { onConflict: "agent_id,module" });

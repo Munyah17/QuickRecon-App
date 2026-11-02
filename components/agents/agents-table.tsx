@@ -696,22 +696,16 @@ function EditAgentDialog({
   const [zinaraId, setZinaraId] = React.useState(agent.zinaraId ?? "");
   const [status, setStatus] = React.useState<string>(agent.status);
   const [kycStatus, setKycStatus] = React.useState<string>(agent.kycStatus);
-  const [enabledMods, setEnabledMods] = React.useState<Set<string>>(
-    () => new Set(agent.modules.filter((m) => m.enabled).map((m) => m.module))
+  // One agent, one source company — legacy dual-enabled agents preselect
+  // their first enabled module and are narrowed on save.
+  const [company, setCompany] = React.useState<string>(
+    agent.modules.find((m) => m.enabled)?.module ?? "enpassent"
   );
   const [posIds, setPosIds] = React.useState<Record<string, string>>(
     Object.fromEntries((agent.bankPos ?? []).map((p) => [p.bank, p.posId]))
   );
   const [saving, setSaving] = React.useState(false);
   const router = useRouter();
-
-  const toggleModule = (mod: string, on: boolean) =>
-    setEnabledMods((s) => {
-      const next = new Set(s);
-      if (on) next.add(mod);
-      else next.delete(mod);
-      return next;
-    });
 
   const handleSave = async () => {
     setSaving(true);
@@ -728,7 +722,7 @@ function EditAgentDialog({
           nationalId,
           icecashId,
           zinaraId,
-          modules: [...enabledMods],
+          modules: [company],
           // Status & KYC are super-admin fields — the API ignores them for
           // other roles, but we only send them when the control rendered.
           ...(isSuper ? { status, kycStatus } : {}),
@@ -833,28 +827,20 @@ function EditAgentDialog({
               onChange={(e) => setZinaraId(e.target.value)}
             />
           </div>
-          <div className="space-y-2">
-            <Label>Modules</Label>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-company">Company</Label>
             <p className="text-[11.5px] text-muted-foreground">
-              Source companies this agent works.
+              The source company this agent works — one agent, one company.
             </p>
-            <div className="flex gap-5">
-              {(
-                [
-                  ["enpassent", "Enpassent"],
-                  ["econet-moovah", "Moovah"],
-                ] as const
-              ).map(([mod, label]) => (
-                <label key={mod} className="flex cursor-pointer items-center gap-2 text-[13px]">
-                  <Checkbox
-                    checked={enabledMods.has(mod)}
-                    onCheckedChange={(v) => toggleModule(mod, v === true)}
-                    aria-label={label}
-                  />
-                  {label}
-                </label>
-              ))}
-            </div>
+            <Select value={company} onValueChange={setCompany}>
+              <SelectTrigger id="edit-company">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="enpassent">Enpassent</SelectItem>
+                <SelectItem value="econet-moovah">Econet Moovah</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
           {isSuper && (
             <div className="grid grid-cols-2 gap-3">

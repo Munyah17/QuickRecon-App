@@ -37,8 +37,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { PERMISSIONS, permissionsForRole, roleLabel } from "@/lib/auth/permissions";
-import { formatDate } from "@/lib/format";
-import type { RoleCode, TeamUser } from "@/types";
+import { formatDate, moduleName } from "@/lib/format";
+import type { ModuleCode, RoleCode, TeamUser } from "@/types";
 
 const ROLE_BADGE: Record<RoleCode, string> = {
   super_admin: "bg-brand-100 text-brand-800 dark:bg-brand-950 dark:text-brand-200",
@@ -54,6 +54,41 @@ const ROLE_BADGE: Record<RoleCode, string> = {
 const STAFF_ROLES: RoleCode[] = ["super_admin", "admin", "tech_support", "finance", "operations"];
 
 const SEGMENTS = ["all", "active", "pending", "suspended"] as const;
+
+/** Source-company choices for staff (maps to profiles.modules). */
+const COMPANY_ACCESS = ["both", "enpassent", "econet-moovah"] as const;
+type CompanyAccess = (typeof COMPANY_ACCESS)[number];
+
+/** profiles.modules -> the single select value for the dialogs. */
+function companyAccessOf(modules: ModuleCode[] | undefined): CompanyAccess {
+  return modules && modules.length === 1 ? modules[0] : "both";
+}
+
+/** Compact select used by both dialogs. */
+function CompanyAccessSelect({
+  id,
+  value,
+  onChange,
+}: {
+  id: string;
+  value: CompanyAccess;
+  onChange: (v: CompanyAccess) => void;
+}) {
+  return (
+    <Select value={value} onValueChange={(v) => onChange(v as CompanyAccess)}>
+      <SelectTrigger id={id}>
+        <SelectValue />
+      </SelectTrigger>
+      <SelectContent>
+        {COMPANY_ACCESS.map((c) => (
+          <SelectItem key={c} value={c}>
+            {c === "both" ? "Both Companies" : moduleName(c)}
+          </SelectItem>
+        ))}
+      </SelectContent>
+    </Select>
+  );
+}
 
 export function UserManagement({
   users,
@@ -277,6 +312,7 @@ function UserActions({ user }: { user: TeamUser }) {
   const [editEmail, setEditEmail] = React.useState(user.email);
   const [editNationalId, setEditNationalId] = React.useState(user.nationalId ?? "");
   const [editRole, setEditRole] = React.useState<RoleCode>(user.role);
+  const [editCompany, setEditCompany] = React.useState<CompanyAccess>(companyAccessOf(user.modules));
   // Permissions dialog role
   const [permRole, setPermRole] = React.useState<RoleCode>(user.role);
 
@@ -362,6 +398,10 @@ function UserActions({ user }: { user: TeamUser }) {
                 </SelectContent>
               </Select>
             </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-user-company">Company Access</Label>
+              <CompanyAccessSelect id="edit-user-company" value={editCompany} onChange={setEditCompany} />
+            </div>
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditOpen(false)} disabled={saving}>Cancel</Button>
@@ -369,7 +409,7 @@ function UserActions({ user }: { user: TeamUser }) {
               disabled={saving}
               onClick={() =>
                 patch(
-                  { fullName: editName, email: editEmail, nationalId: editNationalId, role: editRole },
+                  { fullName: editName, email: editEmail, nationalId: editNationalId, role: editRole, moduleAccess: editCompany },
                   `User ${editName} updated`,
                   () => setEditOpen(false)
                 )
@@ -589,13 +629,14 @@ export function AddUserDialog() {
   const [nationalId, setNationalId] = React.useState("");
   const [location, setLocation] = React.useState("");
   const [role, setRole] = React.useState<RoleCode>("admin");
+  const [company, setCompany] = React.useState<CompanyAccess>("both");
   const [password, setPassword] = React.useState("");
   const [confirmPassword, setConfirmPassword] = React.useState("");
   const [creating, setCreating] = React.useState(false);
 
   const reset = () => {
     setFullName(""); setEmail(""); setPhone(""); setNationalId("");
-    setLocation(""); setRole("admin");
+    setLocation(""); setRole("admin"); setCompany("both");
     setPassword(""); setConfirmPassword("");
   };
 
@@ -619,6 +660,7 @@ export function AddUserDialog() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           fullName, email, phone, nationalId, location, role, password,
+          moduleAccess: company,
         }),
       });
       const data = await res.json();
@@ -690,6 +732,10 @@ export function AddUserDialog() {
                 ))}
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="add-user-company">Company Access</Label>
+            <CompanyAccessSelect id="add-user-company" value={company} onChange={setCompany} />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="add-user-password">
