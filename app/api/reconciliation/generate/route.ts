@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth/session";
 import { isCompanyRole } from "@/lib/nav";
 import { createServiceClient } from "@/lib/supabase/server";
 import { runReconciliationEngine } from "@/lib/reconciliation/engine";
+import { companyAliasScheme } from "@/lib/reconciliation/identity-resolver";
 import { generateAgentDocuments, documentToCSV } from "@/lib/reconciliation/document";
 import type { ModuleCode } from "@/types";
 
@@ -68,6 +69,20 @@ export async function POST(request: NextRequest) {
 
     // Persist batch and documents to Supabase if available.
     if (sb) {
+      // Agent codes learned from name-matched rows — persist so the next run
+      // resolves by alias. Claimed codes are never re-pointed.
+      if (engineOutput.learnedAliases.length) {
+        const { error: learnErr } = await sb.from("agent_external_ids").upsert(
+          engineOutput.learnedAliases.map((a) => ({
+            agent_id: a.agentId,
+            scheme: companyAliasScheme(module as ModuleCode),
+            value: a.value,
+          })),
+          { onConflict: "scheme,value", ignoreDuplicates: true }
+        );
+        if (learnErr) console.error("learned alias persist failed:", learnErr.message);
+      }
+
       const { error: batchErr } = await sb.from("reconciliation_batches").insert({
         id: batchDocs.batchId,
         module: batchDocs.module,

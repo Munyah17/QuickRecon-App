@@ -1,4 +1,10 @@
+import type { ModuleCode } from "@/types";
 import type { IdentityAlias, IdentityMatch, NormalizedRecord } from "./types";
+
+/** agent_external_ids scheme for a module's own worksheet agent codes. */
+export function companyAliasScheme(module: ModuleCode): string {
+  return module === "econet-moovah" ? "econet_id" : "enpassent_user_id";
+}
 
 /**
  * Name keys are deliberately never a sole trusted identifier — a fuzzy
@@ -15,6 +21,17 @@ export class IdentityResolver {
 
   static key(value: string): string {
     return value.trim().toUpperCase().replace(/\s+/g, "");
+  }
+
+  /**
+   * Record a code → agent mapping discovered during this run (e.g. a row
+   * matched by name also carries the agent's company code). Later rows with
+   * the same code then resolve by alias. Never overwrites a code already
+   * claimed — a claimed code is another agent's identity.
+   */
+  learn(externalId: string, agentId: string): void {
+    const key = IdentityResolver.key(externalId);
+    if (key && !this.aliasIndex.has(key)) this.aliasIndex.set(key, agentId);
   }
 
   resolve(record: NormalizedRecord): IdentityMatch {

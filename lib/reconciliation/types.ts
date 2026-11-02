@@ -133,6 +133,12 @@ export interface EngineOutput {
   period: string;
   results: AgentReconResult[];
   exceptions: EngineException[];
+  /**
+   * External codes resolved to an agent by name this run — the caller
+   * persists these to agent_external_ids under the module's company scheme
+   * so future batches match by alias.
+   */
+  learnedAliases: { agentId: string; value: string }[];
   stats: {
     recordsIn: number;
     recordsNormalised: number;

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { permissionsForRole } from "@/lib/auth/permissions";
 import { runReconciliationEngine } from "@/lib/reconciliation/engine";
+import { companyAliasScheme } from "@/lib/reconciliation/identity-resolver";
 import { generateAgentDocuments, documentToCSV } from "@/lib/reconciliation/document";
 import { runDecisionEngine } from "@/lib/engine/run";
 import { getAgents, getIdentityAliases } from "@/lib/data";
@@ -115,6 +116,18 @@ export async function POST(request: NextRequest) {
     const persistenceErrors: string[] = [];
     let engineSummary: Awaited<ReturnType<typeof runDecisionEngine>> | null = null;
     if (sb) {
+      // Agent codes the engine learned from name-matched rows — persisting
+      // them means the next import resolves by alias, not by luck. Already
+      // claimed codes are never re-pointed.
+      if (output.learnedAliases.length) {
+        const scheme = companyAliasScheme(moduleCode);
+        const { error: learnErr } = await sb.from("agent_external_ids").upsert(
+          output.learnedAliases.map((a) => ({ agent_id: a.agentId, scheme, value: a.value })),
+          { onConflict: "scheme,value", ignoreDuplicates: true }
+        );
+        if (learnErr) persistenceErrors.push(`agent_external_ids: ${learnErr.message}`);
+      }
+
       const importId = `IMP-${period.replace("-", "")}-${moduleCode === "enpassent" ? "ENP" : "ECN"}-${Date.now() % 10000}`;
       const { error: impErr } = await sb.from("import_batches").insert({
         id: importId,

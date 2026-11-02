@@ -86,6 +86,7 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
   const agentNameIndex = new Map(input.agents.map((a) => [a.fullName.toUpperCase(), a.id]));
 
   const matched: (NormalizedRecord & { agentId: string })[] = [];
+  const learned = new Map<string, { agentId: string; value: string }>();
   let unmatched = 0;
 
   for (const rec of normalised) {
@@ -97,6 +98,16 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
       const hit = agentNameIndex.get(rec.agentNameHint.toUpperCase());
       if (hit) {
         agentId = hit;
+        // The row's company code now provably belongs to this agent — learn
+        // it so remaining rows with the code (but no matching name) resolve
+        // here, and the caller persists it for future batches.
+        if (rec.externalId) {
+          resolver.learn(rec.externalId, hit);
+          learned.set(`${hit}|${IdentityResolver.key(rec.externalId)}`, {
+            agentId: hit,
+            value: rec.externalId,
+          });
+        }
       } else {
         unmatched++;
         exceptions.push({
@@ -307,6 +318,7 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
     period: input.period,
     results,
     exceptions,
+    learnedAliases: [...learned.values()],
     stats: {
       recordsIn: normalised.length,
       recordsNormalised: deduped.length,

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { runReconciliationEngine } from "./engine";
+import { companyAliasScheme } from "./identity-resolver";
 import { generateAgentDocuments, documentToCSV } from "./document";
 import type { ModuleCode } from "@/types";
 import type { SourceRow } from "./types";
@@ -130,6 +131,20 @@ export async function runCycle(
       aliases,
     });
     const batchDocs = generateAgentDocuments(output);
+
+    // Persist agent codes learned from name-matched rows so subsequent runs
+    // resolve by alias. Claimed codes are never re-pointed.
+    if (output.learnedAliases.length) {
+      const { error: learnErr } = await sb.from("agent_external_ids").upsert(
+        output.learnedAliases.map((a) => ({
+          agent_id: a.agentId,
+          scheme: companyAliasScheme(module),
+          value: a.value,
+        })),
+        { onConflict: "scheme,value", ignoreDuplicates: true }
+      );
+      if (learnErr) console.error("learned alias persist failed:", learnErr.message);
+    }
 
     // Replace the live document set for this module+period so re-issued
     // docs — and only those — are what get downloaded/sent.
