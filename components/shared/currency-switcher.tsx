@@ -20,6 +20,21 @@ export function getDisplayCurrency(): Currency {
   return "ZWG";
 }
 
+/**
+ * Query-string fragment for export/download URLs — `&currency=USD` when the
+ * operator picked a single currency, empty when they want both.
+ */
+export function displayCurrencyParam(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    const raw = window.localStorage.getItem(CURRENCY_SETTINGS_KEY);
+    const v = raw ? JSON.parse(raw)?.defaultCurrency : null;
+    return v === "USD" || v === "ZWG" ? `&currency=${v}` : "";
+  } catch {
+    return "";
+  }
+}
+
 function setDisplayCurrency(cur: Currency) {
   try {
     const raw = window.localStorage.getItem(CURRENCY_SETTINGS_KEY);

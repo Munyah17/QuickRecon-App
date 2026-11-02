@@ -335,8 +335,14 @@ export async function documentsToWorkbook(docs: AgentReconDocument[]): Promise<B
     }
   };
 
-  paintSide(usd, 2, "USD");
-  paintSide(zig, 7, "ZiG");
+  // Only paint the currencies that exist — a single-currency doc set shows
+  // one side, not an empty "NO DATA" half.
+  if (usd && zig) {
+    paintSide(usd, 2, "USD");
+    paintSide(zig, 7, "ZiG");
+  } else {
+    paintSide(primary, 2, primary.currency === "USD" ? "USD" : "ZiG");
+  }
 
   // ── Sheet 2: Summary — all columns, USD + ZiG rows, zero-filled ─────
   const wsS = wb.addWorksheet("Summary");
@@ -362,8 +368,8 @@ export async function documentsToWorkbook(docs: AgentReconDocument[]): Promise<B
     ...bankCols.map((b) => d?.bankDeposits[b] ?? 0),
     d?.adjustments ?? 0, d?.closingVariance ?? 0,
   ];
-  wsS.addRow(sRow(usd, "USD"));
-  wsS.addRow(sRow(zig, "ZiG"));
+  if (usd) wsS.addRow(sRow(usd, "USD"));
+  if (zig) wsS.addRow(sRow(zig, "ZiG"));
   wsS.getRow(1).eachCell((c) => {
     c.font = { bold: true, size: 9, color: { argb: "FFFFFFFF" } };
     c.fill = fill(NAVY);
@@ -371,7 +377,7 @@ export async function documentsToWorkbook(docs: AgentReconDocument[]): Promise<B
     c.alignment = { vertical: "middle", wrapText: true };
   });
   wsS.getRow(1).height = 28;
-  for (const r of [2, 3]) {
+  for (let r = 2; r <= wsS.rowCount; r++) {
     wsS.getRow(r).eachCell({ includeEmpty: true }, (c) => {
       c.border = box;
       if (typeof c.value === "number") c.numFmt = "#,##0.00";
@@ -537,9 +543,11 @@ export async function batchToWorkbook(docs: AgentReconDocument[]): Promise<Buffe
     ...bankCols.map((b) => d?.bankDeposits[b] ?? 0),
     d?.adjustments ?? 0, d?.closingVariance ?? 0,
   ];
+  // Only emit rows for currencies the agent actually has — no zero-filled
+  // placeholder row for a currency that was never reconciled.
   for (const g of byAgent.values()) {
-    ws.addRow(sRow(g.usd, "USD", g.name));
-    ws.addRow(sRow(g.zig, "ZiG", g.name));
+    if (g.usd) ws.addRow(sRow(g.usd, "USD", g.name));
+    if (g.zig) ws.addRow(sRow(g.zig, "ZiG", g.name));
   }
 
   ws.getRow(1).eachCell((c) => {

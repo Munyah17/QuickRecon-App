@@ -25,6 +25,7 @@ import { AgentAvatar } from "@/components/shared/agent-avatar";
 import { ExportButton } from "@/components/shared/export-button";
 import { ReconRunControls } from "@/components/reconciliation/run-controls";
 import { downloadFromApi } from "@/lib/export";
+import { displayCurrencyParam } from "@/components/shared/currency-switcher";
 import { formatMoney, formatPeriod, moduleName } from "@/lib/format";
 import { useWorkspace } from "@/components/workspace-provider";
 import type { Reconciliation, ReconException } from "@/types";
@@ -289,7 +290,7 @@ export function ReconWorkbench({
             variant="outline"
             className="h-9 gap-1.5 text-[13px]"
             disabled={busy === "backup"}
-            onClick={() => download(backupUrl, "reconciliation-backup.xlsx", "backup")}
+            onClick={() => download(backupUrl + displayCurrencyParam(), "reconciliation-backup.xlsx", "backup")}
           >
             <Download className="size-4" aria-hidden />
             {busy === "backup" ? "Preparing…" : "Backup batch"}
@@ -385,7 +386,7 @@ export function ReconWorkbench({
             onUpdate={(patch) => update(selected.id, patch)}
             onDownload={() =>
               download(
-                `/api/reconciliation/download?agentId=${encodeURIComponent(selected.agentId)}&period=${encodeURIComponent(selected.period)}&format=xlsx`,
+                `/api/reconciliation/download?agentId=${encodeURIComponent(selected.agentId)}&period=${encodeURIComponent(selected.period)}&format=xlsx` + displayCurrencyParam(),
                 `recon-${selected.agentId}-${selected.period}.xlsx`,
                 `dl-${selected.id}`
               )

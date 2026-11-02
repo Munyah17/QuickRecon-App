@@ -1,7 +1,7 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { formatMoney, formatMoneyDual, getDisplayMode, signedMoney } from "@/lib/format";
+import { formatMoney, formatMoneyDual, signedMoney } from "@/lib/format";
 import type { Currency } from "@/types";
 
 /**
@@ -50,9 +50,9 @@ export function MoneyValue({
 }
 
 /**
- * Auto-dual money renderer — reads the display-mode setting. When the mode
- * is "both" the value renders in both currencies; otherwise single.
- * Use on stat cards and headline money figures.
+ * Stat-card money renderer — always a single currency (the switcher
+ * selection). Pass `dual` explicitly to MoneyValue only where a side-by-side
+ * comparison is intentional.
  */
 export function StatMoney({
   amount,
@@ -63,13 +63,5 @@ export function StatMoney({
   currency?: Currency;
   className?: string;
 }) {
-  const mode = getDisplayMode();
-  return (
-    <MoneyValue
-      amount={amount}
-      currency={currency}
-      dual={mode === "both"}
-      className={className}
-    />
-  );
+  return <MoneyValue amount={amount} currency={currency} className={className} />;
 }

@@ -43,6 +43,7 @@ import { AgentAvatar } from "@/components/shared/agent-avatar";
 import { MoneyValue } from "@/components/shared/money-value";
 import { ConfirmDialog } from "@/components/shared/confirm-dialog";
 import { ExportButton } from "@/components/shared/export-button";
+import { displayCurrencyParam } from "@/components/shared/currency-switcher";
 import {
   Dialog,
   DialogContent,
@@ -367,7 +368,7 @@ export function BatchReview({ rows }: { rows: Reconciliation[] }) {
               <DropdownMenuItem
                 className="gap-2"
                 onSelect={() => {
-                  const url = `/api/reconciliation/download?agentId=${encodeURIComponent(row.original.agentId)}&period=${encodeURIComponent(row.original.period)}&format=xlsx`;
+                  const url = `/api/reconciliation/download?agentId=${encodeURIComponent(row.original.agentId)}&period=${encodeURIComponent(row.original.period)}&format=xlsx` + displayCurrencyParam();
                   window.open(url, "_blank");
                 }}
               >

@@ -28,6 +28,7 @@ import { BatchReview } from "@/components/reconciliation/batch-review";
 import { ReconWorkbench } from "@/components/reconciliation/recon-workbench";
 import { formatMoney, formatPeriod, moduleName } from "@/lib/format";
 import { downloadFromApi } from "@/lib/export";
+import { displayCurrencyParam } from "@/components/shared/currency-switcher";
 import { useWorkspace } from "@/components/workspace-provider";
 import type { Reconciliation, ReconException } from "@/types";
 import type { getReconciliationDocuments } from "@/lib/data";
@@ -229,7 +230,7 @@ function BreakdownsView({ rows, canEdit }: { rows: Reconciliation[]; canEdit?: b
           variant="outline"
           className="h-9 gap-1.5 text-[13px]"
           disabled={downloading === "all"}
-          onClick={() => download(allUrl, "reconciliation-breakdowns.xlsx", "all")}
+          onClick={() => download(allUrl + displayCurrencyParam(), "reconciliation-breakdowns.xlsx", "all")}
         >
           <Download className="size-4" aria-hidden />
           {downloading === "all" ? "Preparing…" : "Export All Breakdowns"}
@@ -283,7 +284,7 @@ function BreakdownsView({ rows, canEdit }: { rows: Reconciliation[]; canEdit?: b
                         disabled={downloading === r.id}
                         onClick={() =>
                           download(
-                            `/api/reconciliation/download?agentId=${encodeURIComponent(r.agentId)}&period=${encodeURIComponent(r.period)}&format=xlsx`,
+                            `/api/reconciliation/download?agentId=${encodeURIComponent(r.agentId)}&period=${encodeURIComponent(r.period)}&format=xlsx` + displayCurrencyParam(),
                             `recon-${r.agentId}-${r.period}.xlsx`,
                             r.id
                           )
@@ -415,7 +416,7 @@ function DocumentsView({
                   className="h-8 gap-1 text-[12px]"
                   onClick={() => {
                     const fname = `reconciliation-${d.agentId}-${d.period}.xlsx`;
-                    const url = `/api/reconciliation/download?agentId=${encodeURIComponent(d.agentId)}&period=${encodeURIComponent(d.period)}&format=xlsx`;
+                    const url = `/api/reconciliation/download?agentId=${encodeURIComponent(d.agentId)}&period=${encodeURIComponent(d.period)}&format=xlsx` + displayCurrencyParam();
                     downloadFromApi(url, fname)
                       .then(() => toast.success("Download started", { description: fname }))
                       .catch((e) => toast.error(e instanceof Error ? e.message : "Download failed"));
