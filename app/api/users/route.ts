@@ -10,6 +10,16 @@ export const runtime = "nodejs";
 const VALID_ROLES: RoleCode[] = ["super_admin", "admin", "agent", "tech_support", "finance", "operations"];
 /** Roles that hold a portal login. Field roles never appear on profiles. */
 const STAFF_ROLES: RoleCode[] = ["super_admin", "admin", "tech_support", "finance", "operations"];
+const VALID_MODULES = new Set(["enpassent", "econet-moovah"]);
+
+/** Normalise a modules assignment into module_code[] or null (not given). */
+function staffModules(raw: unknown): string[] | null {
+  const list = Array.isArray(raw) ? raw : typeof raw === "string" ? [raw] : null;
+  if (!list) return null;
+  if (list.some((m) => String(m).toLowerCase() === "both")) return ["enpassent", "econet-moovah"];
+  const valid = list.map(String).filter((m) => VALID_MODULES.has(m));
+  return valid.length ? [...new Set(valid)] : null;
+}
 
 /**
  * POST /api/users — create a staff account or onboard a field agent.
@@ -185,6 +195,9 @@ export async function POST(request: NextRequest) {
 
   // Upsert: a handle_new_user DB trigger may have already inserted a stub
   // row (with default role) when the auth user was created — overwrite it.
+  // moduleAccess assigns the source companies this user may work — omitted
+  // means the column default (both).
+  const modules = staffModules(moduleAccess);
   const { error: profileError } = await sb.from("profiles").upsert(
     {
       id: userId,
@@ -193,6 +206,7 @@ export async function POST(request: NextRequest) {
       role,
       status: "active",
       phone: phone || null,
+      ...(modules ? { modules } : {}),
     },
     { onConflict: "id" }
   );
@@ -220,7 +234,7 @@ export async function PATCH(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { userId, email, fullName, nationalId, phone, location, password, role, status } = body ?? {};
+  const { userId, email, fullName, nationalId, phone, location, password, role, status, moduleAccess, modules } = body ?? {};
   if (!userId && !email) {
     return NextResponse.json({ error: "userId or email required" }, { status: 400 });
   }
@@ -264,6 +278,8 @@ export async function PATCH(request: NextRequest) {
   if (role) profileUpdate.role = role;
   if (status) profileUpdate.status = status;
   if (phone !== undefined) profileUpdate.phone = phone || null;
+  const patchedModules = staffModules(modules ?? moduleAccess);
+  if (patchedModules) profileUpdate.modules = patchedModules;
   if (Object.keys(profileUpdate).length) {
     const { error } = await sb.from("profiles").update(profileUpdate).eq("id", uid);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });

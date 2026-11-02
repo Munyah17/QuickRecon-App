@@ -40,6 +40,8 @@ export interface AppUser {
   status: UserStatus;
   /** Present when the user is an agent account. */
   agentId?: string;
+  /** Source companies this user may work — enpassent, econet-moovah, or both. */
+  modules?: ModuleCode[];
   lastLoginAt?: string;
 }
 
@@ -98,6 +100,8 @@ export interface Agent {
   joinedAt: string;
   nationalId?: string;
   iceCashId?: string;
+  /** ZINARA account/user ID — stored in agent_external_ids under "zinara_id". */
+  zinaraId?: string;
   kycStatus: "verified" | "pending" | "unverified";
   metrics?: AgentPeriodMetrics;
 }

@@ -3,7 +3,7 @@ import { cache } from "react";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
 import { permissionsForRole, roleLabel, type Permission } from "@/lib/auth/permissions";
-import type { AppUser, RoleCode } from "@/types";
+import type { AppUser, ModuleCode, RoleCode } from "@/types";
 
 export interface SessionInfo {
   user: AppUser;
@@ -127,6 +127,23 @@ export const getSession = cache(async (): Promise<SessionInfo | null> => {
     if (profileAccessError(profile)) return null;
     const role = portalRole(profile.role);
     if (!role) return null;
+
+    // Module assignment (profiles.modules) landed in migration 0021 — fetch
+    // it best-effort so sessions keep working before the migration is applied.
+    let modules: ModuleCode[] | undefined;
+    try {
+      const { data: m } = await supabase
+        .from("profiles")
+        .select("modules")
+        .eq("id", authData.user.id)
+        .single();
+      if (Array.isArray(m?.modules) && m.modules.length > 0) {
+        modules = m.modules as ModuleCode[];
+      }
+    } catch {
+      /* column not yet in schema — user sees all modules */
+    }
+
     const user: AppUser = {
       id: authData.user.id,
       fullName: profile.full_name ?? authData.user.email ?? "User",
@@ -135,6 +152,7 @@ export const getSession = cache(async (): Promise<SessionInfo | null> => {
       roleLabel: roleLabel(role),
       status: profile.status ?? "active",
       agentId: profile.agent_id ?? undefined,
+      modules,
     };
 
     return {

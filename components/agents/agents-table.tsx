@@ -58,14 +58,6 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
     [agents]
   );
 
-  /** Banks that actually have a POS ID on at least one agent — each gets its
-   * own column, ordered like AGENT_POS_BANKS. */
-  const posBanks = React.useMemo<AgentPosBank[]>(() => {
-    const present = new Set<AgentPosBank>();
-    for (const a of agents) for (const p of a.bankPos ?? []) present.add(p.bank);
-    return AGENT_POS_BANKS.filter((b) => present.has(b));
-  }, [agents]);
-
   const filtered = React.useMemo(
     () =>
       agents.filter((a) => {
@@ -125,7 +117,7 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
       },
       {
         accessorKey: "fullName",
-        header: "Name",
+        header: "Full Name",
         cell: ({ row }) => (
           <Link
             href={`/app/agents/${row.original.id}`}
@@ -145,40 +137,28 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
           </span>
         ),
       },
-      // One POS ID column per bank — each bank issues its own POS device
-      // whose ID appears on that bank's statement.
-      ...posBanks.map(
-        (bank): ColumnDef<Agent, unknown> => ({
-          id: `pos-${bank.toLowerCase()}`,
-          header: `${bank} POS`,
-          cell: ({ row }) => {
-            const posId = row.original.bankPos?.find((p) => p.bank === bank)?.posId;
-            return (
-              <span className="whitespace-nowrap font-mono text-[12px] text-muted-foreground">
-                {posId ?? "—"}
-              </span>
-            );
-          },
-        })
-      ),
       {
-        accessorKey: "modules",
-        header: "Modules",
-        cell: ({ row }) => (
-          <span className="text-[12.5px]">
-            {row.original.modules
-              .filter((m) => m.enabled)
-              .map((m) => (m.module === "econet-moovah" ? "Econet" : "Enpassent"))
-              .join(", ") || "—"}
+        accessorKey: "zinaraId",
+        header: "ZINARA ID",
+        cell: ({ getValue }) => (
+          <span className="font-mono text-[12px] text-muted-foreground">
+            {(getValue() as string | undefined) ?? "—"}
           </span>
         ),
       },
       {
-        accessorKey: "boothsCount",
-        header: "Booths",
-        cell: ({ getValue }) => (
-          <span className="tnum">{getValue() as number}</span>
-        ),
+        accessorKey: "modules",
+        header: "Modules",
+        cell: ({ row }) => {
+          const enabled = row.original.modules.filter((m) => m.enabled);
+          const label =
+            enabled.length >= 2
+              ? "Both"
+              : enabled
+                  .map((m) => (m.module === "econet-moovah" ? "Moovah" : "Enpassent"))
+                  .join(", ") || "—";
+          return <span className="text-[12.5px]">{label}</span>;
+        },
       },
       {
         accessorKey: "phone",
@@ -187,11 +167,36 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
           <span className="tnum whitespace-nowrap">{getValue() as string}</span>
         ),
       },
+      // Every POS terminal the agent holds, labelled by bank — each bank
+      // issues its own device whose ID appears on that bank's statement.
       {
-        accessorKey: "email",
-        header: "Email",
+        id: "pos-ids",
+        header: "POS ID",
+        cell: ({ row }) => {
+          const pos = row.original.bankPos ?? [];
+          if (pos.length === 0) {
+            return <span className="text-muted-foreground">—</span>;
+          }
+          return (
+            <span className="flex flex-col gap-0.5">
+              {pos.map((p) => (
+                <span
+                  key={p.bank}
+                  className="whitespace-nowrap font-mono text-[11.5px] text-muted-foreground"
+                >
+                  <span className="font-sans font-semibold text-foreground/80">{p.bank}</span>{" "}
+                  {p.posId}
+                </span>
+              ))}
+            </span>
+          );
+        },
+      },
+      {
+        accessorKey: "province",
+        header: "Province",
         cell: ({ getValue }) => (
-          <span className="text-muted-foreground">{getValue() as string}</span>
+          <span className="text-[12.5px]">{(getValue() as string) || "—"}</span>
         ),
       },
       {
@@ -208,7 +213,7 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
         size: 40,
       },
     ],
-    [posBanks]
+    []
   );
 
   const counts = React.useMemo(() => {
@@ -428,21 +433,20 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
               title="QuickRecon — Agents"
               data={{
                 columns: [
-                  "#", "Name", "Agent ID",
-                  ...posBanks.map((b) => `${b} POS`),
-                  "Modules", "Booths", "Phone", "Email", "Status",
+                  "#", "Full Name", "Agent ID", "ZINARA ID", "Modules",
+                  "Phone", "POS IDs", "Province", "Status",
                 ],
                 rows: filtered.map((a, i) => [
                   i + 1,
                   a.fullName,
                   a.id,
-                  ...posBanks.map(
-                    (b) => a.bankPos?.find((p) => p.bank === b)?.posId ?? "—"
-                  ),
-                  a.modules.filter((m) => m.enabled).map((m) => (m.module === "econet-moovah" ? "Econet" : "Enpassent")).join(", "),
-                  a.boothsCount,
+                  a.zinaraId ?? "—",
+                  (a.modules.filter((m) => m.enabled).length >= 2
+                    ? "Both"
+                    : a.modules.filter((m) => m.enabled).map((m) => (m.module === "econet-moovah" ? "Moovah" : "Enpassent")).join(", ")) || "—",
                   a.phone,
-                  a.email,
+                  (a.bankPos ?? []).map((p) => `${p.bank}: ${p.posId}`).join(" | ") || "—",
+                  a.province || "—",
                   a.status,
                 ]),
               }}

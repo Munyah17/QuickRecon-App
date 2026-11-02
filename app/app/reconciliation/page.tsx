@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
-import { getReconciliations, getTransactions, getReconciliationDocuments, getExceptions } from "@/lib/data";
+import { getReconciliations, getReconciliationDocuments, getExceptions } from "@/lib/data";
 import { isCompanyRole } from "@/lib/nav";
 import { PageHeader } from "@/components/layout/page-header";
 import { ReconciliationTabs } from "@/components/reconciliation/reconciliation-tabs";
@@ -18,9 +18,8 @@ export default async function ReconciliationPage({
   if (!isCompanyRole(session.user.role)) redirect("/app/reports");
 
   const { tab } = await searchParams;
-  const [rows, transactions, documents, exceptions] = await Promise.all([
+  const [rows, documents, exceptions] = await Promise.all([
     getReconciliations(),
-    getTransactions(),
     getReconciliationDocuments(),
     getExceptions(),
   ]);
@@ -34,7 +33,6 @@ export default async function ReconciliationPage({
       <ReconciliationTabs
         activeTab={tab ?? "workbench"}
         rows={rows}
-        transactions={transactions}
         documents={documents}
         exceptions={exceptions}
         canEditCells={session.user.role === "super_admin"}

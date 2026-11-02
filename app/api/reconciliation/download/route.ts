@@ -63,6 +63,10 @@ export async function GET(request: NextRequest) {
   const period = searchParams.get("period");
   const moduleParam = searchParams.get("module");
   const format = searchParams.get("format") ?? "xlsx";
+  // Reporting currency — either or both. `currency=usd|zwg` filters the
+  // document set; anything else (incl. `both`) keeps every currency doc.
+  const currencyParam = searchParams.get("currency")?.toUpperCase();
+  const curFilter = currencyParam === "USD" || currencyParam === "ZWG" ? currencyParam : null;
 
   if (!agentId) {
     return NextResponse.json({ error: "agentId required" }, { status: 400 });
@@ -82,6 +86,7 @@ export async function GET(request: NextRequest) {
     if (batchId) q = q.eq("batch_id", batchId);
     if (period) q = q.eq("period", period);
     if (moduleParam && moduleParam !== "all") q = q.eq("module", moduleParam);
+    if (curFilter) q = q.eq("currency", curFilter);
     const { data } = await q.order("agent_id").order("currency");
     if (!data?.length) {
       return NextResponse.json({ error: "No documents found" }, { status: 404 });
@@ -111,6 +116,7 @@ export async function GET(request: NextRequest) {
   let q = sb.from("reconciliation_documents").select("*").eq("agent_id", agentId);
   if (batchId) q = q.eq("batch_id", batchId);
   if (period) q = q.eq("period", period);
+  if (curFilter) q = q.eq("currency", curFilter);
   const { data } = await q.order("created_at", { ascending: false });
 
   if (!data?.length) {

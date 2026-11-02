@@ -53,7 +53,6 @@ export const NAV_ITEMS: NavItem[] = [
     children: [
       { label: "Summary", href: "/app/reconciliation", icon: RefreshCcw },
       { label: "Breakdowns", href: "/app/reconciliation?tab=breakdowns", icon: FileBarChart },
-      { label: "Transactions", href: "/app/reconciliation?tab=transactions", icon: ArrowLeftRight },
       { label: "Documents", href: "/app/reconciliation?tab=documents", icon: FileText },
       { label: "Alarm", href: "/app/reconciliation/exceptions", icon: TriangleAlert },
     ],

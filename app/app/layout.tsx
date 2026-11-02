@@ -23,9 +23,12 @@ export default async function AppLayout({
   ]);
   if (!session) redirect("/login");
 
-  // Field roles have no portal access — every session is company staff,
-  // which sees all workspace modules.
-  const availableModules = ALL_MODULES;
+  // Field roles have no portal access — every session is company staff.
+  // The workspace only exposes the source companies (modules) this user is
+  // assigned; unset (preview mode / pre-migration) means all.
+  const availableModules = session.user.modules?.length
+    ? ALL_MODULES.filter((m) => session.user.modules!.includes(m))
+    : ALL_MODULES;
 
   return (
     <AppShell

@@ -29,7 +29,7 @@ import { ReconWorkbench } from "@/components/reconciliation/recon-workbench";
 import { formatMoney, formatPeriod, moduleName } from "@/lib/format";
 import { downloadFromApi } from "@/lib/export";
 import { useWorkspace } from "@/components/workspace-provider";
-import type { Reconciliation, ReconException, Txn } from "@/types";
+import type { Reconciliation, ReconException } from "@/types";
 import type { getReconciliationDocuments } from "@/lib/data";
 
 type ReconDocument = Awaited<ReturnType<typeof getReconciliationDocuments>>[number];
@@ -38,26 +38,23 @@ const TABS = [
   { id: "workbench", label: "Workbench" },
   { id: "summary", label: "Summary" },
   { id: "breakdowns", label: "Breakdowns" },
-  { id: "transactions", label: "Transactions" },
   { id: "documents", label: "Documents" },
 ] as const;
 
 /**
- * Reconciliation workspace — Summary (batch review) · Breakdowns
- * (per-agent consolidated single-row view) · Transactions · Documents.
+ * Reconciliation workspace — Workbench · Summary (batch review) ·
+ * Breakdowns (per-agent consolidated single-row view) · Documents.
  * Alarm lives at /app/reconciliation/exceptions.
  */
 export function ReconciliationTabs({
   activeTab,
   rows,
-  transactions,
   documents,
   exceptions,
   canEditCells = false,
 }: {
   activeTab: string;
   rows: Reconciliation[];
-  transactions: Txn[];
   documents: ReconDocument[];
   exceptions: ReconException[];
   /** Super-admin inline cell editing on Breakdowns. */
@@ -97,7 +94,6 @@ export function ReconciliationTabs({
       {activeTab === "workbench" && <ReconWorkbench rows={rows} exceptions={exceptions} />}
       {activeTab === "summary" && <BatchReview rows={rows} />}
       {activeTab === "breakdowns" && <BreakdownsView rows={scoped} canEdit={canEditCells} />}
-      {activeTab === "transactions" && <TransactionsView transactions={transactions} />}
       {activeTab === "documents" && <DocumentsView documents={documents} scopedRows={scoped} />}
     </div>
   );
@@ -302,57 +298,6 @@ function BreakdownsView({ rows, canEdit }: { rows: Reconciliation[]; canEdit?: b
             </table>
             {filtered.length === 0 && (
               <p className="py-10 text-center text-[13px] text-muted-foreground">No matching agents.</p>
-            )}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-}
-
-/* ─── Transactions: flat ledger for the whole batch ─── */
-function TransactionsView({ transactions }: { transactions: Txn[] }) {
-  return (
-    <div className="space-y-3">
-      <div className="flex justify-end">
-        <ExportButton
-          filename="reconciliation-transactions"
-          label="Export Transactions"
-          data={{
-            columns: ["Ref", "Description", "Category", "Amount", "Currency", "Date", "Status"],
-            rows: transactions.map((t) => [t.ref, t.title, t.category, t.amount, t.currency, t.date, t.status]),
-          }}
-        />
-      </div>
-      <Card className="gap-0 py-0 shadow-xs">
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-[720px] text-[13px]">
-              <thead>
-                <tr className="border-b bg-muted/50 text-left text-[11.5px] font-semibold tracking-wide text-muted-foreground uppercase">
-                  <th className="px-4 py-2.5">Ref</th>
-                  <th className="px-4 py-2.5">Description</th>
-                  <th className="px-4 py-2.5">Category</th>
-                  <th className="px-4 py-2.5 text-right">Amount</th>
-                  <th className="px-4 py-2.5">Date</th>
-                  <th className="px-4 py-2.5">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {transactions.map((t) => (
-                  <tr key={t.id} className="hover:bg-surface-hover">
-                    <td className="px-4 py-3 font-mono text-[12px] text-muted-foreground">{t.ref}</td>
-                    <td className="px-4 py-3 font-medium">{t.title}</td>
-                    <td className="px-4 py-3 text-muted-foreground capitalize">{t.category}</td>
-                    <td className="tnum px-4 py-3 text-right font-medium">{formatMoney(t.amount, t.currency)}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{t.date}</td>
-                    <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-            {transactions.length === 0 && (
-              <p className="py-10 text-center text-[13px] text-muted-foreground">No transactions in this batch yet.</p>
             )}
           </div>
         </CardContent>

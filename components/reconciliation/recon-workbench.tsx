@@ -274,9 +274,11 @@ export function ReconWorkbench({
             filename="recon-workbench-queue"
             label="Queue"
             data={{
-              columns: ["Recon", "Agent", "ID", "Module", "Period", "Closing", "Status", "Work status"],
+              columns: ["Recon", "Agent", "ID", "Module", "Period", "Expected", "Deposits", "Variance", "Closing", "Status", "Work status"],
               rows: filtered.map((r) => [
                 r.id, r.agentName, r.agentId, moduleName(r.module), r.period,
+                r.insurance + r.zinara, r.deposits,
+                r.deposits - (r.insurance + r.zinara),
                 r.closingPosition, r.status, queueStatus(r),
               ]),
             }}
@@ -339,6 +341,19 @@ export function ReconWorkbench({
                     <span className={`tnum text-[12px] font-semibold ${r.closingPosition < 0 ? "text-destructive" : ""}`}>
                       {formatMoney(r.closingPosition, r.currency)}
                     </span>
+                    {/* Deposit variance: banked vs expected (ins + ZINARA) */}
+                    {(() => {
+                      const variance = r.deposits - (r.insurance + r.zinara);
+                      return (
+                        <span
+                          className={`tnum text-[10.5px] ${
+                            variance !== 0 ? "font-semibold text-warning-foreground" : "text-muted-foreground"
+                          }`}
+                        >
+                          Var {variance > 0 ? "+" : ""}{formatMoney(variance, r.currency)}
+                        </span>
+                      );
+                    })()}
                     <span className="flex items-center gap-1">
                       {open > 0 && (
                         <span className="rounded-full bg-destructive-soft px-1.5 py-px text-[9.5px] font-bold text-destructive">
