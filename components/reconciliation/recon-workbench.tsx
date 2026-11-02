@@ -23,6 +23,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { AgentAvatar } from "@/components/shared/agent-avatar";
 import { ExportButton } from "@/components/shared/export-button";
+import { ReconRunControls } from "@/components/reconciliation/run-controls";
 import { downloadFromApi } from "@/lib/export";
 import { formatMoney, formatPeriod, moduleName } from "@/lib/format";
 import { useWorkspace } from "@/components/workspace-provider";
@@ -270,6 +271,7 @@ export function ReconWorkbench({
           />
         </div>
         <div className="ml-auto flex flex-wrap items-center gap-2">
+          <ReconRunControls />
           <ExportButton
             filename="recon-workbench-queue"
             label="Queue"
@@ -588,7 +590,7 @@ function Inspector({
               toast.success("Marked verified", { description: recon.agentName });
             }}
           >
-            <ShieldCheck className="size-4" aria-hidden /> Mark verified
+            <CheckCircle2 className="size-4" aria-hidden /> Verify
           </Button>
           <Button
             size="sm"

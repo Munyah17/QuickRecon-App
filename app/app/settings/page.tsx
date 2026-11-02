@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { CurrencySettings } from "@/components/settings/currency-settings";
+import { ReconAutomationSettings } from "@/components/settings/recon-automation";
 
 export const metadata: Metadata = { title: "Settings" };
 
@@ -164,6 +165,7 @@ export default async function SettingsPage() {
         </TabsContent>
 
         <TabsContent value="reconciliation" className="mt-4 space-y-4">
+          <ReconAutomationSettings />
           <Card className="gap-0 py-0 shadow-xs">
             <CardHeader className="px-5 pt-5">
               <CardTitle className="text-[14.5px] font-semibold">Reconciliation Rules</CardTitle>

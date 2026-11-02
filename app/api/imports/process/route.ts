@@ -155,6 +155,41 @@ export async function POST(request: NextRequest) {
       });
       if (impErr) persistenceErrors.push(`import_batches: ${impErr.message}`);
 
+      // Retain the source rows — a reconciliation cycle re-runs the engine
+      // over these (manual run, document re-issue, monthly auto-run), so
+      // nothing ever needs re-uploading.
+      if (!impErr) {
+        const wsRows = Object.entries(sheets).map(([name, rows]) => ({
+          batch_id: importId,
+          name,
+          row_count: rows.length,
+          column_count: rows[0] ? Object.keys(rows[0]).length : 0,
+          headers: rows[0] ? Object.keys(rows[0]) : [],
+          selected: selectedSheets.length === 0 || selectedSheets.includes(name),
+        }));
+        if (wsRows.length) {
+          const { error: wsErr } = await sb.from("import_worksheets").insert(wsRows);
+          if (wsErr) persistenceErrors.push(`import_worksheets: ${wsErr.message}`);
+        }
+        const stageRows = Object.entries(sheets).flatMap(([worksheet, rows]) =>
+          rows.map((raw, i) => ({
+            batch_id: importId,
+            worksheet,
+            row_number: i + 1,
+            raw,
+          }))
+        );
+        for (let i = 0; i < stageRows.length; i += 500) {
+          const { error: stErr } = await sb
+            .from("staging_rows")
+            .insert(stageRows.slice(i, i + 500));
+          if (stErr) {
+            persistenceErrors.push(`staging_rows: ${stErr.message}`);
+            break;
+          }
+        }
+      }
+
       const { error: batchErr } = await sb.from("reconciliation_batches").insert({
         id: batchDocs.batchId,
         module: batchDocs.module,
