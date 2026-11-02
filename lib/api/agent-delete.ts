@@ -36,7 +36,11 @@ export async function deleteAgentCascade(
     { label: "reconciliation_documents", run: () => service.from("reconciliation_documents").delete().eq("agent_id", id) },
     // reports.reconciliation_id also restricts the reconciliations delete.
     { label: "reports", run: () => service.from("reports").delete().eq("agent_id", id) },
-    // Cascades reconciliation_lines, _versions, _adjustments, agent_discrepancies.
+    // Discrepancies restrict on agent_id and only cascade via the
+    // reconciliation they hang on — a row naming this agent on another
+    // agent's reconciliation would otherwise block the delete.
+    { label: "agent_discrepancies", run: () => service.from("agent_discrepancies").delete().eq("agent_id", id) },
+    // Cascades reconciliation_lines, _versions, _adjustments.
     { label: "reconciliations", run: () => service.from("reconciliations").delete().eq("agent_id", id) },
     { label: "distribution_recipients", run: () => service.from("distribution_recipients").delete().eq("agent_id", id) },
     // Nullable references — detach rather than delete so batch/exception/
