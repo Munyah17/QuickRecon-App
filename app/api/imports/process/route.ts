@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import * as XLSX from "xlsx";
 import { getSession } from "@/lib/auth/session";
 import { permissionsForRole } from "@/lib/auth/permissions";
 import { runReconciliationEngine } from "@/lib/reconciliation/engine";
@@ -8,6 +7,7 @@ import { runDecisionEngine } from "@/lib/engine/run";
 import { getAgents, getIdentityAliases } from "@/lib/data";
 import type { ModuleCode } from "@/types";
 import type { SourceRow } from "@/lib/reconciliation/types";
+import { loadWorkbook, rowsForSheet } from "@/lib/imports/workbook";
 
 export const runtime = "nodejs";
 
@@ -45,43 +45,15 @@ export async function POST(request: NextRequest) {
 
   try {
     const buffer = Buffer.from(await file.arrayBuffer());
-    const workbook = XLSX.read(buffer, { type: "buffer", cellDates: true });
 
-    // Locate the real header row — real-world workbooks often carry a title
-    // banner above the headers, and sheet_to_json would treat that banner as
-    // the header row and produce garbage __EMPTY keys. Scan the first rows
-    // for the one containing the most recognisable field names.
-    const HEADER_HINTS = /^(agent|agent\s*(id|code|name|full name)|name|amount|premium|premium collected|deposit|deposited|settled|settled amount|value|total|date|txn date|transaction date|posting date|sale date|ref|reference|policy no|receipt no|narration|narration \/ref|description|currency|curr|account|account name|bank|bank account|channel|commission|comm|usd|usd amount|usd deposit|rate|conversion|vrn|vehicle registration|reg no|registration number|insurance company|insurer|underwriter|rta|rta amount|payment method|float|msisdn|econet id|ecocash id|code|status|type)$/i;
-    const sheetRows = (name: string): SourceRow[] => {
-      const sheet = workbook.Sheets[name];
-      if (!sheet) return [];
-      const grid = XLSX.utils.sheet_to_json<unknown[]>(sheet, {
-        header: 1,
-        defval: null,
-        blankrows: false,
-      });
-      let headerIdx = 0;
-      let best = 0;
-      const scan = Math.min(grid.length, 15);
-      for (let i = 0; i < scan; i++) {
-        const cells = (grid[i] ?? []) as unknown[];
-        const score = cells.reduce<number>(
-          (n, c) => n + (typeof c === "string" && HEADER_HINTS.test(c.trim()) ? 1 : 0),
-          0
-        );
-        if (score > best) { best = score; headerIdx = i; }
-      }
-      // Need at least 2 known columns to trust it as a header row; otherwise
-      // fall back to the default (first row) so unusual sheets still parse.
-      if (best < 2) return XLSX.utils.sheet_to_json<SourceRow>(sheet, { defval: null });
-      return XLSX.utils.sheet_to_json<SourceRow>(sheet, { defval: null, range: headerIdx });
-    };
-
+    // Shared loader: formulas are evaluated (not read as stale cached
+    // values), and CSV files are supported via papaparse.
+    const parsed = await loadWorkbook(buffer, file.name);
     const sheets: Record<string, SourceRow[]> = {};
-    const sheetNames = selectedSheets.length ? selectedSheets : workbook.SheetNames;
+    const sheetNames = selectedSheets.length ? selectedSheets : parsed.sheetNames;
     for (const name of sheetNames) {
-      if (!workbook.Sheets[name]) continue;
-      sheets[name] = sheetRows(name);
+      if (!parsed.grids[name]) continue;
+      sheets[name] = rowsForSheet(parsed, name);
     }
 
     // Read agents + identity aliases through the service client. This route is

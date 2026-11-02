@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createHash } from "node:crypto";
-import * as XLSX from "xlsx";
 import { getSession } from "@/lib/auth/session";
 import { permissionsForRole } from "@/lib/auth/permissions";
+import { loadWorkbook, rowsForSheet } from "@/lib/imports/workbook";
 
 export const runtime = "nodejs";
 
@@ -32,26 +32,26 @@ export async function POST(request: NextRequest) {
     const buffer = Buffer.from(await file.arrayBuffer());
     const checksum = createHash("sha256").update(buffer).digest("hex");
 
-    const workbook = XLSX.read(buffer, { type: "buffer", cellFormula: true, cellDates: true });
+    // Shared loader — formulas are evaluated (cached values only used when
+    // a formula can't resolve), and CSV files parse via papaparse.
+    const parsed = await loadWorkbook(buffer, file.name);
 
-    const worksheets = workbook.SheetNames.map((name) => {
-      const sheet = workbook.Sheets[name];
-      const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(sheet, {
-        defval: null,
-        raw: true,
-      });
+    const worksheets = parsed.sheetNames.map((name) => {
+      const rows = rowsForSheet(parsed, name);
       const headers = rows.length > 0 ? Object.keys(rows[0]) : [];
       const warnings: string[] = [];
 
-      // Formula-containing cells warn — formulas are NOT executed as business logic.
-      let formulaCells = 0;
-      for (const addr of Object.keys(sheet)) {
-        if (addr.startsWith("!")) continue;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        if ((sheet as any)[addr]?.f) formulaCells++;
-      }
-      if (formulaCells > 0) {
-        warnings.push(`${formulaCells} formula cells — formulas are read as values only`);
+      const formulas = parsed.formulaCells[name] ?? 0;
+      const unevaluated = parsed.unevaluatedCells[name] ?? 0;
+      const recovered = parsed.recoveredCells[name] ?? 0;
+      if (formulas > 0) {
+        warnings.push(
+          unevaluated > 0
+            ? `${formulas} formula cells — ${formulas - unevaluated} evaluated, ${unevaluated} used cached values`
+            : recovered > 0
+              ? `${formulas} formula cells — all evaluated (${recovered} had no cached value)`
+              : `${formulas} formula cells — all evaluated`
+        );
       }
       if (headers.length === 0) warnings.push("No header row detected");
 
