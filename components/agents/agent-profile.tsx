@@ -39,6 +39,14 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { AgentAvatar } from "@/components/shared/agent-avatar";
@@ -353,6 +361,7 @@ export function AgentProfile({
           agent={agent}
           open={editOpen}
           onOpenChange={setEditOpen}
+          isSuper={viewer.role === "super_admin"}
         />
       )}
     </div>
@@ -364,10 +373,13 @@ function EditAgentDialog({
   agent,
   open,
   onOpenChange,
+  isSuper = false,
 }: {
   agent: Agent;
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  /** Super admins get the full field set — everyone else gets the shared one. */
+  isSuper?: boolean;
 }) {
   const router = useRouter();
   const [saving, setSaving] = React.useState(false);
@@ -379,11 +391,25 @@ function EditAgentDialog({
     location: agent.location ?? "",
     nationalId: agent.nationalId ?? "",
     icecashId: agent.iceCashId ?? "",
+    zinaraId: agent.zinaraId ?? "",
   });
   const [form, setForm] = React.useState(seed);
+  const [status, setStatus] = React.useState<string>(agent.status);
+  const [kycStatus, setKycStatus] = React.useState<string>(agent.kycStatus);
+  const [enabledMods, setEnabledMods] = React.useState<Set<string>>(
+    () => new Set(agent.modules.filter((m) => m.enabled).map((m) => m.module))
+  );
   const [posIds, setPosIds] = React.useState<Record<string, string>>(
     Object.fromEntries((agent.bankPos ?? []).map((p) => [p.bank, p.posId]))
   );
+
+  const toggleModule = (mod: string, on: boolean) =>
+    setEnabledMods((s) => {
+      const next = new Set(s);
+      if (on) next.add(mod);
+      else next.delete(mod);
+      return next;
+    });
 
   // Re-seed the form whenever a different agent / fresh data is opened.
   const [prev, setPrev] = React.useState({ open, agent });
@@ -391,6 +417,11 @@ function EditAgentDialog({
     setPrev({ open, agent });
     if (open) {
       setForm(seed());
+      setStatus(agent.status);
+      setKycStatus(agent.kycStatus);
+      setEnabledMods(
+        new Set(agent.modules.filter((m) => m.enabled).map((m) => m.module))
+      );
       setPosIds(
         Object.fromEntries((agent.bankPos ?? []).map((p) => [p.bank, p.posId]))
       );
@@ -418,6 +449,9 @@ function EditAgentDialog({
           location: form.location.trim(),
           nationalId: form.nationalId.trim(),
           icecashId: form.icecashId.trim(),
+          zinaraId: form.zinaraId.trim(),
+          modules: [...enabledMods],
+          ...(isSuper ? { status, kycStatus } : {}),
           bankPos: AGENT_POS_BANKS.map((bank) => ({
             bank,
             posId: (posIds[bank] ?? "").trim(),
@@ -468,10 +502,74 @@ function EditAgentDialog({
             <Label htmlFor="ea-location">Location</Label>
             <Input id="ea-location" value={form.location} onChange={set("location")} />
           </div>
-          <div className="space-y-1.5 sm:col-span-2">
+          <div className="space-y-1.5">
             <Label htmlFor="ea-icecash">IceCash ID</Label>
             <Input id="ea-icecash" value={form.icecashId} onChange={set("icecashId")} />
           </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="ea-zinara">ZINARA ID</Label>
+            <Input
+              id="ea-zinara"
+              className="font-mono"
+              placeholder="e.g. ZW018ZLN"
+              value={form.zinaraId}
+              onChange={set("zinaraId")}
+            />
+          </div>
+          <div className="space-y-2 sm:col-span-2">
+            <Label>Modules</Label>
+            <p className="text-[11.5px] text-muted-foreground">
+              Source companies this agent works.
+            </p>
+            <div className="flex gap-5">
+              {(
+                [
+                  ["enpassent", "Enpassent"],
+                  ["econet-moovah", "Moovah"],
+                ] as const
+              ).map(([mod, label]) => (
+                <label key={mod} className="flex cursor-pointer items-center gap-2 text-[13px]">
+                  <Checkbox
+                    checked={enabledMods.has(mod)}
+                    onCheckedChange={(v) => toggleModule(mod, v === true)}
+                    aria-label={label}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </div>
+          {isSuper && (
+            <>
+              <div className="space-y-1.5">
+                <Label>Status</Label>
+                <Select value={status} onValueChange={setStatus}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="suspended">Suspended</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>KYC Status</Label>
+                <Select value={kycStatus} onValueChange={setKycStatus}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="verified">Verified</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="unverified">Unverified</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </>
+          )}
           <div className="space-y-2 sm:col-span-2">
             <Label>Bank POS IDs</Label>
             <p className="text-[11.5px] text-muted-foreground">

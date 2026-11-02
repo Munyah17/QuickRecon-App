@@ -18,6 +18,13 @@ const EDITABLE = [
   "status",
 ] as const;
 
+/** Super admins may also touch identity/verification columns. */
+const SUPER_ONLY = ["kyc_status", "joined_at", "user_id"] as const;
+
+const VALID_MODULES = new Set(["enpassent", "econet-moovah"]);
+/** ZINARA code is indexed under both schemes by different writers. */
+const ZINARA_SCHEMES = ["zinara_user", "zinara_id"];
+
 /**
  * PATCH /api/agents/[id]
  * Company staff update an agent's profile fields. The agents table has no
@@ -43,23 +50,53 @@ export async function PATCH(
     return NextResponse.json({ error: "Invalid body" }, { status: 400 });
   }
 
+  const isSuper = session.user.role === "super_admin";
+
   // Map camelCase payload → snake_case columns, keep only editable fields.
   const keyMap: Record<string, string> = {
     fullName: "full_name",
     nationalId: "national_id",
     icecashId: "icecash_id",
     iceCashId: "icecash_id",
+    kycStatus: "kyc_status",
+    joinedAt: "joined_at",
+    userId: "user_id",
   };
   const patch: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(body)) {
     const col = keyMap[k] ?? k;
-    if ((EDITABLE as readonly string[]).includes(col)) {
+    const allowed =
+      (EDITABLE as readonly string[]).includes(col) ||
+      (isSuper && (SUPER_ONLY as readonly string[]).includes(col));
+    if (allowed) {
       patch[col] = v === "" ? null : v;
     }
   }
-  if (patch.status && !["active", "suspended", "inactive"].includes(String(patch.status))) {
+  if (patch.status && !["active", "suspended", "inactive", "pending"].includes(String(patch.status))) {
     return NextResponse.json({ error: "Invalid status" }, { status: 400 });
   }
+
+  // Module assignment — `modules` is the full enabled set (string[] or
+  // [{module, enabled}]): listed modules are enabled, the rest disabled.
+  const hasModules = Array.isArray(body.modules);
+  let enabledModules = new Set<string>();
+  if (hasModules) {
+    for (const raw of body.modules as unknown[]) {
+      const m = typeof raw === "string" ? raw : (raw as { module?: unknown })?.module;
+      if (typeof m !== "string" || !VALID_MODULES.has(m)) {
+        return NextResponse.json(
+          { error: `Invalid module — expected one of ${[...VALID_MODULES].join(", ")}` },
+          { status: 400 }
+        );
+      }
+      const enabled = typeof raw === "string" ? true : (raw as { enabled?: unknown }).enabled !== false;
+      if (enabled) enabledModules.add(m);
+    }
+  }
+
+  // ZINARA account ID — replaces the agent's zinara_* external-id rows.
+  const hasZinara = typeof body.zinaraId === "string";
+  const zinaraId = hasZinara ? (body.zinaraId as string).trim() : "";
 
   // Per-bank POS IDs — [{ bank, posId }] with blank posIds removed. When the
   // key is present at all (even []), the agent's *_pos rows are replaced.
@@ -80,7 +117,7 @@ export async function PATCH(
     }
   }
 
-  if (Object.keys(patch).length === 0 && !hasBankPos) {
+  if (Object.keys(patch).length === 0 && !hasBankPos && !hasModules && !hasZinara) {
     return NextResponse.json({ error: "No editable fields provided" }, { status: 400 });
   }
 
@@ -126,6 +163,55 @@ export async function PATCH(
           { status: insError.code === "23505" ? 409 : 500 }
         );
       }
+    }
+  }
+
+  if (hasModules) {
+    const { error: modError } = await service.from("agent_modules").upsert(
+      [...VALID_MODULES].map((m) => ({
+        agent_id: id,
+        module: m,
+        enabled: enabledModules.has(m),
+        updated_by: session.user.id,
+        updated_at: new Date().toISOString(),
+      })),
+      { onConflict: "agent_id,module" }
+    );
+    if (modError) return NextResponse.json({ error: modError.message }, { status: 500 });
+  }
+
+  if (hasZinara) {
+    const { error: delError } = await service
+      .from("agent_external_ids")
+      .delete()
+      .eq("agent_id", id)
+      .in("scheme", ZINARA_SCHEMES);
+    if (delError) return NextResponse.json({ error: delError.message }, { status: 500 });
+    if (zinaraId) {
+      // Index the bare code too when the value carries a " - NAME" suffix.
+      const variants = [zinaraId];
+      const dash = zinaraId.indexOf(" - ");
+      if (dash > 0) variants.push(zinaraId.slice(0, dash).trim());
+      const idRows = [...new Set(variants.filter(Boolean))].map((v) => ({
+        agent_id: id,
+        scheme: "zinara_user",
+        value: v,
+      }));
+      let { error: zError } = await service.from("agent_external_ids").insert(idRows);
+      if (zError?.code === "23505") {
+        if (!isSuper) {
+          return NextResponse.json(
+            { error: `ZINARA code ${zinaraId} is already assigned to another agent — only a super admin can reassign it.` },
+            { status: 409 }
+          );
+        }
+        // Super-admin override: re-point the claimed code to this agent.
+        const { error: reError } = await service
+          .from("agent_external_ids")
+          .upsert(idRows, { onConflict: "scheme,value" });
+        zError = reError;
+      }
+      if (zError) return NextResponse.json({ error: zError.message }, { status: 500 });
     }
   }
 

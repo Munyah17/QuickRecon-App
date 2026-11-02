@@ -36,7 +36,7 @@ export default async function AgentsPage() {
         }
       />
 
-      <AgentsTable agents={agents} />
+      <AgentsTable agents={agents} viewerRole={session.user.role} />
     </div>
   );
 }

@@ -36,12 +36,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ExportButton } from "@/components/shared/export-button";
-import { AGENT_POS_BANKS, type Agent, type AgentPosBank } from "@/types";
+import { AGENT_POS_BANKS, type Agent, type AgentPosBank, type RoleCode } from "@/types";
 
 const STATUS_TABS = ["all", "active", "suspended", "inactive", "pending"] as const;
 
-export function AgentsTable({ agents }: { agents: Agent[] }) {
+export function AgentsTable({ agents, viewerRole }: { agents: Agent[]; viewerRole?: RoleCode }) {
   const router = useRouter();
+  const isSuper = viewerRole === "super_admin";
   const [moduleFilter, setModuleFilter] = React.useState("all");
   const [statusFilter, setStatusFilter] = React.useState<string>("all");
   const [provinceFilter, setProvinceFilter] = React.useState("all");
@@ -208,7 +209,7 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
         id: "actions",
         header: "",
         cell: ({ row }) => (
-          <AgentActions id={row.original.id} agent={row.original} />
+          <AgentActions id={row.original.id} agent={row.original} isSuper={isSuper} />
         ),
         size: 40,
       },
@@ -455,7 +456,7 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
           </>
         }
         renderMobileCard={(a, ctx) => (
-          <AgentMobileCard agent={a} selected={ctx.selected} onToggle={ctx.toggleSelected} />
+          <AgentMobileCard agent={a} selected={ctx.selected} onToggle={ctx.toggleSelected} isSuper={isSuper} />
         )}
       />
 
@@ -517,7 +518,7 @@ export function AgentsTable({ agents }: { agents: Agent[] }) {
   );
 }
 
-function AgentActions({ id, agent }: { id: string; agent: Agent }) {
+function AgentActions({ id, agent, isSuper = false }: { id: string; agent: Agent; isSuper?: boolean }) {
   const router = useRouter();
   const [editOpen, setEditOpen] = React.useState(false);
   const [suspendOpen, setSuspendOpen] = React.useState(false);
@@ -627,7 +628,7 @@ function AgentActions({ id, agent }: { id: string; agent: Agent }) {
         </DropdownMenuContent>
       </DropdownMenu>
 
-      <EditAgentDialog agent={agent} open={editOpen} onOpenChange={setEditOpen} />
+      <EditAgentDialog agent={agent} open={editOpen} onOpenChange={setEditOpen} isSuper={isSuper} />
 
       <Dialog open={suspendOpen} onOpenChange={setSuspendOpen}>
         <DialogContent>
@@ -677,21 +678,40 @@ function EditAgentDialog({
   agent,
   open,
   onOpenChange,
+  isSuper = false,
 }: {
   agent: Agent;
   open: boolean;
   onOpenChange: (v: boolean) => void;
+  /** Super admins get the full field set — everyone else gets the shared one. */
+  isSuper?: boolean;
 }) {
   const [fullName, setFullName] = React.useState(agent.fullName);
   const [email, setEmail] = React.useState(agent.email);
   const [phone, setPhone] = React.useState(agent.phone);
   const [province, setProvince] = React.useState(agent.province);
   const [location, setLocation] = React.useState(agent.location);
+  const [nationalId, setNationalId] = React.useState(agent.nationalId ?? "");
+  const [icecashId, setIcecashId] = React.useState(agent.iceCashId ?? "");
+  const [zinaraId, setZinaraId] = React.useState(agent.zinaraId ?? "");
+  const [status, setStatus] = React.useState<string>(agent.status);
+  const [kycStatus, setKycStatus] = React.useState<string>(agent.kycStatus);
+  const [enabledMods, setEnabledMods] = React.useState<Set<string>>(
+    () => new Set(agent.modules.filter((m) => m.enabled).map((m) => m.module))
+  );
   const [posIds, setPosIds] = React.useState<Record<string, string>>(
     Object.fromEntries((agent.bankPos ?? []).map((p) => [p.bank, p.posId]))
   );
   const [saving, setSaving] = React.useState(false);
   const router = useRouter();
+
+  const toggleModule = (mod: string, on: boolean) =>
+    setEnabledMods((s) => {
+      const next = new Set(s);
+      if (on) next.add(mod);
+      else next.delete(mod);
+      return next;
+    });
 
   const handleSave = async () => {
     setSaving(true);
@@ -705,6 +725,13 @@ function EditAgentDialog({
           phone,
           province,
           location,
+          nationalId,
+          icecashId,
+          zinaraId,
+          modules: [...enabledMods],
+          // Status & KYC are super-admin fields — the API ignores them for
+          // other roles, but we only send them when the control rendered.
+          ...(isSuper ? { status, kycStatus } : {}),
           bankPos: AGENT_POS_BANKS.map((bank) => ({
             bank,
             posId: (posIds[bank] ?? "").trim(),
@@ -778,6 +805,88 @@ function EditAgentDialog({
               />
             </div>
           </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-nid">ID / Passport</Label>
+              <Input
+                id="edit-nid"
+                value={nationalId}
+                onChange={(e) => setNationalId(e.target.value)}
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-icecash">IceCash ID</Label>
+              <Input
+                id="edit-icecash"
+                value={icecashId}
+                onChange={(e) => setIcecashId(e.target.value)}
+              />
+            </div>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-zinara">ZINARA ID</Label>
+            <Input
+              id="edit-zinara"
+              className="font-mono"
+              placeholder="e.g. ZW018ZLN"
+              value={zinaraId}
+              onChange={(e) => setZinaraId(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label>Modules</Label>
+            <p className="text-[11.5px] text-muted-foreground">
+              Source companies this agent works.
+            </p>
+            <div className="flex gap-5">
+              {(
+                [
+                  ["enpassent", "Enpassent"],
+                  ["econet-moovah", "Moovah"],
+                ] as const
+              ).map(([mod, label]) => (
+                <label key={mod} className="flex cursor-pointer items-center gap-2 text-[13px]">
+                  <Checkbox
+                    checked={enabledMods.has(mod)}
+                    onCheckedChange={(v) => toggleModule(mod, v === true)}
+                    aria-label={label}
+                  />
+                  {label}
+                </label>
+              ))}
+            </div>
+          </div>
+          {isSuper && (
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Status</Label>
+                <Select value={status} onValueChange={setStatus}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="active">Active</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="suspended">Suspended</SelectItem>
+                    <SelectItem value="inactive">Inactive</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <Label>KYC Status</Label>
+                <Select value={kycStatus} onValueChange={setKycStatus}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="verified">Verified</SelectItem>
+                    <SelectItem value="pending">Pending</SelectItem>
+                    <SelectItem value="unverified">Unverified</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+          )}
           <div className="space-y-2">
             <Label>Bank POS IDs</Label>
             <p className="text-[11.5px] text-muted-foreground">
@@ -822,10 +931,12 @@ function AgentMobileCard({
   agent,
   selected,
   onToggle,
+  isSuper = false,
 }: {
   agent: Agent;
   selected?: boolean;
   onToggle?: () => void;
+  isSuper?: boolean;
 }) {
   return (
     <Link href={`/app/agents/${agent.id}`} className="block">
@@ -858,7 +969,7 @@ function AgentMobileCard({
           </p>
         </div>
         <StatusBadge status={agent.status} />
-        <AgentActions id={agent.id} agent={agent} />
+        <AgentActions id={agent.id} agent={agent} isSuper={isSuper} />
       </div>
     </Link>
   );
