@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth/session";
 import { isCompanyRole } from "@/lib/nav";
 import { createServiceClient } from "@/lib/supabase/server";
-import { fkConflictResponse } from "@/lib/api/fk-conflict";
+import { deleteAgentCascade } from "@/lib/api/agent-delete";
 import { AGENT_POS_BANKS, posSchemeForBank } from "@/types";
 
 export const runtime = "nodejs";
@@ -292,11 +292,8 @@ export async function PUT(
 /**
  * DELETE /api/agents/[id]
  * Company staff permanently remove an agent and every linked record —
- * not a suspend. FK-restricted dependents are purged in dependency order
- * (children before parents); audit-preserving references that allow NULL
- * are detached instead of deleted so exception/audit history survives.
- * Cascade-declared dependents (booths, assistants, external ids, modules,
- * submissions, recon lines/versions/adjustments) go with the agent.
+ * not a suspend. Runs the shared cascade so single and bulk deletes
+ * enforce the same dependency order.
  */
 export async function DELETE(
   _request: NextRequest,
@@ -319,44 +316,15 @@ export async function DELETE(
     .maybeSingle();
   if (!agent) return NextResponse.json({ error: "Agent not found" }, { status: 404 });
 
-  // Steps run in order; failures are collected — the agent delete below is
-  // the real gate and reports whichever table is still blocking.
-  const steps: { label: string; run: () => PromiseLike<{ error: { message: string } | null }> }[] = [
-    // Polymorphic owner link — no FK, orphans would survive.
-    { label: "payment_methods", run: () => service.from("payment_methods").delete().eq("owner_type", "agent").eq("owner_id", id) },
-    // FK-restricted dependents — must go before agents.delete.
-    { label: "reconciliation_deliveries", run: () => service.from("reconciliation_deliveries").delete().eq("agent_id", id) },
-    { label: "reconciliation_documents", run: () => service.from("reconciliation_documents").delete().eq("agent_id", id) },
-    // reports.reconciliation_id also restricts the reconciliations delete.
-    { label: "reports", run: () => service.from("reports").delete().eq("agent_id", id) },
-    // Cascades reconciliation_lines, _versions, _adjustments, agent_discrepancies.
-    { label: "reconciliations", run: () => service.from("reconciliations").delete().eq("agent_id", id) },
-    { label: "distribution_recipients", run: () => service.from("distribution_recipients").delete().eq("agent_id", id) },
-    // Nullable references — detach rather than delete so batch/exception/
-    // ticket history keeps its audit trail.
-    { label: "reconciliation_exceptions", run: () => service.from("reconciliation_exceptions").update({ agent_id: null }).eq("agent_id", id) },
-    { label: "support_tickets", run: () => service.from("support_tickets").update({ agent_id: null }).eq("agent_id", id) },
-    { label: "normalised_records", run: () => service.from("normalised_records").update({ agent_id: null }).eq("agent_id", id) },
-    // The agent's login profile survives — just unlinked.
-    { label: "profiles", run: () => service.from("profiles").update({ agent_id: null }).eq("agent_id", id) },
-  ];
-
-  const failed: string[] = [];
-  for (const step of steps) {
-    const { error } = await step.run();
-    if (error) {
-      // A missing table/column in a partially-migrated env shouldn't block
-      // the delete — FK on agents is what actually enforces linkage.
-      console.error(`agent delete: ${step.label} cleanup failed: ${error.message}`);
-      failed.push(step.label);
-    }
-  }
-
-  const { error } = await service.from("agents").delete().eq("id", id);
-  if (error) {
-    const conflict = fkConflictResponse(error, "agent");
-    if (conflict) return conflict;
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  const result = await deleteAgentCascade(service, id);
+  if (!result.deleted) {
+    return NextResponse.json(
+      {
+        error: result.error,
+        ...(result.conflict ? { code: "has_linked_records" } : {}),
+      },
+      { status: result.conflict ? 409 : 500 }
+    );
   }
 
   await service.from("audit_logs").insert({
@@ -364,7 +332,7 @@ export async function DELETE(
     action: "agent.deleted",
     entity: "agent",
     entity_id: id,
-    metadata: { cleanupFailures: failed },
+    metadata: { cleanupFailures: result.cleanupFailures },
   });
 
   return NextResponse.json({ ok: true });

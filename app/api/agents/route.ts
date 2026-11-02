@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { fkConflictMessage } from "@/lib/api/fk-conflict";
+import { deleteAgentCascade } from "@/lib/api/agent-delete";
 import { getSession } from "@/lib/auth/session";
 import { isCompanyRole } from "@/lib/nav";
 import { createServiceClient } from "@/lib/supabase/server";
@@ -99,9 +99,10 @@ export async function PATCH(request: NextRequest) {
  * DELETE /api/agents — company staff bulk-delete agents.
  * Body: { ids: string[] } — required so a bare payload can't wipe the table.
  *
- * Each agent is deleted individually: agents that are part of the audit trail
- * (reconciliations, exceptions…) are FK-restricted and must not abort the
- * whole batch. The response reports both sides: { deleted, failures[] }.
+ * Each agent is deleted individually through the same cascade the
+ * single-agent DELETE runs, so agents blocked by a remaining FK are
+ * reported without aborting the batch. The response reports both sides:
+ * { deleted, failures[] }.
  */
 export async function DELETE(request: NextRequest) {
   const session = await getSession();
@@ -123,26 +124,21 @@ export async function DELETE(request: NextRequest) {
   const sb = await createServiceClient();
   if (!sb) return NextResponse.json({ error: "Database not configured" }, { status: 503 });
 
-  // payment_methods.owner_id is polymorphic text (owner_type + owner_id) with
-  // no FK — orphan rows would survive the deletes, so clear them first.
-  const { error: pmError } = await sb
-    .from("payment_methods")
-    .delete()
-    .eq("owner_type", "agent")
-    .in("owner_id", ids);
-  if (pmError) return NextResponse.json({ error: pmError.message }, { status: 500 });
-
   const failures: { id: string; error: string }[] = [];
   let deleted = 0;
   for (const id of ids) {
-    const { error } = await sb.from("agents").delete().eq("id", id);
-    if (!error) {
-      deleted += 1;
+    const result = await deleteAgentCascade(sb, id);
+    if (!result.deleted) {
+      failures.push({ id, error: result.error ?? "Delete failed" });
       continue;
     }
-    failures.push({
-      id,
-      error: fkConflictMessage(error, "agent", "set it to Inactive") ?? error.message,
+    deleted += 1;
+    await sb.from("audit_logs").insert({
+      actor_id: session.user.id,
+      action: "agent.deleted",
+      entity: "agent",
+      entity_id: id,
+      metadata: { bulk: true, cleanupFailures: result.cleanupFailures },
     });
   }
   return NextResponse.json({ ok: true, deleted, failures });
