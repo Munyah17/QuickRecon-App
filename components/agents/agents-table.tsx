@@ -694,6 +694,7 @@ function EditAgentDialog({
   const [nationalId, setNationalId] = React.useState(agent.nationalId ?? "");
   const [icecashId, setIcecashId] = React.useState(agent.iceCashId ?? "");
   const [zinaraId, setZinaraId] = React.useState(agent.zinaraId ?? "");
+  const [companyAgentId, setCompanyAgentId] = React.useState(agent.companyAgentId ?? "");
   const [status, setStatus] = React.useState<string>(agent.status);
   const [kycStatus, setKycStatus] = React.useState<string>(agent.kycStatus);
   // One agent, one source company — legacy dual-enabled agents preselect
@@ -722,6 +723,7 @@ function EditAgentDialog({
           nationalId,
           icecashId,
           zinaraId,
+          companyAgentId: companyAgentId.trim(),
           modules: [company],
           // Status & KYC are super-admin fields — the API ignores them for
           // other roles, but we only send them when the control rendered.
@@ -841,6 +843,22 @@ function EditAgentDialog({
                 <SelectItem value="econet-moovah">Econet Moovah</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="edit-company-id">
+              {company === "econet-moovah" ? "Econet ID" : "Enpassent ID"}
+            </Label>
+            <Input
+              id="edit-company-id"
+              className="font-mono"
+              placeholder={company === "econet-moovah" ? "e.g. 0773123456" : "e.g. ENP-1042"}
+              value={companyAgentId}
+              onChange={(e) => setCompanyAgentId(e.target.value)}
+            />
+            <p className="text-[11.5px] text-muted-foreground">
+              The agent code on the company worksheets — required for
+              insurance/ZINARA rows to reconcile.
+            </p>
           </div>
           {isSuper && (
             <div className="grid grid-cols-2 gap-3">

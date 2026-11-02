@@ -102,6 +102,9 @@ export interface Agent {
   iceCashId?: string;
   /** ZINARA account/user ID — stored in agent_external_ids under "zinara_id". */
   zinaraId?: string;
+  /** Source-company agent code (Enpassent ID / Econet ID) — stored under
+   *  "enpassent_user_id" or "econet_id"; insurance-sheet rows resolve on it. */
+  companyAgentId?: string;
   kycStatus: "verified" | "pending" | "unverified";
   metrics?: AgentPeriodMetrics;
 }

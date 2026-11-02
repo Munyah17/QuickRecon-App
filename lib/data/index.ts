@@ -57,6 +57,10 @@ function mapAgent(row: any): (typeof MOCK_AGENTS)[number] {
       (row.agent_external_ids ?? []).find(
         (e: any) => e.scheme === "zinara_user" || e.scheme === "zinara_id"
       )?.value ?? undefined,
+    companyAgentId:
+      (row.agent_external_ids ?? []).find(
+        (e: any) => e.scheme === "enpassent_user_id" || e.scheme === "econet_id"
+      )?.value ?? undefined,
     kycStatus: row.kyc_status ?? "pending",
   };
 }

@@ -35,7 +35,7 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json();
-  const { fullName, email, phone, nationalId, location, province, role, moduleAccess, zinaraAccount, bankPos, password } = body ?? {};
+  const { fullName, email, phone, nationalId, location, province, role, moduleAccess, companyAgentId, zinaraAccount, bankPos, password } = body ?? {};
 
   if (!fullName?.trim()) {
     return NextResponse.json({ error: "Full name is required" }, { status: 400 });
@@ -99,6 +99,30 @@ export async function POST(request: NextRequest) {
     await sb.from("agent_modules").insert(
       modules.map((m: string) => ({ agent_id: agentId, module: m, enabled: true }))
     );
+    // Company agent code is the identity insurance/expected-side worksheet
+    // rows resolve on — without it the engine flags every revenue row as
+    // unknown_external_id and Total Expected lands at zero.
+    const companyId = typeof companyAgentId === "string" ? companyAgentId.trim() : "";
+    if (companyId) {
+      const scheme = modules[0] === "econet-moovah" ? "econet_id" : "enpassent_user_id";
+      const { error: cidError } = await sb.from("agent_external_ids").insert({
+        agent_id: agentId,
+        scheme,
+        value: companyId,
+      });
+      if (cidError?.code === "23505") {
+        return NextResponse.json(
+          { error: `Agent created, but company ID ${companyId} is already assigned to another agent.` },
+          { status: 409 }
+        );
+      }
+      if (cidError) {
+        return NextResponse.json(
+          { error: `Agent created but the company ID could not be saved: ${cidError.message}` },
+          { status: 500 }
+        );
+      }
+    }
     // ZINARA account is an external identity — the engine resolves ZINARA
     // transaction rows to this agent via agent_external_ids. Same scheme the
     // bulk importer writes ("zinara_user").

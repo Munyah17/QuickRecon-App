@@ -47,6 +47,7 @@ export function AddAgentDialog() {
   const [province, setProvince] = React.useState("");
   const [location, setLocation] = React.useState("");
   const [company, setCompany] = React.useState("enpassent");
+  const [companyAgentId, setCompanyAgentId] = React.useState("");
   const [posIds, setPosIds] = React.useState<Record<string, string>>({});
   const [zinaraAccount, setZinaraAccount] = React.useState("");
   const [creating, setCreating] = React.useState(false);
@@ -61,6 +62,7 @@ export function AddAgentDialog() {
     setProvince("");
     setLocation("");
     setCompany("enpassent");
+    setCompanyAgentId("");
     setPosIds({});
     setZinaraAccount("");
     setCreated(null);
@@ -88,6 +90,7 @@ export function AddAgentDialog() {
           location,
           role: "agent",
           moduleAccess: company,
+          companyAgentId: companyAgentId.trim(),
           bankPos: AGENT_POS_BANKS.map((bank) => ({
             bank,
             posId: (posIds[bank] ?? "").trim(),
@@ -213,6 +216,22 @@ export function AddAgentDialog() {
                 <SelectItem value="econet-moovah">Econet Moovah</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="add-company-id">
+              {company === "econet-moovah" ? "Econet ID" : "Enpassent ID"}
+            </Label>
+            <p className="text-[11.5px] text-muted-foreground">
+              The agent code on {company === "econet-moovah" ? "Moovah" : "Enpassent"}{" "}
+              worksheets — required for insurance/ZINARA rows to reconcile.
+            </p>
+            <Input
+              id="add-company-id"
+              className="font-mono"
+              placeholder={company === "econet-moovah" ? "e.g. 0773123456" : "e.g. ENP-1042"}
+              value={companyAgentId}
+              onChange={(e) => setCompanyAgentId(e.target.value)}
+            />
           </div>
           <div className="space-y-2">
             <Label>Bank POS IDs</Label>

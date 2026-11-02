@@ -24,6 +24,8 @@ const SUPER_ONLY = ["kyc_status", "joined_at", "user_id"] as const;
 const VALID_MODULES = new Set(["enpassent", "econet-moovah"]);
 /** ZINARA code is indexed under both schemes by different writers. */
 const ZINARA_SCHEMES = ["zinara_user", "zinara_id"];
+/** Source-company agent codes — the identity insurance-side rows resolve on. */
+const COMPANY_SCHEMES = ["enpassent_user_id", "econet_id"];
 
 /**
  * PATCH /api/agents/[id]
@@ -105,6 +107,10 @@ export async function PATCH(
   const hasZinara = typeof body.zinaraId === "string";
   const zinaraId = hasZinara ? (body.zinaraId as string).trim() : "";
 
+  // Source-company agent code — replaces enpassent_user_id/econet_id rows.
+  const hasCompanyId = typeof body.companyAgentId === "string";
+  const companyId = hasCompanyId ? (body.companyAgentId as string).trim() : "";
+
   // Per-bank POS IDs — [{ bank, posId }] with blank posIds removed. When the
   // key is present at all (even []), the agent's *_pos rows are replaced.
   const hasBankPos = Array.isArray(body.bankPos);
@@ -124,7 +130,7 @@ export async function PATCH(
     }
   }
 
-  if (Object.keys(patch).length === 0 && !hasBankPos && !hasModules && !hasZinara) {
+  if (Object.keys(patch).length === 0 && !hasBankPos && !hasModules && !hasZinara && !hasCompanyId) {
     return NextResponse.json({ error: "No editable fields provided" }, { status: 400 });
   }
 
@@ -219,6 +225,55 @@ export async function PATCH(
         zError = reError;
       }
       if (zError) return NextResponse.json({ error: zError.message }, { status: 500 });
+    }
+  }
+
+  if (hasCompanyId) {
+    // The alias scheme follows the agent's enabled source company — read it
+    // from this request's modules payload, else the agent's current set.
+    let companyModule: string | undefined = hasModules
+      ? [...enabledModules][0]
+      : undefined;
+    if (!companyModule) {
+      const { data: modRows } = await service
+        .from("agent_modules")
+        .select("module")
+        .eq("agent_id", id)
+        .eq("enabled", true)
+        .limit(1);
+      companyModule = modRows?.[0]?.module;
+    }
+    const scheme = companyModule === "econet-moovah" ? "econet_id" : "enpassent_user_id";
+
+    const { error: delError } = await service
+      .from("agent_external_ids")
+      .delete()
+      .eq("agent_id", id)
+      .in("scheme", COMPANY_SCHEMES);
+    if (delError) return NextResponse.json({ error: delError.message }, { status: 500 });
+    if (companyId) {
+      const variants = [companyId];
+      const dash = companyId.indexOf(" - ");
+      if (dash > 0) variants.push(companyId.slice(0, dash).trim());
+      const idRows = [...new Set(variants.filter(Boolean))].map((v) => ({
+        agent_id: id,
+        scheme,
+        value: v,
+      }));
+      let { error: cError } = await service.from("agent_external_ids").insert(idRows);
+      if (cError?.code === "23505") {
+        if (!isSuper) {
+          return NextResponse.json(
+            { error: `Company ID ${companyId} is already assigned to another agent — only a super admin can reassign it.` },
+            { status: 409 }
+          );
+        }
+        const { error: reError } = await service
+          .from("agent_external_ids")
+          .upsert(idRows, { onConflict: "scheme,value" });
+        cError = reError;
+      }
+      if (cError) return NextResponse.json({ error: cError.message }, { status: 500 });
     }
   }
 
