@@ -221,7 +221,12 @@ function nbsStatementRecord(sheetName: string, i: number, row: SourceRow): Norma
   );
 }
 
-/** CBZ POS report: agent = TERMINAL ID (with AGENT NAME as the name fallback). */
+/**
+ * CBZ POS report: agent = TERMINAL ID (with AGENT NAME as the name fallback).
+ * Moovah ships separate CBZ ZWG / CBZ USD sheets (Enpassent ships a single
+ * CBZ sheet) — the USD sheet counts as its own bank bucket and converts
+ * through the workbook's USD→ZIG column the same way NMB/NBS USD does.
+ */
 function cbzStatementRecord(sheetName: string, i: number, row: SourceRow): NormalizedRecord {
   const terminal = String(cell(row, "TERMINAL ID", "Terminal ID", "TID") ?? "").trim();
   const rec = makeRecord(
@@ -229,12 +234,15 @@ function cbzStatementRecord(sheetName: string, i: number, row: SourceRow): Norma
     ["TERMINAL ID", "Terminal ID", "TID", "AGENT NAME", "Agent Name"],
     ["AMOUNT", "Amount"], ["TERMINAL ID", "Ref", "Reference"]
   );
-  return {
-    ...rec,
-    externalId: terminal || rec.externalId,
-    bankAccount: "CBZ",
-    reference: `CBZ:${terminal || i}`,
-  };
+  return applyConversion(
+    {
+      ...rec,
+      externalId: terminal || rec.externalId,
+      bankAccount: /usd/i.test(sheetName) ? "CBZ USD" : "CBZ",
+      reference: `CBZ:${terminal || i}`,
+    },
+    row, sheetName
+  );
 }
 
 /**

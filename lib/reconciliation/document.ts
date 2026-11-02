@@ -154,7 +154,7 @@ export function documentToCSV(doc: AgentReconDocument): string {
 }
 
 /** Canonical summary-sheet column order from the client's real workbook. */
-const SUMMARY_BANK_COLS = ["Ecocash", "CBZ", "NBS", "STEWARD", "USD Deposits", "Transfers"] as const;
+const SUMMARY_BANK_COLS = ["Ecocash", "CBZ", "CBZ USD", "NBS", "STEWARD", "USD Deposits", "Transfers"] as const;
 
 interface DetailSheet {
   name: string;
