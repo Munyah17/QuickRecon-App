@@ -280,8 +280,8 @@ export function ReconWorkbench({
               columns: ["Recon", "Agent", "ID", "Module", "Period", "Expected", "Deposits", "Variance", "Closing", "Status", "Work status"],
               rows: filtered.map((r) => [
                 r.id, r.agentName, r.agentId, moduleName(r.module), r.period,
-                r.insurance + r.zinara, r.deposits,
-                r.deposits - (r.insurance + r.zinara),
+                r.insurance + r.zinara + r.openingPosition, r.deposits,
+                r.closingPosition,
                 r.closingPosition, r.status, queueStatus(r),
               ]),
             }}
@@ -344,9 +344,10 @@ export function ReconWorkbench({
                     <span className={`tnum text-[12px] font-semibold ${r.closingPosition < 0 ? "text-destructive" : ""}`}>
                       {formatMoney(r.closingPosition, r.currency)}
                     </span>
-                    {/* Deposit variance: banked vs expected (ins + ZINARA) */}
+                    {/* Closing variance — the engine figure on the agent's
+                        document (expected − deposits ± alterations). */}
                     {(() => {
-                      const variance = r.deposits - (r.insurance + r.zinara);
+                      const variance = r.closingPosition;
                       return (
                         <span
                           className={`tnum text-[10.5px] ${
@@ -448,8 +449,8 @@ function Inspector({
   onSend: () => void;
   onException: (id: string, status: "resolved" | "investigating") => void;
 }) {
-  const expected = recon.insurance + recon.zinara;
-  const variance = recon.deposits - expected;
+  const expected = recon.insurance + recon.zinara + recon.openingPosition;
+  const variance = recon.closingPosition;
   const doneCount = CHECKLIST.filter((c) => work.checks[c.id]).length;
   const openExceptions = exceptions.filter(
     (e) => e.status === "open" || e.status === "investigating"
@@ -459,10 +460,10 @@ function Inspector({
     { label: "Opening position", value: recon.openingPosition },
     { label: "Insurance", value: recon.insurance },
     { label: "ZINARA", value: recon.zinara },
-    { label: "Expected (Ins + ZINARA)", value: expected },
+    { label: "Expected (Ins + ZINARA + Open)", value: expected },
     { label: "Deposits", value: recon.deposits },
     { label: "Adjustments", value: recon.adjustments },
-    { label: "Deposit variance", value: variance, danger: variance !== 0 },
+    { label: "Closing variance", value: variance, danger: variance !== 0 },
     { label: "Closing position", value: recon.closingPosition, bold: true, danger: recon.closingPosition < 0 },
   ];
 
