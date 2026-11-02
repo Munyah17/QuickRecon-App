@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 import { getSession } from "@/lib/auth/session";
 import { isCompanyRole } from "@/lib/nav";
 import { createServiceClient } from "@/lib/supabase/server";
+import { claimExternalIds } from "@/lib/api/agent-ids";
 
 export const runtime = "nodejs";
 
@@ -209,21 +210,16 @@ export async function POST(request: NextRequest) {
       );
       let ids = 0;
       if (aliasRows.length) {
-        // ignoreDuplicates: a code already claimed by another agent stays put
-        // rather than being silently re-pointed at the new row — unless the
-        // importer is a super admin, who may legitimately reassign codes while
-        // ZINARA re-issues replacements.
-        const { data: inserted } = await sb
-          .from("agent_external_ids")
-          .upsert(
-            aliasRows.map((a) => ({ agent_id: agentId, ...a })),
-            {
-              onConflict: "scheme,value",
-              ignoreDuplicates: session.user.role !== "super_admin",
-            }
-          )
-          .select("id");
-        ids = inserted?.length ?? 0;
+        // Shared schemes (ZINARA) coexist on several agents by arrangement.
+        // Unique schemes keep their claimant — unless a super admin runs the
+        // import, in which case the claim moves to the new agent.
+        const claim = await claimExternalIds(
+          sb,
+          aliasRows.map((a) => ({ agent_id: agentId, ...a })),
+          { reassign: session.user.role === "super_admin" }
+        );
+        if (claim.error) throw new Error(claim.error);
+        ids = claim.inserted;
       }
       outcomes.push({ ...base, ok: true, agentId, ids: ids || undefined });
     } catch (e) {

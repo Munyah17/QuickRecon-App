@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth/session";
 import { permissionsForRole } from "@/lib/auth/permissions";
 import { createServiceClient } from "@/lib/supabase/server";
 import { fkConflictResponse } from "@/lib/api/fk-conflict";
+import { claimExternalIds } from "@/lib/api/agent-ids";
 import { AGENT_POS_BANKS, posSchemeForBank, type RoleCode } from "@/types";
 
 export const runtime = "nodejs";
@@ -139,25 +140,12 @@ export async function POST(request: NextRequest) {
         scheme: "zinara_user",
         value: v,
       }));
-      let { error: extError } = await sb.from("agent_external_ids").insert(idRows);
-      if (extError?.code === "23505") {
-        if (session.user.role !== "super_admin") {
-          return NextResponse.json(
-            { error: `Agent created, but ZINARA code ${zinaraId} is already assigned to another agent — only a super admin can reassign it.` },
-            { status: 500 }
-          );
-        }
-        // Super-admin override: ZINARA re-issues codes slowly, so ops sometimes
-        // hands a new agent a code still claimed by another agent. Upsert
-        // re-points the existing row (and inserts any missing variants) here.
-        const { error: reError } = await sb
-          .from("agent_external_ids")
-          .upsert(idRows, { onConflict: "scheme,value" });
-        extError = reError;
-      }
-      if (extError) {
+      // ZINARA codes are shared by arrangement — attaching a code another
+      // agent also uses is valid, never a conflict to re-point.
+      const claim = await claimExternalIds(sb, idRows);
+      if (claim.error) {
         return NextResponse.json(
-          { error: `Agent created but ZINARA account could not be saved: ${extError.message}` },
+          { error: `Agent created but ZINARA account could not be saved: ${claim.error}` },
           { status: 500 }
         );
       }

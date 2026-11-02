@@ -3,6 +3,7 @@ import { getSession } from "@/lib/auth/session";
 import { isCompanyRole } from "@/lib/nav";
 import { createServiceClient } from "@/lib/supabase/server";
 import { deleteAgentCascade } from "@/lib/api/agent-delete";
+import { claimExternalIds } from "@/lib/api/agent-ids";
 import { AGENT_POS_BANKS, posSchemeForBank } from "@/types";
 
 export const runtime = "nodejs";
@@ -202,6 +203,8 @@ export async function PATCH(
     if (delError) return NextResponse.json({ error: delError.message }, { status: 500 });
     if (zinaraId) {
       // Index the bare code too when the value carries a " - NAME" suffix.
+      // ZINARA codes are shared by arrangement — attaching one another agent
+      // uses is valid, never a conflict to re-point.
       const variants = [zinaraId];
       const dash = zinaraId.indexOf(" - ");
       if (dash > 0) variants.push(zinaraId.slice(0, dash).trim());
@@ -210,21 +213,8 @@ export async function PATCH(
         scheme: "zinara_user",
         value: v,
       }));
-      let { error: zError } = await service.from("agent_external_ids").insert(idRows);
-      if (zError?.code === "23505") {
-        if (!isSuper) {
-          return NextResponse.json(
-            { error: `ZINARA code ${zinaraId} is already assigned to another agent — only a super admin can reassign it.` },
-            { status: 409 }
-          );
-        }
-        // Super-admin override: re-point the claimed code to this agent.
-        const { error: reError } = await service
-          .from("agent_external_ids")
-          .upsert(idRows, { onConflict: "scheme,value" });
-        zError = reError;
-      }
-      if (zError) return NextResponse.json({ error: zError.message }, { status: 500 });
+      const claim = await claimExternalIds(service, idRows);
+      if (claim.error) return NextResponse.json({ error: claim.error }, { status: 500 });
     }
   }
 
@@ -260,20 +250,19 @@ export async function PATCH(
         scheme,
         value: v,
       }));
-      let { error: cError } = await service.from("agent_external_ids").insert(idRows);
-      if (cError?.code === "23505") {
-        if (!isSuper) {
-          return NextResponse.json(
-            { error: `Company ID ${companyId} is already assigned to another agent — only a super admin can reassign it.` },
-            { status: 409 }
-          );
-        }
-        const { error: reError } = await service
-          .from("agent_external_ids")
-          .upsert(idRows, { onConflict: "scheme,value" });
-        cError = reError;
+      // Company codes stay unique — a claimed code blocks (non-super) or
+      // re-points (super admin). abortOnSkip pre-flights so nothing half-writes.
+      const claim = await claimExternalIds(service, idRows, {
+        reassign: isSuper,
+        abortOnSkip: true,
+      });
+      if (claim.skipped.length) {
+        return NextResponse.json(
+          { error: `Company ID ${companyId} is already assigned to another agent — only a super admin can reassign it.` },
+          { status: 409 }
+        );
       }
-      if (cError) return NextResponse.json({ error: cError.message }, { status: 500 });
+      if (claim.error) return NextResponse.json({ error: claim.error }, { status: 500 });
     }
   }
 
