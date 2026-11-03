@@ -79,7 +79,18 @@ export async function getAgents() {
 }
 
 export async function getAgentById(agentId: string) {
-  return (await getAgents()).find((a) => a.id === agentId) ?? null;
+  const supabase = await db();
+  if (supabase) {
+    // One row, one query — the previous getAgents().find() scanned the whole
+    // table (with nested module/alias joins) to show a single profile.
+    const { data } = await supabase
+      .from("agents")
+      .select("*, agent_modules(module, enabled), agent_external_ids(scheme, value), booths:booths(count)")
+      .eq("id", agentId)
+      .maybeSingle();
+    return data ? mapAgent(data) : null;
+  }
+  return MOCK_AGENTS.find((a) => a.id === agentId) ?? null;
 }
 
 export async function getBoothById(id: string) {
@@ -157,7 +168,10 @@ export async function getReconciliations(opts: {
 } = {}) {
   const supabase = await db();
   if (supabase) {
-    let q = supabase.from("reconciliations").select("*, agents(full_name)");
+    // Explicit columns only — keeps payloads small as the table grows.
+    let q = supabase.from("reconciliations").select(
+      "id, batch_id, agent_id, module, period, status, currency, opening_position, insurance, zinara, deposits, adjustments, closing_position, published_at, version, agents(full_name)"
+    );
     if (opts.agentId) q = q.eq("agent_id", opts.agentId);
     if (opts.module && opts.module !== "all") q = q.eq("module", opts.module);
     if (opts.period) q = q.eq("period", opts.period);
@@ -209,9 +223,13 @@ export async function getReconciliationLines(id: string) {
 export async function getReconciliationDocuments(batchId?: string) {
   const supabase = await db();
   if (supabase) {
+    // List columns only — transactions JSONB, csv_text and summary_text are
+    // megabyte-scale per row and the UI only needs the summary numbers.
     let q = supabase
       .from("reconciliation_documents")
-      .select("*")
+      .select(
+        "id, batch_id, agent_id, agent_name, module, period, currency, opening_variance, insurance, zinara, total_expected, deposits, adjustments, closing_variance, closing_position, status, created_at"
+      )
       .order("created_at", { ascending: false });
     if (batchId) q = q.eq("batch_id", batchId);
     const { data, error } = await q;
@@ -253,8 +271,11 @@ export async function getExceptions(batchId?: string) {
   if (supabase) {
     let q = supabase
       .from("reconciliation_exceptions")
-      .select("*, agents(full_name), assignee_profile:profiles!reconciliation_exceptions_assignee_fkey(full_name)")
-      .order("created_at", { ascending: false });
+      .select(
+        "id, import_batch_id, batch_id, type, severity, module, agent_id, source_ref, description, status, resolution, assigned_by_engine, assignment_reason, created_at, agents(full_name), assignee_profile:profiles!reconciliation_exceptions_assignee_fkey(full_name)"
+      )
+      .order("created_at", { ascending: false })
+      .limit(500);
     if (batchId) q = q.eq("import_batch_id", batchId);
     const { data, error } = await q;
     if (error) console.error("getExceptions query failed:", error.message);

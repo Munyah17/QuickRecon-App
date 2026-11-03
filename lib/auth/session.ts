@@ -102,12 +102,23 @@ export const getSession = cache(async (): Promise<SessionInfo | null> => {
       return null;
     }
 
-    // Get profile with error handling
-    const { data: profile, error: profileError } = await supabase
+    // Get profile (modules included — one roundtrip, not two). If the
+    // migration that added profiles.modules hasn't landed yet, retry the
+    // select without it so sessions keep working.
+    let { data: profile, error: profileError } = await supabase
       .from("profiles")
-      .select("id, full_name, email, role, status, agent_id")
+      .select("id, full_name, email, role, status, agent_id, modules")
       .eq("id", authData.user.id)
       .single();
+    if (profileError) {
+      const retry = await supabase
+        .from("profiles")
+        .select("id, full_name, email, role, status, agent_id")
+        .eq("id", authData.user.id)
+        .single();
+      profile = retry.data as typeof profile;
+      profileError = retry.error;
+    }
 
     if (profileError) {
       console.error("[getSession] Profile query error:", profileError.message, profileError.code);
@@ -128,21 +139,11 @@ export const getSession = cache(async (): Promise<SessionInfo | null> => {
     const role = portalRole(profile.role);
     if (!role) return null;
 
-    // Module assignment (profiles.modules) landed in migration 0021 — fetch
-    // it best-effort so sessions keep working before the migration is applied.
-    let modules: ModuleCode[] | undefined;
-    try {
-      const { data: m } = await supabase
-        .from("profiles")
-        .select("modules")
-        .eq("id", authData.user.id)
-        .single();
-      if (Array.isArray(m?.modules) && m.modules.length > 0) {
-        modules = m.modules as ModuleCode[];
-      }
-    } catch {
-      /* column not yet in schema — user sees all modules */
-    }
+    const modules =
+      Array.isArray((profile as { modules?: unknown }).modules) &&
+      ((profile as { modules?: unknown[] }).modules?.length ?? 0) > 0
+        ? ((profile as { modules: unknown[] }).modules as ModuleCode[])
+        : undefined;
 
     const user: AppUser = {
       id: authData.user.id,
