@@ -748,14 +748,14 @@ function EditAgentDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[480px]">
+      <DialogContent className="max-h-[90dvh] grid-rows-[auto_minmax(0,1fr)_auto] sm:max-w-[480px]">
         <DialogHeader>
           <DialogTitle>Edit Agent</DialogTitle>
           <DialogDescription>
             Update agent details for {agent.id}. Changes are audit-logged.
           </DialogDescription>
         </DialogHeader>
-        <div className="space-y-4 py-2">
+        <div className="min-h-0 space-y-3 overflow-y-auto py-1 pr-1">
           <div className="space-y-1.5">
             <Label htmlFor="edit-fullname">Full Name</Label>
             <Input
