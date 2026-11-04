@@ -73,7 +73,25 @@ export async function getAgents() {
       .select("*, agent_modules(module, enabled), agent_external_ids(scheme, value), booths:booths(count)")
       .order("full_name", { ascending: true });
     if (error) console.error("getAgents query failed:", error.message);
-    return (data ?? []).map(mapAgent);
+    const agents = (data ?? []).map(mapAgent);
+    // ZINARA IDs may be shared by company arrangement — flag each agent with
+    // the names of the OTHER holders so the UI can show the arrangement.
+    const holders = new Map<string, string[]>();
+    for (const a of agents) {
+      if (!a.zinaraId) continue;
+      const k = a.zinaraId.trim().toUpperCase();
+      const list = holders.get(k) ?? [];
+      list.push(a.fullName);
+      holders.set(k, list);
+    }
+    for (const a of agents) {
+      if (!a.zinaraId) continue;
+      const names = holders.get(a.zinaraId.trim().toUpperCase()) ?? [];
+      if (names.length > 1) {
+        a.zinaraSharedWith = names.filter((n) => n !== a.fullName);
+      }
+    }
+    return agents;
   }
   return MOCK_AGENTS;
 }
@@ -88,7 +106,24 @@ export async function getAgentById(agentId: string) {
       .select("*, agent_modules(module, enabled), agent_external_ids(scheme, value), booths:booths(count)")
       .eq("id", agentId)
       .maybeSingle();
-    return data ? mapAgent(data) : null;
+    if (!data) return null;
+    const agent = mapAgent(data);
+    // Shared ZINARA arrangement — who else holds this agent's ZINARA code.
+    if (agent.zinaraId) {
+      const { data: shared } = await supabase
+        .from("agent_external_ids")
+        .select("agent_id, agents(full_name)")
+        .in("scheme", ["zinara_user", "zinara_id"])
+        .eq("value", agent.zinaraId)
+        .neq("agent_id", agentId);
+      const names = [...new Set(
+        (shared ?? [])
+          .map((r: any) => r.agents?.full_name as string | undefined)
+          .filter((n): n is string => Boolean(n))
+      )];
+      if (names.length) agent.zinaraSharedWith = names;
+    }
+    return agent;
   }
   return MOCK_AGENTS.find((a) => a.id === agentId) ?? null;
 }

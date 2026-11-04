@@ -141,10 +141,20 @@ export function AgentsTable({ agents, viewerRole }: { agents: Agent[]; viewerRol
       {
         accessorKey: "zinaraId",
         header: "ZINARA ID",
-        cell: ({ getValue }) => (
-          <span className="font-mono text-[12px] text-muted-foreground">
-            {(getValue() as string | undefined) ?? "—"}
-          </span>
+        cell: ({ row }) => (
+          <div className="min-w-0">
+            <span className="font-mono text-[12px] text-muted-foreground">
+              {row.original.zinaraId ?? "—"}
+            </span>
+            {row.original.zinaraSharedWith?.length ? (
+              <p
+                className="mt-0.5 max-w-[220px] truncate text-[10.5px] text-muted-foreground/80"
+                title={`Shared with ${row.original.zinaraSharedWith.join(", ")}`}
+              >
+                shared with {row.original.zinaraSharedWith.join(", ")}
+              </p>
+            ) : null}
+          </div>
         ),
       },
       {
@@ -441,7 +451,11 @@ export function AgentsTable({ agents, viewerRole }: { agents: Agent[]; viewerRol
                   i + 1,
                   a.fullName,
                   a.id,
-                  a.zinaraId ?? "—",
+                  a.zinaraId
+                    ? a.zinaraSharedWith?.length
+                      ? `${a.zinaraId} (shared: ${a.zinaraSharedWith.join(", ")})`
+                      : a.zinaraId
+                    : "—",
                   (a.modules.filter((m) => m.enabled).length >= 2
                     ? "Both"
                     : a.modules.filter((m) => m.enabled).map((m) => (m.module === "econet-moovah" ? "Moovah" : "Enpassent")).join(", ")) || "—",

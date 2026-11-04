@@ -515,6 +515,11 @@ function EditAgentDialog({
               value={form.zinaraId}
               onChange={set("zinaraId")}
             />
+            {agent.zinaraSharedWith?.length ? (
+              <p className="text-[11.5px] text-muted-foreground">
+                Shared with {agent.zinaraSharedWith.join(", ")}.
+              </p>
+            ) : null}
           </div>
           <div className="space-y-2 sm:col-span-2">
             <Label>Modules</Label>
