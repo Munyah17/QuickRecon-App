@@ -1,4 +1,4 @@
-import { adapterFor } from "./adapters";
+import { adapterFor, sheetLooksLikeAgentData } from "./adapters";
 import { IdentityResolver } from "./identity-resolver";
 import type {
   AgentReconResult,
@@ -11,18 +11,26 @@ import type {
 } from "./types";
 import type { Currency, ModuleCode } from "@/types";
 
-/** Normalise bank/account names to canonical channel names. */
-function normalizeBankName(raw: string): string {
+/** Normalise bank/account names to canonical channel names.
+ *  USD channels are checked per bank before the generic USD catch-all so
+ *  "CBZ USD" doesn't collapse into "CBZ" or "USD Deposits". */
+export function normalizeBankName(raw: string): string {
   const upper = raw.toUpperCase().trim();
   if (upper.includes("ECOCASH")) return "Ecocash";
   if (upper.includes("STEWARD")) return "STEWARD";
-  if (upper.includes("NBS")) return "NBS";
-  if (upper.includes("CBZ")) return "CBZ";
-  if (upper.includes("NMB")) return "NMB";
-  if (upper.includes("BANC ABC") || upper.includes("BANCABC")) return "NBS";
   if (upper.includes("TRANSFER")) return "Transfers";
-  if (upper.includes("USD") || upper.includes("US$")) return "USD";
-  return raw.trim() || "Other";
+  // Per-bank USD buckets must resolve before the plain-bank and generic-USD
+  // checks — "NMB USD" is its own channel, not "NMB" and not "USD Deposits".
+  if (upper.includes("NBS") || upper.includes("BANC ABC") || upper.includes("BANCABC")) {
+    return upper.includes("USD") || upper.includes("US$") ? "NBS USD" : "NBS";
+  }
+  if (upper.includes("CBZ")) return upper.includes("USD") || upper.includes("US$") ? "CBZ USD" : "CBZ";
+  if (upper.includes("NMB")) return upper.includes("USD") || upper.includes("US$") ? "NMB USD" : "NMB";
+  if (upper.includes("USD") || upper.includes("US$")) return "USD Deposits";
+  // Unrecognised channels aren't banks at all — the engine excludes them
+  // from the bank breakdown (and reports them) rather than spawning a
+  // mystery column for every raw string a sheet happens to contain.
+  return "Other";
 }
 
 interface AgentIdentity {
@@ -73,12 +81,29 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
   // "adjustment" records from unrelated columns.
   const normalised: NormalizedRecord[] = [];
   const skippedSheets: string[] = [];
+  const inferredSheets: string[] = [];
   for (const [sheetName, rows] of Object.entries(input.sheets)) {
-    if (!adapter.supportsSheet(sheetName)) {
-      skippedSheets.push(sheetName);
+    if (adapter.supportsSheet(sheetName)) {
+      normalised.push(...adapter.normalise(sheetName, rows));
       continue;
     }
-    normalised.push(...adapter.normalise(sheetName, rows));
+    // The workbook may carry agent worksheets the adapter doesn't know by
+    // name — capture them when the rows carry agent + amount columns, and
+    // report each so the inferred category can be verified. Anything else
+    // is skipped and recorded as such rather than silently dropped.
+    if (rows.length && sheetLooksLikeAgentData(sheetName, rows)) {
+      normalised.push(...adapter.normalise(sheetName, rows));
+      inferredSheets.push(sheetName);
+      exceptions.push({
+        type: "schema_changed",
+        severity: "low",
+        module: input.module,
+        sourceRef: sheetName,
+        description: `Worksheet "${sheetName}" isn't a recognised layout — rows were captured by column detection. Verify the inferred category.`,
+      });
+      continue;
+    }
+    skippedSheets.push(sheetName);
   }
 
   // 2. Identity resolution.
@@ -220,13 +245,35 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
     const netInsurance = insurance - commission;
     const premiumCover = netInsurance; // Premium cover = net insurance in Enpassent.
 
-    // Per-bank deposit breakdown.
+    // Per-bank deposit breakdown. Unrecognised channels stay OUT of
+    // bankDeposits (they'd surface as mystery "banks" in every report),
+    // but their amounts still count toward deposits and each one is
+    // reported so a real bank name can be added to the mapping.
     const bankDeposits: Record<string, number> = {};
+    const unrecognisedBanks = new Map<string, number>();
     for (const r of depositRecs) {
-      const bank = normalizeBankName(r.bankAccount ?? "Other");
-      bankDeposits[bank] = (bankDeposits[bank] ?? 0) + convert(r.amount, r.currency);
+      const bank = normalizeBankName(r.bankAccount ?? "");
+      r.bankChannel = bank;
+      const amount = convert(r.amount, r.currency);
+      if (bank === "Other") {
+        const key = `${r.sourceSheet}|${(r.bankAccount ?? "").trim() || "(no channel column)"}`;
+        unrecognisedBanks.set(key, (unrecognisedBanks.get(key) ?? 0) + amount);
+      } else {
+        bankDeposits[bank] = (bankDeposits[bank] ?? 0) + amount;
+      }
     }
-    const deposits = Object.values(bankDeposits).reduce((n, v) => n + v, 0);
+    for (const [key, total] of unrecognisedBanks) {
+      const [sheet, name] = key.split("|");
+      exceptions.push({
+        type: "unrecognised_payment_source",
+        severity: "medium",
+        module: input.module,
+        agentId,
+        sourceRef: sheet,
+        description: `Deposit channel "${name}" isn't a known bank — ${total.toLocaleString()} counted in deposits but given no bank column.`,
+      });
+    }
+    const deposits = depositRecs.reduce((n, r) => n + convert(r.amount, r.currency), 0);
 
     // Opening variance = carry-forward from previous period (openingPosition).
     const openingVariance = agent.openingPosition ?? 0;
@@ -249,6 +296,7 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
       usdAmount: r.usdAmount,
       usdConversionRate: r.usdConversionRate,
       bankAccount: r.bankAccount,
+      bankChannel: r.bankChannel,
       narration: r.narration,
       reference: r.reference,
       category: r.category,
@@ -325,6 +373,7 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
       unmatched,
       duplicates,
       skippedSheets,
+      inferredSheets,
     },
   };
 }

@@ -2,7 +2,6 @@ import { Sidebar } from "./sidebar";
 import { Topbar } from "./topbar";
 import { MobileBottomNav } from "./mobile-bottom-nav";
 import { WorkspaceProvider } from "@/components/workspace-provider";
-import { CurrencySwitcher, CurrencyRemount } from "@/components/shared/currency-switcher";
 import type { AppNotification, AppUser, ModuleCode } from "@/types";
 
 /**
@@ -28,9 +27,8 @@ export function AppShell({
         <div className="flex min-w-0 flex-1 flex-col">
           <Topbar user={user} notifications={notifications} />
           <main className="mx-auto w-full max-w-[1400px] flex-1 overflow-x-clip px-4 pt-5 pb-24 sm:px-5 lg:px-6 lg:pb-10 xl:px-8">
-            <CurrencyRemount>{children}</CurrencyRemount>
+            {children}
           </main>
-          <CurrencySwitcher />
           <MobileBottomNav user={user} />
         </div>
       </div>

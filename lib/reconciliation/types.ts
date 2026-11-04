@@ -19,6 +19,9 @@ export interface NormalizedRecord {
   commission?: number;
   /** Bank/account channel for deposits (e.g. NBS, CBZ, Ecocash, NMB). */
   bankAccount?: string;
+  /** Canonical deposit channel (BANK_CHANNELS) — set by the engine during
+   *  bucketing; bankAccount keeps the raw sheet value for display. */
+  bankChannel?: string;
   /** USD amount for dual-currency deposit rows. */
   usdAmount?: number;
   /** Conversion rate applied (USD -> ZWG). */
@@ -59,15 +62,20 @@ export interface EngineException {
   description: string;
 }
 
-/** Known bank / deposit channels from the real Enpassent workflow. */
+/** Known bank / deposit channels from the real Enpassent workflow.
+ *  USD money is bucketed per bank (CBZ USD / NMB USD / NBS USD) when the
+ *  statement names one, else under the generic "USD Deposits" channel. */
 export const BANK_CHANNELS = [
   "Ecocash",
-  "STEWARD",
-  "NBS",
-  "Transfers",
-  "USD",
   "CBZ",
+  "CBZ USD",
+  "NBS",
+  "NBS USD",
+  "STEWARD",
   "NMB",
+  "NMB USD",
+  "USD Deposits",
+  "Transfers",
 ] as const;
 export type BankChannel = (typeof BANK_CHANNELS)[number];
 
@@ -79,6 +87,9 @@ export interface TransactionDetail {
   usdAmount?: number;
   usdConversionRate?: number;
   bankAccount?: string;
+  /** Canonical deposit channel — used for per-bank workbook sheets. Older
+   *  persisted docs lack it; fall back to bankAccount via normalizeBankName. */
+  bankChannel?: string;
   narration?: string;
   reference: string;
   /** Bucket used by workbook sheets: insurance | zinara | deposit | adjustment. */
@@ -146,6 +157,10 @@ export interface EngineOutput {
     duplicates: number;
     /** Sheets skipped because the adapter doesn't recognise their format. */
     skippedSheets: string[];
+    /** Data-bearing sheets captured by column shape rather than a
+     *  recognised worksheet name — the engine reported each as an
+     *  exception so the operator can verify the inferred category. */
+    inferredSheets: string[];
   };
 }
 

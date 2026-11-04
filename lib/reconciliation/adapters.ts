@@ -86,7 +86,11 @@ function makeRecord(
   const bankAccount = category === "deposit" ? String(cell(row, "Account", "Bank", "Account Name", "Channel", "Bank Account") ?? "").trim() || undefined : undefined;
   const usdRaw = category === "deposit" ? cell(row, "USD", "USD Amount", "USD Deposit") : undefined;
   const usdAmount = usdRaw != null ? toNumber(usdRaw) : undefined;
-  const conversionRaw = cell(row, "USD- ZWG Conversion", "Conversion", "Rate", "Exchange Rate");
+  // USD features come from USD deposit rows only — reading the conversion
+  // column on insurance/ZINARA rows would fabricate a rate where none exists.
+  const conversionRaw = category === "deposit"
+    ? cell(row, "USD- ZWG Conversion", "Conversion", "Rate", "Exchange Rate")
+    : undefined;
   const usdConversionRate = conversionRaw != null ? toNumber(conversionRaw) : undefined;
   const narration = String(cell(row, "Narration", "Narration /Ref", "Ref/Narration", "Ref / Narration", "Ref", "Description") ?? "").trim() || undefined;
   const str = (v: unknown) => (v != null && String(v).trim() !== "" ? String(v).trim() : undefined);
@@ -134,6 +138,59 @@ const NAME_FALLBACK_KEYS = ["Agent", "Agent Name", "Name"];
 const ECONET_SHEET = /\beco\b|econet/i;
 const ENPASSENT_SHEET = /\benpa\b|enpassent/i;
 
+/**
+ * Rollup/scratch worksheets — Dashboard, Summary, Totals, Pivot etc. carry
+ * aggregated figures, not source rows. Recording them would double-count
+ * totals already captured from the detail sheets, so they are never
+ * normalised no matter what their columns look like.
+ */
+const ROLLUP_SHEET = /^\s*(dashboard|summary|totals?|overview|pivot|read\s?me|instructions?|notes?)\b/i;
+
+/** Columns that identify an agent on a transaction worksheet. */
+const AGENT_COL = /^(agent\s*(id|code|name)?|econet\s*id|ecocash\s*id|msisdn|enpassent(\s*user)?\s*id|user|pos\s*id|terminal\s*id|tid)$/i;
+/** Columns that carry money on a transaction worksheet. */
+const AMOUNT_COL = /(amount|premium|deposit|total|value|paid|collected|credit|cr\s*amt|float|settled)/i;
+
+/**
+ * A worksheet the adapters don't recognise by name is still captured when
+ * its rows carry an agent-identity column AND an amount column — company
+ * workbooks add sheets over time and silently skipping them loses real
+ * money. Rollup/scratch sheets are excluded by name before shape is
+ * checked, so nothing outside the source data is recorded.
+ */
+export function sheetLooksLikeAgentData(sheetName: string, rows: SourceRow[]): boolean {
+  if (ROLLUP_SHEET.test(sheetName)) return false;
+  const sample = rows.slice(0, 5);
+  return sample.some((r) => {
+    const keys = Object.keys(r);
+    return keys.some((k) => AGENT_COL.test(k.trim())) && keys.some((k) => AMOUNT_COL.test(k.trim()));
+  });
+}
+
+/**
+ * Category for a data sheet whose name doesn't classify it — inferred
+ * from the column shape. Payment/settlement evidence (deposits) is the
+ * safest default: it reduces the closing variance rather than inflating
+ * expected revenue.
+ */
+function inferCategory(sample: SourceRow): NormalizedRecord["category"] {
+  if (
+    hasCols(sample, "Premium") || hasCols(sample, "Premium Collected") ||
+    hasCols(sample, "Policy Cover") || hasCols(sample, "Policy_Cover") ||
+    hasCols(sample, "Insurer") || hasCols(sample, "Insurance Company")
+  ) {
+    return "insurance";
+  }
+  if (
+    hasCols(sample, "Vehicle Licensing Total") || hasCols(sample, "Licensing Total") ||
+    hasCols(sample, "ZINARA Account") || hasCols(sample, "Zinara ID")
+  ) {
+    return "zinara";
+  }
+  if (hasCols(sample, "Alteration") || hasCols(sample, "Adjustment")) return "adjustment";
+  return "deposit";
+}
+
 /** ---------------- bank-statement extractors ----------------
  * Deposit evidence arrives as raw bank statements whose layouts share nothing
  * with the transaction sheets: NMB MPOS lines embed the agent's terminal code
@@ -169,13 +226,17 @@ function applyConversion(
   sheetName: string
 ): NormalizedRecord {
   const conv = toNumber(cell(row, ...CONVERSION_COLS));
+  // USD sheets feed the USD Deposits channel unless the row already names
+  // a bank — USD features are always picked from the USD file, never
+  // inferred from the ZWG sheet.
+  const bankAccount = rec.bankAccount ?? (/usd/i.test(sheetName) ? "USD Deposits" : undefined);
   if (conv > 0) {
-    return { ...rec, usdAmount: rec.amount, amount: conv, currency: "ZWG" };
+    return { ...rec, bankAccount, usdAmount: rec.amount, amount: conv, currency: "ZWG" };
   }
   if (/usd/i.test(sheetName) && rec.amount !== 0) {
-    return { ...rec, usdAmount: rec.amount, currency: "USD" };
+    return { ...rec, bankAccount, usdAmount: rec.amount, currency: "USD" };
   }
-  return rec;
+  return { ...rec, bankAccount };
 }
 
 /** NMB statement rows: agent = MPOS code in narration, deposit = credit. */
@@ -369,13 +430,25 @@ export const enpassentAdapter: SourceAdapter = {
         .filter((r) => r.amount !== 0 || r.externalId || r.usdAmount);
     }
 
-    const category: NormalizedRecord["category"] = isInsurance ? "insurance" : "adjustment";
-    const amountKeys = isInsurance
-      ? ["Premium_Collected", "Premium Collected", "Premium", "Premium Amount", "Amount", "Value", "Total"]
-      : ["Amount", "Premium", "Premium Collected", "Premium Amount", "Value", "Total"];
+    const category: NormalizedRecord["category"] =
+      isInsurance || isAdjustment
+        ? isInsurance
+          ? "insurance"
+          : "adjustment"
+        : // Data sheet with an unrecognised name — infer from the columns
+          // so company-added worksheets are still captured. Nothing is
+          // recorded for sheets that carry no agent data (the engine only
+          // calls normalise on recognised or data-shaped sheets).
+          inferCategory(rows[0] ?? {});
+    const amountKeys =
+      category === "insurance"
+        ? ["Premium_Collected", "Premium Collected", "Premium", "Premium Amount", "Amount", "Value", "Total"]
+        : category === "adjustment"
+          ? ["Amount", "Premium", "Premium Collected", "Premium Amount", "Value", "Total"]
+          : ["Amount", "Deposit", "Payment Amount", "Paid", "Received", "Settled", "Value", "Total", "Credit", "CR Amount"];
 
     return rows
-      .filter((row) => !(isInsurance && /^cancelled$/i.test(String(cell(row, "Status") ?? "").trim())))
+      .filter((row) => !(category === "insurance" && /^cancelled$/i.test(String(cell(row, "Status") ?? "").trim())))
       .map((row, i) => {
         const rec = makeRecord(sheetName, i, row, category, [...AGENT_ID_KEYS, ...NAME_FALLBACK_KEYS], amountKeys, [
           "Policy No",
@@ -388,11 +461,12 @@ export const enpassentAdapter: SourceAdapter = {
         // Enpassent commission is 10% of policy cover when the sheet doesn't
         // carry an explicit Commission column (validated against RECON).
         const cover = toNumber(cell(row, "Policy Cover", "Policy_Cover", "Cover"));
-        const commission = rec.commission ?? (isInsurance && cover ? cover * 0.1 : undefined);
+        const commission = rec.commission ?? (category === "insurance" && cover ? cover * 0.1 : undefined);
         // The workbook's Variance = Expected − Deposits − Alterations, so
         // alteration amounts enter the engine as negatives.
-        const amount = isAdjustment ? -rec.amount : rec.amount;
-        return { ...rec, amount, commission };
+        const amount = category === "adjustment" ? -rec.amount : rec.amount;
+        const out = { ...rec, amount, commission };
+        return category === "deposit" ? applyConversion(out, row, sheetName) : out;
       })
       .filter((r) => r.amount !== 0 || r.externalId || r.usdAmount);
   },
@@ -415,13 +489,19 @@ export const econetMoovahAdapter: SourceAdapter = {
     const isDeposit = /deposit|pos|float|transfer|ecocash|bank|zig/i.test(sheetName);
     const isZinara = /zinara/i.test(sheetName);
     const isAdjustment = /alteration|adjust/i.test(sheetName);
+    const isInsurance = /insur/i.test(sheetName);
     const category: NormalizedRecord["category"] = isDeposit
       ? "deposit"
       : isZinara
         ? "zinara"
         : isAdjustment
           ? "adjustment"
-          : "insurance";
+          : isInsurance
+            ? "insurance"
+            : // Unrecognised data sheet — infer from columns instead of
+              // defaulting to insurance (the old fallback fabricated
+              // insurance revenue from arbitrary worksheets).
+              inferCategory(rows[0] ?? {});
     return rows
       .map((row, i) => {
         const rec = makeRecord(

@@ -1,5 +1,6 @@
 ﻿import { formatMoney } from "@/lib/format";
 import type { Currency } from "@/types";
+import { normalizeBankName } from "./engine";
 import type { AgentReconResult, EngineOutput, TransactionDetail } from "./types";
 import { BANK_CHANNELS } from "./types";
 
@@ -153,8 +154,19 @@ export function documentToCSV(doc: AgentReconDocument): string {
     .join("\n");
 }
 
-/** Canonical summary-sheet column order from the client's real workbook. */
-const SUMMARY_BANK_COLS = ["Ecocash", "CBZ", "CBZ USD", "NBS", "STEWARD", "USD Deposits", "Transfers"] as const;
+/** Canonical summary-sheet column order — every recognised channel,
+ *  unrecognised ones never reach bankDeposits so no mystery columns appear. */
+const SUMMARY_BANK_COLS = BANK_CHANNELS;
+
+/** Canonical deposit channel for a transaction — bankChannel when the
+ *  engine stamped it, else normalise the raw bankAccount (older persisted
+ *  documents predate the field). */
+function channelOf(t: TransactionDetail): string {
+  return t.bankChannel ?? normalizeBankName(t.bankAccount ?? "");
+}
+
+/** USD-family channels: the generic USD Deposits bucket plus per-bank USD. */
+const isUsdChannel = (ch: string) => ch === "USD Deposits" || ch.endsWith(" USD");
 
 interface DetailSheet {
   name: string;
@@ -352,7 +364,7 @@ export async function documentsToWorkbook(docs: AgentReconDocument[]): Promise<B
   }
   const bankCols = [
     ...SUMMARY_BANK_COLS,
-    ...[...allBanks].filter((b) => !SUMMARY_BANK_COLS.includes(b as (typeof SUMMARY_BANK_COLS)[number])),
+    ...[...allBanks].filter((b) => !(SUMMARY_BANK_COLS as readonly string[]).includes(b)),
   ];
   const sHeader = [
     "Currency", "Agent Name", "Opening Variance", "Insurance", "Premium Cover",
@@ -388,8 +400,14 @@ export async function documentsToWorkbook(docs: AgentReconDocument[]): Promise<B
 
   // ── Detail sheets ───────────────────────────────────────────────────
   const txns = [...(usd?.transactions ?? []), ...(zig?.transactions ?? [])];
+  // One sheet per recognised bank bucket — driven by bankDeposits keys so
+  // "USD Deposits" (fixed sheet below) and "Other" never spawn a sheet.
   const bankNames = new Set<string>();
-  for (const t of txns) if (t.bankAccount) bankNames.add(t.bankAccount);
+  for (const d of docs) {
+    for (const b of Object.keys(d.bankDeposits)) {
+      if (b !== "USD Deposits") bankNames.add(b);
+    }
+  }
 
   const detailSheets: DetailSheet[] = [
     {
@@ -410,28 +428,28 @@ export async function documentsToWorkbook(docs: AgentReconDocument[]): Promise<B
       name: bank,
       columns: ["Name", "Agent", "Amount", "Currency", "Posting Date", "Bank", "Insurance Company"],
       rows: txns
-        .filter((t) => t.bankAccount === bank)
+        .filter((t) => channelOf(t) === bank)
         .map((t) => [t.narration ?? t.reference, t.agentName, t.amount, t.currency ?? "", t.date ?? "", bank, t.insuranceCompany ?? ""]),
     })),
     {
       name: "USD Deposits",
       columns: ["Agent", "Amount", "Currency", "Date"],
       rows: txns
-        .filter((t) => t.category === "deposit" && (t.currency === "USD" || t.bankAccount === "USD"))
+        .filter((t) => t.category === "deposit" && (t.currency === "USD" || isUsdChannel(channelOf(t))))
         .map((t) => [t.agentName, t.amount, t.currency ?? "USD", t.date ?? ""]),
     },
     {
       name: "ZiG Deposits",
       columns: ["Agent", "Amount", "Currency", "Date"],
       rows: txns
-        .filter((t) => t.category === "deposit" && (t.currency ?? "ZWG") === "ZWG" && t.bankAccount !== "USD")
+        .filter((t) => t.category === "deposit" && (t.currency ?? "ZWG") === "ZWG" && !isUsdChannel(channelOf(t)))
         .map((t) => [t.agentName, t.amount, t.currency ?? "ZWG", t.date ?? ""]),
     },
     {
       name: "Transfers & Ecocash",
       columns: ["Agent", "Amount", "Currency", "Channel", "Reference", "Date"],
       rows: txns
-        .filter((t) => t.bankAccount === "Ecocash" || t.bankAccount === "Transfers")
+        .filter((t) => channelOf(t) === "Ecocash" || channelOf(t) === "Transfers")
         .map((t) => [t.agentName, t.amount, t.currency ?? "", t.bankAccount ?? "", t.reference, t.date ?? ""]),
     },
     {
@@ -518,7 +536,7 @@ export async function batchToWorkbook(docs: AgentReconDocument[]): Promise<Buffe
   for (const d of docs) Object.keys(d.bankDeposits).forEach((b) => allBanks.add(b));
   const bankCols = [
     ...SUMMARY_BANK_COLS,
-    ...[...allBanks].filter((b) => !SUMMARY_BANK_COLS.includes(b as (typeof SUMMARY_BANK_COLS)[number])),
+    ...[...allBanks].filter((b) => !(SUMMARY_BANK_COLS as readonly string[]).includes(b)),
   ];
 
   const ws = wb.addWorksheet("Summary");
