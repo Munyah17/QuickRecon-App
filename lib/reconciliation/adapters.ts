@@ -126,8 +126,23 @@ function makeRecord(
   };
 }
 
-const AGENT_ID_KEYS = ["Agent ID", "AgentID", "Agent Code", "AgentCode", "Code"];
-const NAME_FALLBACK_KEYS = ["Agent", "Agent Name", "Name"];
+const AGENT_ID_KEYS = ["Agent ID", "AgentID", "Agent Code", "AgentCode", "Code", "Agent Ref", "Agent Reference", "Agent Number", "User ID"];
+const NAME_FALLBACK_KEYS = ["Agent", "Agent Name", "Name", "Client Name", "Account Name"];
+
+/**
+ * Rows on a USD-named sheet with no Currency column are USD — the sheet
+ * itself carries the currency. Without this fallback USD-file money lands
+ * in the ZiG bucket and the USD side of the report stays empty.
+ */
+function applySheetCurrency(rec: NormalizedRecord, row: SourceRow, sheetName: string): NormalizedRecord {
+  if (/usd|us\$/i.test(sheetName) && cell(row, "Currency", "Curr") == null) {
+    return { ...rec, currency: "USD" };
+  }
+  if (/zig|zwg/i.test(sheetName) && cell(row, "Currency", "Curr") == null) {
+    return { ...rec, currency: "ZWG" };
+  }
+  return rec;
+}
 
 /**
  * Module markers in sheet names. Workbooks ship per-module insurance sheets
@@ -403,13 +418,13 @@ export const enpassentAdapter: SourceAdapter = {
             toNumber(cell(row, "Radio / TV Licensing Total (F=B-D)", "Radio / TV Licensing Total")) ||
             // Agent-returned ZINARA sheets carry a plain Payment Amount.
             toNumber(cell(row, "Payment Amount", "Amount"));
-          return {
+          return applySheetCurrency({
             ...rec,
             amount,
             externalId: code ?? rec.externalId,
             agentNameHint: name ?? rec.agentNameHint,
             zinaraAccountId: code ?? rec.zinaraAccountId,
-          };
+          }, row, sheetName);
         })
         .filter((r) => r.amount !== 0 || r.externalId || r.usdAmount);
     }
@@ -421,7 +436,7 @@ export const enpassentAdapter: SourceAdapter = {
             makeRecord(
               sheetName, i, row, "deposit",
               [...AGENT_ID_KEYS, ...NAME_FALLBACK_KEYS],
-              ["Amount", "Deposit", "Settled", "Settled Amount", "Value", "Deposited"],
+              ["Amount", "Deposit", "Settled", "Settled Amount", "Value", "Deposited", "CreditAmount", "Credit Amount", "CR Amount", "Credit", "Payment Amount", "Paid"],
               ["Ref", "Reference", "Receipt No", "Ecocash Reference", "Narration /Ref"]
             ),
             row, sheetName
@@ -465,7 +480,7 @@ export const enpassentAdapter: SourceAdapter = {
         // The workbook's Variance = Expected − Deposits − Alterations, so
         // alteration amounts enter the engine as negatives.
         const amount = category === "adjustment" ? -rec.amount : rec.amount;
-        const out = { ...rec, amount, commission };
+        const out = applySheetCurrency({ ...rec, amount, commission }, row, sheetName);
         return category === "deposit" ? applyConversion(out, row, sheetName) : out;
       })
       .filter((r) => r.amount !== 0 || r.externalId || r.usdAmount);
@@ -513,7 +528,9 @@ export const econetMoovahAdapter: SourceAdapter = {
           ["Amount", "Premium Collected", "Premium", "Premium Amount", "Payment Amount", "Float", "Value", "Total"],
           ["Ref", "Reference", "Txn Ref", "Transaction Ref"]
         );
-        return category === "deposit" ? applyConversion(rec, row, sheetName) : rec;
+        return category === "deposit"
+          ? applyConversion(applySheetCurrency(rec, row, sheetName), row, sheetName)
+          : applySheetCurrency(rec, row, sheetName);
       })
       .filter((r) => r.amount !== 0 || r.externalId);
   },

@@ -161,7 +161,7 @@ function trimGrid(grid: unknown[][]): unknown[][] {
  * recognisable field names; need at least 2 hits to trust it.
  */
 const HEADER_HINTS =
-  /^(agent|agent\s*(id|code|name|full name)|name|amount|premium|premium collected|deposit|deposited|settled|settled amount|value|total|date|txn date|transaction date|posting date|sale date|ref|reference|policy no|receipt no|narration|narration \/ref|description|currency|curr|account|account name|bank|bank account|channel|commission|comm|usd|usd amount|usd deposit|rate|conversion|vrn|vehicle registration|reg no|registration number|insurance company|insurer|underwriter|rta|rta amount|payment method|float|msisdn|econet id|ecocash id|code|status|type)$/i;
+  /^(agent|agent\s*(id|code|name|full name|ref(erence)?|number)|name|amount|premium|premium collected|deposit|deposited|settled|settled amount|value|total|date|txn date|transaction date|posting date|value date|sale date|ref|reference|policy no|receipt no|narration|narration \/ref|narrative|details|description|currency|curr|account|account name|bank|bank account|channel|commission|comm|usd|usd amount|usd deposit|rate|conversion|vrn|vehicle registration|reg no|registration number|insurance company|insurer|underwriter|rta|rta amount|payment method|float|msisdn|econet id|ecocash id|code|status|type|credit|creditamount|credit amount|cr amt|cr amount|debit|debit amount|balance|tid|terminal id|terminal|merchant name|agent name|user|transaction type)$/i;
 
 export function headerIndex(grid: unknown[][]): number {
   let headerIdx = 0;
@@ -199,12 +199,18 @@ export function gridToRows(grid: unknown[][], headerIdx: number): SourceRow[] {
     }
   }
 
+  // A data row can be wider than the detected header (merged banner cells,
+  // trailing notes columns). Extending keys to the widest row keeps those
+  // cells instead of silently truncating them.
+  const width = Math.max(keys.length, ...grid.map((g) => g.length));
+  while (keys.length < width) keys.push(`__EMPTY_${empties++}`);
+
   const rows: SourceRow[] = [];
   for (let r = headerIdx + 1; r < grid.length; r++) {
     const g = grid[r] ?? [];
     const obj: SourceRow = {};
     let has = false;
-    for (let c = 0; c < keys.length; c++) {
+    for (let c = 0; c < width; c++) {
       const v = g[c] ?? null;
       obj[keys[c]] = v;
       if (v !== null && v !== undefined && v !== "") has = true;

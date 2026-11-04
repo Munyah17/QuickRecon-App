@@ -84,7 +84,19 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
   const inferredSheets: string[] = [];
   for (const [sheetName, rows] of Object.entries(input.sheets)) {
     if (adapter.supportsSheet(sheetName)) {
-      normalised.push(...adapter.normalise(sheetName, rows));
+      const recs = adapter.normalise(sheetName, rows);
+      // A recognised sheet that yields nothing used to vanish silently —
+      // that's how whole categories go missing. Surface it for review.
+      if (rows.length && recs.length === 0) {
+        exceptions.push({
+          type: "missing_column",
+          severity: "medium",
+          module: input.module,
+          sourceRef: sheetName,
+          description: `Worksheet "${sheetName}" is a recognised layout but no rows could be read — check its header/columns.`,
+        });
+      }
+      normalised.push(...recs);
       continue;
     }
     // The workbook may carry agent worksheets the adapter doesn't know by
@@ -109,6 +121,17 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
   // 2. Identity resolution.
   const resolver = new IdentityResolver(input.aliases);
   const agentNameIndex = new Map(input.agents.map((a) => [a.fullName.toUpperCase(), a.id]));
+  // Token index for fuzzy names — the dump writes "ZHOU, Musa",
+  // "Musa  Zhou" or "Zhou Musa" and exact matching drops those rows,
+  // which is how an agent ends up with deposits but zero insurance.
+  const tokensOf = (s: string) => new Set(s.toUpperCase().split(/[^A-Z]+/).filter((t) => t.length > 1));
+  const agentTokenSets = input.agents.map((a) => ({ id: a.id, tokens: tokensOf(a.fullName) }));
+  const nameByTokens = (hint: string): string | undefined => {
+    const hintTokens = tokensOf(hint.replace(/,/g, " "));
+    if (hintTokens.size < 2) return undefined;
+    const hits = agentTokenSets.filter((a) => a.tokens.size > 0 && [...hintTokens].every((t) => a.tokens.has(t)));
+    return hits.length === 1 ? hits[0].id : undefined;
+  };
 
   const matched: (NormalizedRecord & { agentId: string })[] = [];
   const learned = new Map<string, { agentId: string; value: string }>();
@@ -118,9 +141,12 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
     const match = resolver.resolve(rec);
     let agentId = match.agentId;
 
-    // Name matches only proceed when unambiguous (exact-cased full name).
+    // Name matches only proceed when unambiguous — exact-cased full name
+    // first, then a token-subset fallback for reordered/punctuated names.
     if (!agentId && match.confidence === "name" && rec.agentNameHint) {
-      const hit = agentNameIndex.get(rec.agentNameHint.toUpperCase());
+      const hit = agentNameIndex.get(rec.agentNameHint.toUpperCase())
+        ?? agentNameIndex.get(rec.agentNameHint.replace(/\s+/g, " ").trim().toUpperCase())
+        ?? nameByTokens(rec.agentNameHint);
       if (hit) {
         agentId = hit;
         // The row's company code now provably belongs to this agent — learn

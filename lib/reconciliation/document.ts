@@ -168,6 +168,14 @@ function channelOf(t: TransactionDetail): string {
 /** USD-family channels: the generic USD Deposits bucket plus per-bank USD. */
 const isUsdChannel = (ch: string) => ch === "USD Deposits" || ch.endsWith(" USD");
 
+/** Deposit buckets restricted to canonical channels — persisted documents
+ *  from older runs may carry raw names (Stanbic, TNC, "Other"…) that must
+ *  never render as banks in any output. */
+const CANONICAL = new Set<string>(BANK_CHANNELS);
+function canonicalDeposits(doc: AgentReconDocument): [string, number][] {
+  return Object.entries(doc.bankDeposits).filter(([b]) => CANONICAL.has(b));
+}
+
 interface DetailSheet {
   name: string;
   columns: string[];
@@ -315,7 +323,7 @@ export async function documentsToWorkbook(docs: AgentReconDocument[]): Promise<B
 
     // Deposit channel bars
     const chans = doc
-      ? Object.entries(doc.bankDeposits).filter(([, v]) => v !== 0)
+      ? canonicalDeposits(doc).filter(([, v]) => v !== 0)
       : [];
     if (chans.length) {
       row += 1;
@@ -360,7 +368,7 @@ export async function documentsToWorkbook(docs: AgentReconDocument[]): Promise<B
   const wsS = wb.addWorksheet("Summary");
   const allBanks = new Set<string>();
   for (const d of [usd, zig]) {
-    if (d) Object.keys(d.bankDeposits).forEach((b) => allBanks.add(b));
+    if (d) canonicalDeposits(d).forEach(([b]) => allBanks.add(b));
   }
   const bankCols = [
     ...SUMMARY_BANK_COLS,
@@ -404,7 +412,7 @@ export async function documentsToWorkbook(docs: AgentReconDocument[]): Promise<B
   // "USD Deposits" (fixed sheet below) and "Other" never spawn a sheet.
   const bankNames = new Set<string>();
   for (const d of docs) {
-    for (const b of Object.keys(d.bankDeposits)) {
+    for (const [b] of canonicalDeposits(d)) {
       if (b !== "USD Deposits") bankNames.add(b);
     }
   }
@@ -533,7 +541,7 @@ export async function batchToWorkbook(docs: AgentReconDocument[]): Promise<Buffe
 
   // Union of every bank channel used — canonical order first, extras after.
   const allBanks = new Set<string>();
-  for (const d of docs) Object.keys(d.bankDeposits).forEach((b) => allBanks.add(b));
+  for (const d of docs) canonicalDeposits(d).forEach(([b]) => allBanks.add(b));
   const bankCols = [
     ...SUMMARY_BANK_COLS,
     ...[...allBanks].filter((b) => !(SUMMARY_BANK_COLS as readonly string[]).includes(b)),
@@ -673,7 +681,7 @@ export async function documentsToPDF(docs: AgentReconDocument[]): Promise<Buffer
   ];
 
   docs.forEach((doc, i) => {
-    const bankCols = Object.keys(doc.bankDeposits);
+    const bankCols = canonicalDeposits(doc).map(([b]) => b);
     const header = [
       "Opening Var", "Insurance", "Premium Cover", "Commission", "Net Insurance",
       "ZINARA", "PDS", "Total Expected", ...bankCols, "Alterations", "Closing Var",
