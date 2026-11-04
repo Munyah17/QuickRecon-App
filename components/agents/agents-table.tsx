@@ -4,7 +4,7 @@ import * as React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { ColumnDef, RowSelectionState } from "@tanstack/react-table";
-import { CircleCheck, Ellipsis, Eye, ShieldOff, Trash2, UserPen } from "lucide-react";
+import { CircleCheck, Ellipsis, Eye, ShieldOff, Trash2, UserPen, Users } from "lucide-react";
 import { toast } from "sonner";
 import { DataTable } from "@/components/data-table/data-table";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -32,6 +32,11 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -141,21 +146,49 @@ export function AgentsTable({ agents, viewerRole }: { agents: Agent[]; viewerRol
       {
         accessorKey: "zinaraId",
         header: "ZINARA ID",
-        cell: ({ row }) => (
-          <div className="min-w-0">
-            <span className="font-mono text-[12px] text-muted-foreground">
-              {row.original.zinaraId ?? "—"}
-            </span>
-            {row.original.zinaraSharedWith?.length ? (
-              <p
-                className="mt-0.5 max-w-[220px] truncate text-[10.5px] text-muted-foreground/80"
-                title={`Shared with ${row.original.zinaraSharedWith.join(", ")}`}
-              >
-                shared with {row.original.zinaraSharedWith.join(", ")}
-              </p>
-            ) : null}
-          </div>
-        ),
+        cell: ({ row }) => {
+          const { zinaraId, zinaraSharedWith, fullName } = row.original;
+          if (!zinaraId) {
+            return (
+              <span className="font-mono text-[12px] text-muted-foreground">—</span>
+            );
+          }
+          return (
+            <div className="flex min-w-0 items-center gap-1.5">
+              <span className="font-mono text-[12px] text-muted-foreground">
+                {zinaraId}
+              </span>
+              {zinaraSharedWith?.length ? (
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="inline-flex shrink-0 items-center gap-0.5 rounded-full bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground transition-colors hover:bg-muted/70 hover:text-foreground"
+                      title="Shared ZINARA ID — click to see all holders"
+                    >
+                      <Users className="size-3" aria-hidden />
+                      {zinaraSharedWith.length + 1}
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent align="start" className="w-56 p-2.5 text-[12.5px]">
+                    <p className="mb-1.5 font-medium">
+                      ZINARA ID shared by {zinaraSharedWith.length + 1} agents
+                    </p>
+                    <ul className="space-y-1 text-muted-foreground">
+                      <li>
+                        <span className="font-medium text-foreground">{fullName}</span>{" "}
+                        <span className="text-[10.5px]">(this agent)</span>
+                      </li>
+                      {zinaraSharedWith.map((n) => (
+                        <li key={n}>{n}</li>
+                      ))}
+                    </ul>
+                  </PopoverContent>
+                </Popover>
+              ) : null}
+            </div>
+          );
+        },
       },
       {
         accessorKey: "modules",
