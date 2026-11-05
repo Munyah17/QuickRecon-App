@@ -70,6 +70,26 @@ function toDate(v: unknown): string | undefined {
   return undefined;
 }
 
+/**
+ * Channel/bank columns that are unambiguously bank fields. Generic
+ * "Account"/"Account Name" columns on deposit sheets are usually the
+ * customer or agent account — reading them as banks is how raw names
+ * (Stanbic, Nedbank, TNC, customer refs) leaked into the bank breakdown.
+ */
+const BANK_COLS = ["Bank", "Bank Account", "Bank Name", "Channel", "Deposit Bank", "Pay To", "Settlement Bank"];
+
+/** Value must look bank-ish before a generic account column can feed the channel. */
+const BANKISH_VALUE =
+  /bank|eco\s?cash|nmb|nbs|cbz|steward|stanbic|nedbank|cabs|posb|agribank|fbc|\btnc\b|\bzb\b|banc\s?abc|usd|transfer/i;
+
+function pickBankAccount(row: SourceRow): string | undefined {
+  const direct = cell(row, ...BANK_COLS);
+  if (direct != null && String(direct).trim() !== "") return String(direct).trim();
+  const generic = cell(row, "Account", "Account Name");
+  if (generic != null && BANKISH_VALUE.test(String(generic))) return String(generic).trim();
+  return undefined;
+}
+
 function makeRecord(
   sheetName: string,
   rowIndex: number,
@@ -83,7 +103,7 @@ function makeRecord(
   const externalId = externalIdRaw != null ? String(externalIdRaw).trim() : undefined;
   const nameHint = cell(row, "Agent", "Agent Name", "Agent Full Name", "Sales Agent", "Name");
   const commission = category === "insurance" ? toNumber(cell(row, "Commission", "Comm", "Commission Amount")) : undefined;
-  const bankAccount = category === "deposit" ? String(cell(row, "Account", "Bank", "Account Name", "Channel", "Bank Account") ?? "").trim() || undefined : undefined;
+  const bankAccount = category === "deposit" ? pickBankAccount(row) : undefined;
   const usdRaw = category === "deposit" ? cell(row, "USD", "USD Amount", "USD Deposit") : undefined;
   const usdAmount = usdRaw != null ? toNumber(usdRaw) : undefined;
   // USD features come from USD deposit rows only — reading the conversion
@@ -188,21 +208,23 @@ export function sheetLooksLikeAgentData(sheetName: string, rows: SourceRow[]): b
  * safest default: it reduces the closing variance rather than inflating
  * expected revenue.
  */
-function inferCategory(sample: SourceRow): NormalizedRecord["category"] {
+function inferCategory(rows: SourceRow[]): NormalizedRecord["category"] {
+  const sample = rows.slice(0, 5);
+  const anyRow = (...names: string[]) => sample.some((r) => hasCols(r, ...names));
   if (
-    hasCols(sample, "Premium") || hasCols(sample, "Premium Collected") ||
-    hasCols(sample, "Policy Cover") || hasCols(sample, "Policy_Cover") ||
-    hasCols(sample, "Insurer") || hasCols(sample, "Insurance Company")
+    anyRow("Premium") || anyRow("Premium Collected") ||
+    anyRow("Policy Cover") || anyRow("Policy_Cover") ||
+    anyRow("Insurer") || anyRow("Insurance Company")
   ) {
     return "insurance";
   }
   if (
-    hasCols(sample, "Vehicle Licensing Total") || hasCols(sample, "Licensing Total") ||
-    hasCols(sample, "ZINARA Account") || hasCols(sample, "Zinara ID")
+    anyRow("Vehicle Licensing Total") || anyRow("Licensing Total") ||
+    anyRow("ZINARA Account") || anyRow("Zinara ID")
   ) {
     return "zinara";
   }
-  if (hasCols(sample, "Alteration") || hasCols(sample, "Adjustment")) return "adjustment";
+  if (anyRow("Alteration") || anyRow("Adjustment")) return "adjustment";
   return "deposit";
 }
 
@@ -322,32 +344,51 @@ function cbzStatementRecord(sheetName: string, i: number, row: SourceRow): Norma
 }
 
 /**
+ * Bank tokens that may appear in a sheet name. A layout match alone is NOT
+ * enough when the sheet names a different bank — a "STANBIC USD" sheet that
+ * happens to carry CreditAmount/Narration columns must not be stamped "NMB".
+ */
+const SHEET_BANK_TOKENS = /nmb|nbs|cbz|steward|ecocash|stanbic|nedbank|cabs|posb|agribank|fbc|\btnc\b|\bzb\b|banc\s?abc/i;
+
+/** Bank named by the sheet, or null when the name carries no bank token. */
+function namedBank(sheetName: string): string | null {
+  const m = SHEET_BANK_TOKENS.exec(sheetName);
+  return m ? m[0].toLowerCase().replace(/\s+/g, " ") : null;
+}
+
+/**
  * Detect bank-statement sheets by their header shape (names vary: "NMB ZWG",
  * "NBS USD", "CBZ ") and extract deposit records. Returns null for ordinary
  * transaction sheets so the caller falls back to the generic path.
  */
 function bankStatementRecords(sheetName: string, rows: SourceRow[]): NormalizedRecord[] | null {
   if (rows.length === 0) return null;
-  const sample = rows[0];
-  if (hasCols(sample, "Narration") && (hasCols(sample, "CreditAmount") || hasCols(sample, "Credit Amount"))) {
+  // Sample the first few rows — a sparse or banner-like first row can miss
+  // the real header columns.
+  const sampleRows = rows.slice(0, 3);
+  const anyRow = (...names: string[]) => sampleRows.some((r) => hasCols(r, ...names));
+  const bank = namedBank(sheetName);
+  const isBank = (...names: string[]) => bank == null || names.includes(bank);
+
+  if (isBank("nmb") && anyRow("Narration") && (anyRow("CreditAmount") || anyRow("Credit Amount"))) {
     return rows
       .map((r, i) => nmbStatementRecord(sheetName, i, r))
       .filter((r): r is NormalizedRecord => r !== null)
       .filter((r) => r.amount !== 0 || r.externalId || r.usdAmount);
   }
-  if (hasCols(sample, "TID") && hasCols(sample, "MERCHANT NAME")) {
+  if (isBank("nbs", "banc abc") && anyRow("TID") && anyRow("MERCHANT NAME")) {
     return rows
       .map((r, i) => nbsStatementRecord(sheetName, i, r))
       .filter((r) => r.amount !== 0 || r.externalId || r.usdAmount);
   }
-  if (hasCols(sample, "TERMINAL ID") && hasCols(sample, "AGENT NAME")) {
+  if (isBank("cbz") && anyRow("TERMINAL ID") && anyRow("AGENT NAME")) {
     return rows
       .map((r, i) => cbzStatementRecord(sheetName, i, r))
       .filter((r) => r.amount !== 0 || r.externalId || r.usdAmount);
   }
   // Agent-returned NMB sheet shape: "Date | POS ID | CR Amount" — no
   // narration, so the MPOS-code extractor above can't see it.
-  if (hasCols(sample, "POS ID") && (hasCols(sample, "CR Amount") || hasCols(sample, "CR Amt"))) {
+  if (isBank("nmb") && anyRow("POS ID") && (anyRow("CR Amount") || anyRow("CR Amt"))) {
     return rows
       .map((r, i) => {
         const posId = String(cell(r, "POS ID", "Pos Id", "POSID") ?? "").trim();
@@ -454,7 +495,7 @@ export const enpassentAdapter: SourceAdapter = {
           // so company-added worksheets are still captured. Nothing is
           // recorded for sheets that carry no agent data (the engine only
           // calls normalise on recognised or data-shaped sheets).
-          inferCategory(rows[0] ?? {});
+          inferCategory(rows);
     const amountKeys =
       category === "insurance"
         ? ["Premium_Collected", "Premium Collected", "Premium", "Premium Amount", "Amount", "Value", "Total"]
@@ -516,7 +557,7 @@ export const econetMoovahAdapter: SourceAdapter = {
             : // Unrecognised data sheet — infer from columns instead of
               // defaulting to insurance (the old fallback fabricated
               // insurance revenue from arbitrary worksheets).
-              inferCategory(rows[0] ?? {});
+              inferCategory(rows);
     return rows
       .map((row, i) => {
         const rec = makeRecord(
