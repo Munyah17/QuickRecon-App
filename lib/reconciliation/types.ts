@@ -139,6 +139,17 @@ export interface AgentReconResult {
   }[];
 }
 
+export interface SheetAudit {
+  sheet: string;
+  /** mapped — recognised layout; inferred — captured by column shape;
+   *  skipped — not transaction data; empty — recognised but yielded nothing. */
+  action: "mapped" | "inferred" | "skipped" | "empty";
+  rowsIn: number;
+  records: number;
+  /** Dominant record category produced (when any). */
+  category?: string;
+}
+
 export interface EngineOutput {
   module: ModuleCode;
   period: string;
@@ -161,6 +172,9 @@ export interface EngineOutput {
      *  recognised worksheet name — the engine reported each as an
      *  exception so the operator can verify the inferred category. */
     inferredSheets: string[];
+    /** Per-worksheet mapping decision — the audit trail for what the
+     *  engine did with every sheet it was handed. */
+    sheets: SheetAudit[];
   };
 }
 

@@ -1,4 +1,4 @@
-import { adapterFor, sheetLooksLikeAgentData } from "./adapters";
+import { adapterFor, isRollupRow, sheetLooksLikeAgentData } from "./adapters";
 import { IdentityResolver } from "./identity-resolver";
 import type {
   AgentReconResult,
@@ -6,6 +6,7 @@ import type {
   EngineOutput,
   IdentityAlias,
   NormalizedRecord,
+  SheetAudit,
   SourceRow,
   TransactionDetail,
 } from "./types";
@@ -82,7 +83,16 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
   const normalised: NormalizedRecord[] = [];
   const skippedSheets: string[] = [];
   const inferredSheets: string[] = [];
-  for (const [sheetName, rows] of Object.entries(input.sheets)) {
+  const sheetAudit: SheetAudit[] = [];
+  // Dominant category of a sheet's records — for the audit trail.
+  const dominant = (recs: NormalizedRecord[]) => {
+    const counts = new Map<string, number>();
+    for (const r of recs) counts.set(r.category, (counts.get(r.category) ?? 0) + 1);
+    return [...counts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+  };
+
+  for (const [sheetName, rawRows] of Object.entries(input.sheets)) {
+    const rows = rawRows.filter((r) => !isRollupRow(r));
     if (adapter.supportsSheet(sheetName)) {
       const recs = adapter.normalise(sheetName, rows);
       // A recognised sheet that yields nothing used to vanish silently —
@@ -96,16 +106,32 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
           description: `Worksheet "${sheetName}" is a recognised layout but no rows could be read — check its header/columns.`,
         });
       }
+      sheetAudit.push({
+        sheet: sheetName,
+        action: recs.length ? "mapped" : "empty",
+        rowsIn: rows.length,
+        records: recs.length,
+        category: dominant(recs),
+      });
       normalised.push(...recs);
       continue;
     }
     // The workbook may carry agent worksheets the adapter doesn't know by
     // name — capture them when the rows carry agent + amount columns, and
     // report each so the inferred category can be verified. Anything else
-    // is skipped and recorded as such rather than silently dropped.
+    // is skipped AND reported — every worksheet gets a recorded decision,
+    // nothing is silently dropped.
     if (rows.length && sheetLooksLikeAgentData(sheetName, rows)) {
-      normalised.push(...adapter.normalise(sheetName, rows));
+      const recs = adapter.normalise(sheetName, rows);
+      normalised.push(...recs);
       inferredSheets.push(sheetName);
+      sheetAudit.push({
+        sheet: sheetName,
+        action: "inferred",
+        rowsIn: rows.length,
+        records: recs.length,
+        category: dominant(recs),
+      });
       exceptions.push({
         type: "schema_changed",
         severity: "low",
@@ -116,6 +142,14 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
       continue;
     }
     skippedSheets.push(sheetName);
+    sheetAudit.push({ sheet: sheetName, action: "skipped", rowsIn: rows.length, records: 0 });
+    exceptions.push({
+      type: "schema_changed",
+      severity: "low",
+      module: input.module,
+      sourceRef: sheetName,
+      description: `Worksheet "${sheetName}" (${rows.length} rows) was not recorded — no recognised layout or agent-data columns. Verify it isn't holding transactions.`,
+    });
   }
 
   // 2. Identity resolution.
@@ -277,16 +311,39 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
     // reported so a real bank name can be added to the mapping.
     const bankDeposits: Record<string, number> = {};
     const unrecognisedBanks = new Map<string, number>();
+    const channelConflicts = new Map<string, { raw: string; amount: number }>();
+    // Bank named by the sheet itself (e.g. "CBZ USD") — when a row's
+    // channel disagrees, the row value wins but the mismatch is flagged.
+    const sheetBank = /nmb|nbs|cbz|steward|ecocash/i;
+    const baseChannel = (ch: string) => ch.replace(/\s+USD$/, "").toUpperCase();
     for (const r of depositRecs) {
       const bank = normalizeBankName(r.bankAccount ?? "");
       r.bankChannel = bank;
       const amount = convert(r.amount, r.currency);
+      const named = sheetBank.exec(r.sourceSheet)?.[0];
+      if (named && bank !== "Other" && baseChannel(bank) !== named.toUpperCase()) {
+        const key = `${r.sourceSheet}|${named}|${bank}`;
+        const cur = channelConflicts.get(key) ?? { raw: r.bankAccount ?? "", amount: 0 };
+        cur.amount += amount;
+        channelConflicts.set(key, cur);
+      }
       if (bank === "Other") {
         const key = `${r.sourceSheet}|${(r.bankAccount ?? "").trim() || "(no channel column)"}`;
         unrecognisedBanks.set(key, (unrecognisedBanks.get(key) ?? 0) + amount);
       } else {
         bankDeposits[bank] = (bankDeposits[bank] ?? 0) + amount;
       }
+    }
+    for (const [key, info] of channelConflicts) {
+      const [sheet, named, used] = key.split("|");
+      exceptions.push({
+        type: "calculation_warning",
+        severity: "low",
+        module: input.module,
+        agentId,
+        sourceRef: sheet,
+        description: `Sheet "${sheet}" names channel ${named} but rows read "${info.raw}" → recorded as ${used} (${info.amount.toLocaleString()}). Verify the column pick.`,
+      });
     }
     for (const [key, total] of unrecognisedBanks) {
       const [sheet, name] = key.split("|");
@@ -400,6 +457,7 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
       duplicates,
       skippedSheets,
       inferredSheets,
+      sheets: sheetAudit,
     },
   };
 }

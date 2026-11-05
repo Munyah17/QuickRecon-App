@@ -90,6 +90,19 @@ function pickBankAccount(row: SourceRow): string | undefined {
   return undefined;
 }
 
+/**
+ * Footer/summary rows inside a data sheet — "TOTAL", "Grand Total",
+ * "Subtotal", "Balance b/f" — carry aggregated figures, not transactions.
+ * Turning one into a record would double-count every row above it, so the
+ * engine never sees them. Exact-label match only: a narration like
+ * "total premium for VRN…" stays a normal row.
+ */
+const ROLLUP_CELL = /^\s*(grand\s+)?totals?\s*$|^\s*sub-?\s*totals?\s*$|^\s*(balance|total)\s+(b\/f|c\/f|brought|carried)\s+(forward|down)\s*$|^\s*(opening|closing)\s+balance\s*$/i;
+
+export function isRollupRow(row: SourceRow): boolean {
+  return Object.values(row).some((v) => typeof v === "string" && ROLLUP_CELL.test(v));
+}
+
 function makeRecord(
   sheetName: string,
   rowIndex: number,
@@ -362,6 +375,7 @@ function namedBank(sheetName: string): string | null {
  * transaction sheets so the caller falls back to the generic path.
  */
 function bankStatementRecords(sheetName: string, rows: SourceRow[]): NormalizedRecord[] | null {
+  rows = rows.filter((r) => !isRollupRow(r));
   if (rows.length === 0) return null;
   // Sample the first few rows — a sparse or banner-like first row can miss
   // the real header columns.
@@ -427,6 +441,7 @@ export const enpassentAdapter: SourceAdapter = {
     );
   },
   normalise(sheetName, rows) {
+    rows = rows.filter((r) => !isRollupRow(r));
     // Bank statements / POS reports have their own layouts — extract them
     // before the generic column guessing below.
     const bank = bankStatementRecords(sheetName, rows);
@@ -559,6 +574,7 @@ export const econetMoovahAdapter: SourceAdapter = {
               // insurance revenue from arbitrary worksheets).
               inferCategory(rows);
     return rows
+      .filter((row) => !isRollupRow(row))
       .map((row, i) => {
         const rec = makeRecord(
           sheetName,
