@@ -118,7 +118,12 @@ function csvSafe(value: unknown): string {
  * before Alterations/Closing Variance. Private to that agent.
  */
 export function documentToCSV(doc: AgentReconDocument): string {
-  const bankCols = BANK_CHANNELS.map((b) => doc.bankDeposits[b] ?? "");
+  // Spec columns in the client's order; extra canonical buckets (e.g. NMB)
+  // append ONLY when they actually hold deposits — never empty columns.
+  const extras = canonicalDeposits(doc)
+    .map(([b]) => b)
+    .filter((b) => !(SUMMARY_BANK_COLS as readonly string[]).includes(b) && doc.bankDeposits[b] !== 0);
+  const bankCols = [...SUMMARY_BANK_COLS, ...extras];
   const headerRow = [
     "Currency",
     "Agent Name",
@@ -130,7 +135,7 @@ export function documentToCSV(doc: AgentReconDocument): string {
     "Zinara",
     "Pds",
     "Total Expected",
-    ...BANK_CHANNELS,
+    ...bankCols,
     "Alterations",
     "Closing Variance",
   ];
@@ -145,7 +150,7 @@ export function documentToCSV(doc: AgentReconDocument): string {
     String(doc.zinara),
     doc.pds === 0 ? "" : String(doc.pds),
     String(doc.totalExpected),
-    ...bankCols.map(String),
+    ...bankCols.map((b) => doc.bankDeposits[b] ?? ""),
     doc.adjustments === 0 ? "" : String(doc.adjustments),
     String(doc.closingVariance),
   ];
@@ -154,9 +159,13 @@ export function documentToCSV(doc: AgentReconDocument): string {
     .join("\n");
 }
 
-/** Canonical summary-sheet column order — every recognised channel,
- *  unrecognised ones never reach bankDeposits so no mystery columns appear. */
-const SUMMARY_BANK_COLS = BANK_CHANNELS;
+/**
+ * Summary-sheet column order — exactly the 7 channels the client specified.
+ * Recognised buckets outside the spec (NMB, NMB USD, NBS USD) only appear
+ * when they actually hold deposits; a bucket with no data leaves its cell
+ * blank rather than a forced zero.
+ */
+const SUMMARY_BANK_COLS = ["Ecocash", "CBZ", "CBZ USD", "NBS", "STEWARD", "USD Deposits", "Transfers"] as const;
 
 /** Canonical deposit channel for a transaction — bankChannel when the
  *  engine stamped it, else normalise the raw bankAccount (older persisted
@@ -273,7 +282,7 @@ export async function documentsToWorkbook(docs: AgentReconDocument[]): Promise<B
     }
 
     // KPI cards — stacked label/value pairs, one column pair each
-    const kpis: [string, number, string, string][] = doc ? [
+    const kpis: [string, number | string, string, string][] = doc ? [
       ["Insurance", doc.insurance, BLUE, LBLUE],
       ["Commission", doc.commission, BLUE, LBLUE],
       ["Net Insurance", doc.netInsurance, BLUE, LBLUE],
@@ -284,11 +293,12 @@ export async function documentsToWorkbook(docs: AgentReconDocument[]): Promise<B
       ["Closing Variance", doc.closingVariance, doc.closingVariance === 0 ? GREEN : RED, doc.closingVariance === 0 ? GREEN_BG : RED_BG],
       ["Opening Variance", doc.openingVariance, GREY, "FFF9FAFB"],
     ] : [
-      ["Insurance", 0, GREY, "FFF9FAFB"], ["Commission", 0, GREY, "FFF9FAFB"],
-      ["Net Insurance", 0, GREY, "FFF9FAFB"], ["ZINARA", 0, GREY, "FFF9FAFB"],
-      ["Total Expected", 0, GREY, "FFF9FAFB"], ["Total Deposits", 0, GREY, "FFF9FAFB"],
-      ["Alterations", 0, GREY, "FFF9FAFB"], ["Closing Variance", 0, GREY, "FFF9FAFB"],
-      ["Opening Variance", 0, GREY, "FFF9FAFB"],
+      // No document for this currency — blank cards, not invented zeros.
+      ["Insurance", "", GREY, "FFF9FAFB"], ["Commission", "", GREY, "FFF9FAFB"],
+      ["Net Insurance", "", GREY, "FFF9FAFB"], ["ZINARA", "", GREY, "FFF9FAFB"],
+      ["Total Expected", "", GREY, "FFF9FAFB"], ["Total Deposits", "", GREY, "FFF9FAFB"],
+      ["Alterations", "", GREY, "FFF9FAFB"], ["Closing Variance", "", GREY, "FFF9FAFB"],
+      ["Opening Variance", "", GREY, "FFF9FAFB"],
     ];
 
     let row = 8;
@@ -385,7 +395,8 @@ export async function documentsToWorkbook(docs: AgentReconDocument[]): Promise<B
     d?.insurance ?? 0, d?.premiumCover ?? 0, d?.commission ?? 0,
     d?.netInsurance ?? 0, d?.zinara ?? 0, d?.insurancePds ?? d?.pds ?? 0,
     d?.zinaraPds ?? 0, d?.totalExpected ?? 0,
-    ...bankCols.map((b) => d?.bankDeposits[b] ?? 0),
+    // A channel with no deposits is an empty cell — no data means no data.
+    ...bankCols.map((b) => d?.bankDeposits[b] ?? ""),
     d?.adjustments ?? 0, d?.closingVariance ?? 0,
   ];
   if (usd) wsS.addRow(sRow(usd, "USD"));
@@ -566,7 +577,7 @@ export async function batchToWorkbook(docs: AgentReconDocument[]): Promise<Buffe
     d?.insurance ?? 0, d?.premiumCover ?? 0, d?.commission ?? 0,
     d?.netInsurance ?? 0, d?.zinara ?? 0, d?.insurancePds ?? d?.pds ?? 0,
     d?.zinaraPds ?? 0, d?.totalExpected ?? 0,
-    ...bankCols.map((b) => d?.bankDeposits[b] ?? 0),
+    ...bankCols.map((b) => d?.bankDeposits[b] ?? ""),
     d?.adjustments ?? 0, d?.closingVariance ?? 0,
   ];
   // Only emit rows for currencies the agent actually has — no zero-filled
