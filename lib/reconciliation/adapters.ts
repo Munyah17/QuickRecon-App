@@ -448,11 +448,13 @@ export const enpassentAdapter: SourceAdapter = {
     if (bank) return bank;
 
     const isZinara = /zinara/i.test(sheetName);
+    const isAdjustment = /alteration|adjust/i.test(sheetName);
     // ZiG worksheets were retired — their rows are deposits and merge into
     // the same bucket as Transfers & Ecocash.
-    const isDeposit = /deposit|settlement|bank|transfer|ecocash|zig/i.test(sheetName);
+    const isDeposit =
+      /deposit|settlement|bank|transfer|ecocash/i.test(sheetName) ||
+      (!isAdjustment && !/insur/i.test(sheetName) && /zig/i.test(sheetName));
     const isInsurance = /insur|summary|transactions/i.test(sheetName);
-    const isAdjustment = /alteration|adjust/i.test(sheetName);
 
     // ZINARA licensing report: the agent is the "User" cell
     // ("ZW018ZLN - SHOWNE ZULU") — "Agent" is the shared merchant name, not an
@@ -557,10 +559,12 @@ export const econetMoovahAdapter: SourceAdapter = {
     const bank = bankStatementRecords(sheetName, rows);
     if (bank) return bank;
 
-    const isDeposit = /deposit|pos|float|transfer|ecocash|bank|zig/i.test(sheetName);
     const isZinara = /zinara/i.test(sheetName);
     const isAdjustment = /alteration|adjust/i.test(sheetName);
     const isInsurance = /insur/i.test(sheetName);
+    const isDeposit =
+      /deposit|pos|float|transfer|ecocash|bank/i.test(sheetName) ||
+      (!isZinara && !isAdjustment && !isInsurance && /zig/i.test(sheetName));
     const category: NormalizedRecord["category"] = isDeposit
       ? "deposit"
       : isZinara

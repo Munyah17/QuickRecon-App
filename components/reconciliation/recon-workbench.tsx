@@ -387,7 +387,7 @@ export function ReconWorkbench({
             onUpdate={(patch) => update(selected.id, patch)}
             onDownload={() =>
               download(
-                `/api/reconciliation/download?agentId=${encodeURIComponent(selected.agentId)}&period=${encodeURIComponent(selected.period)}&format=xlsx` + displayCurrencyParam(),
+                `/api/reconciliation/download?agentId=${encodeURIComponent(selected.agentId)}&period=${encodeURIComponent(selected.period)}&module=${encodeURIComponent(selected.module)}&format=xlsx` + displayCurrencyParam(),
                 `recon-${selected.agentId}-${selected.period}.xlsx`,
                 `dl-${selected.id}`
               )

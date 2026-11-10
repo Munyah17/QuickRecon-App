@@ -77,7 +77,7 @@ export function ReconDetail({
   /** Downloads the real stored document (same file that's emailed). */
   function downloadDoc(format: "csv" | "xlsx" = "xlsx") {
     const fname = `reconciliation-${recon.agentId}-${recon.period}.${format}`;
-    const url = `/api/reconciliation/download?agentId=${encodeURIComponent(recon.agentId)}&period=${encodeURIComponent(recon.period)}&format=${format}` + displayCurrencyParam();
+    const url = `/api/reconciliation/download?agentId=${encodeURIComponent(recon.agentId)}&period=${encodeURIComponent(recon.period)}&module=${encodeURIComponent(recon.module)}&format=${format}` + displayCurrencyParam();
     downloadFromApi(url, fname)
       .then(() => toast.success("Download started", { description: fname }))
       .catch((e) => toast.error(e instanceof Error ? e.message : "Download failed"));

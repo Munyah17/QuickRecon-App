@@ -82,12 +82,16 @@ export async function GET(request: NextRequest) {
     if (!isCompanyRole(session.user.role)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
-    let q = sb.from("reconciliation_documents").select("*");
-    if (batchId) q = q.eq("batch_id", batchId);
-    if (period) q = q.eq("period", period);
-    if (moduleParam && moduleParam !== "all") q = q.eq("module", moduleParam);
-    if (curFilter) q = q.eq("currency", curFilter);
-    const { data } = await q.order("agent_id").order("currency");
+    const allDocs = (currency: string | null) => {
+      let q = sb.from("reconciliation_documents").select("*");
+      if (batchId) q = q.eq("batch_id", batchId);
+      if (period) q = q.eq("period", period);
+      if (moduleParam && moduleParam !== "all") q = q.eq("module", moduleParam);
+      if (currency) q = q.eq("currency", currency);
+      return q.order("agent_id").order("currency");
+    };
+    let { data } = await allDocs(curFilter);
+    if (!data?.length && curFilter) ({ data } = await allDocs(null));
     if (!data?.length) {
       return NextResponse.json({ error: "No documents found" }, { status: 404 });
     }
@@ -113,11 +117,16 @@ export async function GET(request: NextRequest) {
   }
 
   // Load every currency doc for this agent (USD + ZiG) — dual-currency workbook.
-  let q = sb.from("reconciliation_documents").select("*").eq("agent_id", agentId);
-  if (batchId) q = q.eq("batch_id", batchId);
-  if (period) q = q.eq("period", period);
-  if (curFilter) q = q.eq("currency", curFilter);
-  const { data } = await q.order("created_at", { ascending: false });
+  const agentDocs = (currency: string | null) => {
+    let q = sb.from("reconciliation_documents").select("*").eq("agent_id", agentId);
+    if (batchId) q = q.eq("batch_id", batchId);
+    if (period) q = q.eq("period", period);
+    if (moduleParam && moduleParam !== "all") q = q.eq("module", moduleParam);
+    if (currency) q = q.eq("currency", currency);
+    return q.order("created_at", { ascending: false });
+  };
+  let { data } = await agentDocs(curFilter);
+  if (!data?.length && curFilter) ({ data } = await agentDocs(null));
 
   if (!data?.length) {
     return NextResponse.json({ error: "Document not found" }, { status: 404 });

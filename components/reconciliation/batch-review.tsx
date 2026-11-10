@@ -368,7 +368,7 @@ export function BatchReview({ rows }: { rows: Reconciliation[] }) {
               <DropdownMenuItem
                 className="gap-2"
                 onSelect={() => {
-                  const url = `/api/reconciliation/download?agentId=${encodeURIComponent(row.original.agentId)}&period=${encodeURIComponent(row.original.period)}&format=xlsx` + displayCurrencyParam();
+                  const url = `/api/reconciliation/download?agentId=${encodeURIComponent(row.original.agentId)}&period=${encodeURIComponent(row.original.period)}&module=${encodeURIComponent(row.original.module)}&format=xlsx` + displayCurrencyParam();
                   window.open(url, "_blank");
                 }}
               >

@@ -284,7 +284,7 @@ function BreakdownsView({ rows, canEdit }: { rows: Reconciliation[]; canEdit?: b
                         disabled={downloading === r.id}
                         onClick={() =>
                           download(
-                            `/api/reconciliation/download?agentId=${encodeURIComponent(r.agentId)}&period=${encodeURIComponent(r.period)}&format=xlsx` + displayCurrencyParam(),
+                            `/api/reconciliation/download?agentId=${encodeURIComponent(r.agentId)}&period=${encodeURIComponent(r.period)}&module=${encodeURIComponent(r.module)}&format=xlsx` + displayCurrencyParam(),
                             `recon-${r.agentId}-${r.period}.xlsx`,
                             r.id
                           )
@@ -416,7 +416,7 @@ function DocumentsView({
                   className="h-8 gap-1 text-[12px]"
                   onClick={() => {
                     const fname = `reconciliation-${d.agentId}-${d.period}.xlsx`;
-                    const url = `/api/reconciliation/download?agentId=${encodeURIComponent(d.agentId)}&period=${encodeURIComponent(d.period)}&format=xlsx` + displayCurrencyParam();
+                    const url = `/api/reconciliation/download?agentId=${encodeURIComponent(d.agentId)}&period=${encodeURIComponent(d.period)}&module=${encodeURIComponent(d.module)}&format=xlsx` + displayCurrencyParam();
                     downloadFromApi(url, fname)
                       .then(() => toast.success("Download started", { description: fname }))
                       .catch((e) => toast.error(e instanceof Error ? e.message : "Download failed"));
