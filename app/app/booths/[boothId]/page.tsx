@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { getSession } from "@/lib/auth/session";
-import { getBoothById, getTransactions } from "@/lib/data";
+import { getBoothById, getReconciliations, getTransactions } from "@/lib/data";
 import { isCompanyRole } from "@/lib/nav";
 import { BoothDetail } from "@/components/agents/booth-detail";
 
@@ -21,12 +21,16 @@ export default async function BoothDetailPage({
 
   if (!isCompanyRole(session.user.role)) redirect("/app/agents");
 
-  const transactions = await getTransactions(booth.agentId);
+  const [transactions, reconciliations] = await Promise.all([
+    getTransactions(booth.agentId),
+    getReconciliations({ agentId: booth.agentId }),
+  ]);
 
   return (
     <BoothDetail
       booth={booth}
       transactions={transactions}
+      reconciliations={reconciliations}
     />
   );
 }

@@ -247,11 +247,11 @@ export function ReconDetail({
                       <td className="px-3 py-3 font-medium">{recon.agentName} <span className="font-mono text-[11px] text-muted-foreground">({recon.agentId})</span></td>
                       <td className="px-3 py-3 text-muted-foreground">{moduleName(recon.module)}</td>
                       <td className="px-3 py-3">{formatPeriod(recon.period)}</td>
-                      <td className="tnum px-3 py-3 text-right">{recon.openingPosition.toLocaleString()}</td>
-                      <td className="tnum px-3 py-3 text-right">{recon.insurance.toLocaleString()}</td>
-                      <td className="tnum px-3 py-3 text-right">{recon.zinara.toLocaleString()}</td>
-                      <td className="tnum px-3 py-3 text-right">{recon.deposits.toLocaleString()}</td>
-                      <td className="tnum px-3 py-3 text-right">{recon.adjustments.toLocaleString()}</td>
+                      <td className="tnum px-3 py-3 text-right">{formatMoney(recon.openingPosition, recon.currency)}</td>
+                      <td className="tnum px-3 py-3 text-right">{formatMoney(recon.insurance, recon.currency)}</td>
+                      <td className="tnum px-3 py-3 text-right">{formatMoney(recon.zinara, recon.currency)}</td>
+                      <td className="tnum px-3 py-3 text-right">{formatMoney(recon.deposits, recon.currency)}</td>
+                      <td className="tnum px-3 py-3 text-right">{formatMoney(recon.adjustments, recon.currency)}</td>
                       <td className="tnum px-3 py-3 text-right font-bold">{formatMoney(recon.closingPosition, recon.currency)}</td>
                       <td className="px-3 py-3"><StatusBadge status={recon.status} /></td>
                     </tr>
@@ -299,10 +299,10 @@ export function ReconDetail({
                   {lines.map((l) => (
                     <tr key={l.item} className="hover:bg-surface-hover">
                       <td className="px-4 py-3 font-medium">{l.item}</td>
-                      <td className="tnum px-4 py-3 text-right">{l.expected.toLocaleString()}</td>
-                      <td className="tnum px-4 py-3 text-right">{l.actual.toLocaleString()}</td>
+                      <td className="tnum px-4 py-3 text-right">{formatMoney(l.expected, recon.currency)}</td>
+                      <td className="tnum px-4 py-3 text-right">{formatMoney(l.actual, recon.currency)}</td>
                       <td className={`tnum px-4 py-3 text-right font-medium ${l.variance !== 0 ? "text-warning-foreground" : "text-muted-foreground"}`}>
-                        {l.variance > 0 ? `+${l.variance.toLocaleString()}` : l.variance.toLocaleString()}
+                        {l.variance > 0 ? `+${formatMoney(l.variance, recon.currency)}` : formatMoney(l.variance, recon.currency)}
                       </td>
                       <td className="px-4 py-3"><StatusBadge status={l.status} /></td>
                     </tr>

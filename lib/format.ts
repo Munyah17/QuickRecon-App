@@ -61,21 +61,12 @@ function formatMoneySingle(amount: number, cur: Currency): string {
   return `${symbol} ${formatted}`;
 }
 
-/** "ZiG 1,248,320" / "USD 1,250.00" — never silently mix currencies.
- * Always renders ONE currency — "both" mode means both are available via
- * the floating switcher, not printed side by side in every cell.
- * When the record's base currency differs from the display currency,
- * converts via the configured USD↔ZiG rate so the floating currency
- * switch produces real converted values everywhere money is shown. */
+/** "ZiG 1,248,320" / "USD 1,250.00".
+ * An amount passed with its own currency is the book's figure and is shown
+ * in that currency. Settings chooses the label only when no currency is
+ * passed. Converting ZiG into USD (or the reverse) is formatMoneyDual. */
 export function formatMoney(amount: number, currency?: Currency): string {
-  const base = currency ?? getDefaultCurrency();
-  const display = getDefaultCurrency();
-  if (base !== display) {
-    const rate = getUsdZwgRate();
-    const converted = base === "ZWG" ? amount / rate : amount * rate;
-    return formatMoneySingle(converted, display);
-  }
-  return formatMoneySingle(amount, base);
+  return formatMoneySingle(amount, currency ?? getDefaultCurrency());
 }
 
 export function formatNumber(value: number): string {

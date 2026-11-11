@@ -348,6 +348,22 @@ function DocumentsView({
       d.agentId.toLowerCase().includes(query.toLowerCase())
   );
 
+  // Document rows use reconciliation_documents.id. The detail page looks up
+  // reconciliations.id, so View has to land on the matching recon row.
+  function reconHref(d: ReconDocument): string | null {
+    if (scopedRows.some((r) => r.id === d.id)) return `/app/reconciliation/${d.id}`;
+    const matches = scopedRows.filter(
+      (r) =>
+        r.agentId === d.agentId &&
+        r.period === d.period &&
+        r.module === d.module &&
+        r.currency === d.currency
+    );
+    if (matches.length === 0) return null;
+    const best = matches.reduce((a, b) => (b.version > a.version ? b : a));
+    return `/app/reconciliation/${best.id}`;
+  }
+
   async function sendDoc(d: ReconDocument) {
     setSending(true);
     try {
@@ -390,14 +406,16 @@ function DocumentsView({
       </div>
 
       <div className="space-y-2.5">
-        {filtered.map((d) => (
+        {filtered.map((d) => {
+          const href = reconHref(d);
+          return (
           <Card key={d.id} className="gap-0 py-0 shadow-xs">
             <CardContent className="flex flex-wrap items-center gap-3 p-3.5">
               <AgentAvatar name={d.agentName} size="sm" />
               <div className="min-w-[160px] flex-1">
                 <p className="text-[13.5px] font-semibold">{d.agentName}</p>
                 <p className="font-mono text-[11.5px] text-muted-foreground">
-                  {d.agentId} · {moduleName(d.module)} · {formatPeriod(d.period)}
+                  {d.agentId} · {moduleName(d.module)} · {formatPeriod(d.period)} · {d.currency === "USD" ? "USD" : "ZiG"}
                 </p>
               </div>
               <div className="tnum hidden gap-5 text-[12px] sm:flex">
@@ -407,9 +425,11 @@ function DocumentsView({
               </div>
               <StatusBadge status={d.status} />
               <div className="flex items-center gap-1.5">
-                <Button variant="outline" size="sm" className="h-8 gap-1 text-[12px]" asChild>
-                  <Link href={`/app/reconciliation/${d.id}`}><Eye className="size-3.5" aria-hidden /> View</Link>
-                </Button>
+                {href ? (
+                  <Button variant="outline" size="sm" className="h-8 gap-1 text-[12px]" asChild>
+                    <Link href={href}><Eye className="size-3.5" aria-hidden /> View</Link>
+                  </Button>
+                ) : null}
                 <Button
                   variant="outline"
                   size="sm"
@@ -430,7 +450,8 @@ function DocumentsView({
               </div>
             </CardContent>
           </Card>
-        ))}
+          );
+        })}
         {filtered.length === 0 && (
           <p className="rounded-xl border border-dashed py-10 text-center text-[13px] text-muted-foreground">
             No reconciliation documents yet — process an import first.

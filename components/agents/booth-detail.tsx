@@ -25,64 +25,63 @@ import { Label } from "@/components/ui/label";
 import { StatusBadge } from "@/components/shared/status-badge";
 import { useWorkspace } from "@/components/workspace-provider";
 import { formatDate, formatMoney, formatPeriod, moduleName } from "@/lib/format";
-import type { Booth, Txn } from "@/types";
+import type { Booth, Currency, Reconciliation, Txn } from "@/types";
 
-const BOOTH_LINES = [
-  { item: "Insurance", expected: 1_068_320, actual: 1_068_320, variance: 0, status: "matched" as const },
-  { item: "ZINARA", expected: 210_300, actual: 200_300, variance: -10_000, status: "variance" as const },
-];
-const BOOTH_ACTIVITY = [
-  { date: "28 Aug 2026", action: "Deposit recorded", by: "Tairo Moyo" },
-  { date: "24 Aug 2026", action: "Monthly recon completed", by: "System" },
-  { date: "12 Aug 2026", action: "Booth activated", by: "Munyah Griezmann" },
-];
-
-function Tile({ label, value, delta }: { label: string; value: string; delta: string }) {
+function Tile({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border bg-card p-3.5">
       <p className="text-[11.5px] text-muted-foreground">{label}</p>
       <p className="tnum mt-1 text-[16px] font-bold tracking-tight sm:text-[18px]">{value}</p>
-      <p className="mt-0.5 text-[11px] font-semibold text-success-foreground">{delta}</p>
     </div>
   );
 }
 
-function ReconTable() {
+function currencyLabel(currency: Currency) {
+  return currency === "USD" ? "USD" : "ZiG";
+}
+
+function ReconTable({ rows }: { rows: Reconciliation[] }) {
+  if (rows.length === 0) {
+    return (
+      <p className="rounded-xl border border-dashed py-10 text-center text-[13px] text-muted-foreground">
+        No reconciliation is stored for this agent in the selected period.
+      </p>
+    );
+  }
   return (
     <Card className="gap-0 overflow-hidden py-0 shadow-xs">
       <CardContent className="p-4 pb-0 sm:p-5 sm:pb-0">
         <p className="text-[14px] font-semibold">Reconciliation Summary</p>
       </CardContent>
       <div className="overflow-x-auto">
-        <table className="w-full min-w-[540px] text-[13px]">
+        <table className="w-full min-w-[640px] text-[13px]">
           <thead>
             <tr className="border-b bg-muted/50 text-left text-[11.5px] font-semibold tracking-wide text-muted-foreground uppercase">
               <th className="px-4 py-2.5">Module</th>
-              <th className="px-4 py-2.5 text-right">Expected (ZIG)</th>
-              <th className="px-4 py-2.5 text-right">Actual (ZIG)</th>
-              <th className="px-4 py-2.5 text-right">Variance (ZIG)</th>
+              <th className="px-4 py-2.5 text-right">Insurance</th>
+              <th className="px-4 py-2.5 text-right">ZINARA</th>
+              <th className="px-4 py-2.5 text-right">Deposits</th>
+              <th className="px-4 py-2.5 text-right">Closing</th>
               <th className="px-4 py-2.5">Status</th>
             </tr>
           </thead>
           <tbody className="divide-y">
-            {BOOTH_LINES.map((l) => (
-              <tr key={l.item}>
-                <td className="px-4 py-3 font-medium">{l.item}</td>
-                <td className="tnum px-4 py-3 text-right">{l.expected.toLocaleString()}</td>
-                <td className="tnum px-4 py-3 text-right">{l.actual.toLocaleString()}</td>
-                <td className={`tnum px-4 py-3 text-right font-medium ${l.variance !== 0 ? "text-warning-foreground" : "text-muted-foreground"}`}>
-                  {l.variance.toLocaleString()}
+            {rows.map((r) => (
+              <tr key={r.id} className="hover:bg-surface-hover">
+                <td className="px-4 py-3 font-medium">
+                  <Link href={`/app/reconciliation/${r.id}`} className="hover:text-primary hover:underline">
+                    {moduleName(r.module)} · {currencyLabel(r.currency)}
+                  </Link>
                 </td>
-                <td className="px-4 py-3"><StatusBadge status={l.status} /></td>
+                <td className="tnum px-4 py-3 text-right">{formatMoney(r.insurance, r.currency)}</td>
+                <td className="tnum px-4 py-3 text-right">{formatMoney(r.zinara, r.currency)}</td>
+                <td className="tnum px-4 py-3 text-right">{formatMoney(r.deposits, r.currency)}</td>
+                <td className={`tnum px-4 py-3 text-right font-medium ${r.closingPosition < 0 ? "text-destructive" : ""}`}>
+                  {formatMoney(r.closingPosition, r.currency)}
+                </td>
+                <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
               </tr>
             ))}
-            <tr className="font-semibold">
-              <td className="px-4 py-3">Total</td>
-              <td className="tnum px-4 py-3 text-right">1,278,620</td>
-              <td className="tnum px-4 py-3 text-right">1,268,620</td>
-              <td className="tnum px-4 py-3 text-right text-warning-foreground">-10,000</td>
-              <td className="px-4 py-3" />
-            </tr>
           </tbody>
         </table>
       </div>
@@ -93,11 +92,29 @@ function ReconTable() {
 export function BoothDetail({
   booth,
   transactions,
+  reconciliations,
 }: {
   booth: Booth;
   transactions: Txn[];
+  reconciliations: Reconciliation[];
 }) {
   const { period } = useWorkspace();
+  const periods = React.useMemo(() => {
+    const set = new Set(reconciliations.map((r) => r.period));
+    if (period) set.add(period);
+    return [...set].sort().reverse();
+  }, [reconciliations, period]);
+  const [selectedPeriod, setSelectedPeriod] = React.useState(period);
+  const rows = reconciliations.filter((r) => r.period === selectedPeriod);
+  const totals = new Map<Currency, { insurance: number; zinara: number; deposits: number; closing: number }>();
+  for (const r of rows) {
+    const cur = totals.get(r.currency) ?? { insurance: 0, zinara: 0, deposits: 0, closing: 0 };
+    cur.insurance += r.insurance;
+    cur.zinara += r.zinara;
+    cur.deposits += r.deposits;
+    cur.closing += r.closingPosition;
+    totals.set(r.currency, cur);
+  }
 
   return (
     <div className="space-y-4">
@@ -139,29 +156,31 @@ export function BoothDetail({
         </TabsList>
 
         <TabsContent value="overview" className="mt-4 space-y-4">
-          <div className="flex justify-end">
-            <Select defaultValue={period}>
-              <SelectTrigger className="h-9 w-40 bg-card text-[12.5px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {[0, 1, 2].map((i) => {
-                  const d = new Date(2026, 8 - i, 1);
-                  const p = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
-                  return <SelectItem key={p} value={p}>{formatPeriod(p)}</SelectItem>;
-                })}
-              </SelectContent>
-            </Select>
-          </div>
+          {periods.length > 0 && (
+            <div className="flex justify-end">
+              <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
+                <SelectTrigger className="h-9 w-40 bg-card text-[12.5px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {periods.map((p) => (
+                    <SelectItem key={p} value={p}>{formatPeriod(p)}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
 
-          <div className="grid grid-cols-2 gap-3 xl:grid-cols-4">
-            <Tile label="Total Insurance" value={formatMoney(1_068_320, "ZWG")} delta="↗ 12% from last month" />
-            <Tile label="Total ZINARA" value={formatMoney(210_300, "ZWG")} delta="↗ 8% from last month" />
-            <Tile label="Total Deposits" value={formatMoney(800_000, "ZWG")} delta="↗ 6% from last month" />
-            <Tile label="Closing Position" value={formatMoney(-58_770, "ZWG")} delta="↗ 14% from last month" />
-          </div>
+          {[...totals.entries()].map(([currency, s]) => (
+            <div key={currency} className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+              <Tile label={`Total Insurance (${currencyLabel(currency)})`} value={formatMoney(s.insurance, currency)} />
+              <Tile label={`Total ZINARA (${currencyLabel(currency)})`} value={formatMoney(s.zinara, currency)} />
+              <Tile label={`Total Deposits (${currencyLabel(currency)})`} value={formatMoney(s.deposits, currency)} />
+              <Tile label={`Closing Position (${currencyLabel(currency)})`} value={formatMoney(s.closing, currency)} />
+            </div>
+          ))}
 
-          <ReconTable />
+          <ReconTable rows={rows} />
 
           <Card className="gap-0 overflow-hidden py-0 shadow-xs">
             <CardContent className="p-4 pb-0 sm:p-5 sm:pb-0">
@@ -174,17 +193,24 @@ export function BoothDetail({
                     <th className="px-4 py-2.5">Date</th>
                     <th className="px-4 py-2.5">Reference</th>
                     <th className="px-4 py-2.5">Type</th>
-                    <th className="px-4 py-2.5 text-right">Amount (ZIG)</th>
+                    <th className="px-4 py-2.5 text-right">Amount</th>
                     <th className="px-4 py-2.5">Status</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y">
+                  {transactions.length === 0 && (
+                    <tr>
+                      <td colSpan={5} className="px-4 py-8 text-center text-[13px] text-muted-foreground">
+                        No transactions are stored for this booth.
+                      </td>
+                    </tr>
+                  )}
                   {transactions.slice(0, 4).map((t) => (
                     <tr key={t.id} className="hover:bg-surface-hover">
                       <td className="px-4 py-3 text-muted-foreground">{formatDate(t.date, "dd MMM yyyy")}</td>
                       <td className="px-4 py-3 font-mono text-[12px]">{t.ref}</td>
                       <td className="px-4 py-3 capitalize">{t.category}</td>
-                      <td className="tnum px-4 py-3 text-right">{t.amount.toLocaleString()}</td>
+                      <td className="tnum px-4 py-3 text-right">{formatMoney(t.amount, t.currency)}</td>
                       <td className="px-4 py-3"><StatusBadge status={t.status} /></td>
                     </tr>
                   ))}
@@ -193,37 +219,18 @@ export function BoothDetail({
             </div>
           </Card>
 
-          <Card className="gap-0 overflow-hidden py-0 shadow-xs">
-            <CardContent className="flex items-center justify-between p-4 pb-0 sm:p-5 sm:pb-0">
-              <p className="text-[14px] font-semibold">Booth Activity</p>
-              <span className="text-[12px] font-medium text-primary">View all</span>
-            </CardContent>
-            <table className="mt-2 w-full text-[13px]">
-              <thead>
-                <tr className="border-b bg-muted/50 text-left text-[11.5px] font-semibold tracking-wide text-muted-foreground uppercase">
-                  <th className="px-4 py-2.5">Date</th>
-                  <th className="px-4 py-2.5">Activity</th>
-                  <th className="px-4 py-2.5">Performed By</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y">
-                {BOOTH_ACTIVITY.map((a) => (
-                  <tr key={a.date + a.action}>
-                    <td className="px-4 py-3 text-muted-foreground">{a.date}</td>
-                    <td className="px-4 py-3">{a.action}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{a.by}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </Card>
         </TabsContent>
 
         <TabsContent value="reconciliation" className="mt-4">
-          <ReconTable />
+          <ReconTable rows={rows} />
         </TabsContent>
 
         <TabsContent value="transactions" className="mt-4 space-y-2.5">
+          {transactions.length === 0 && (
+            <p className="rounded-xl border border-dashed py-10 text-center text-[13px] text-muted-foreground">
+              No transactions are stored for this booth.
+            </p>
+          )}
           {transactions.map((t) => (
             <Card key={t.id} className="gap-0 py-0 shadow-xs">
               <CardContent className="flex items-center gap-3 p-3.5">
@@ -259,11 +266,11 @@ export function BoothDetail({
               <p className="text-[14px] font-semibold">Booth Settings</p>
               <div className="space-y-1.5">
                 <Label>Booth Name</Label>
-                <Input defaultValue={booth.name} className="bg-card" />
+                <Input defaultValue={booth.name} readOnly className="bg-card" />
               </div>
               <div className="space-y-1.5">
                 <Label>Location</Label>
-                <Input defaultValue={`${booth.location}, ${booth.province}`} className="bg-card" />
+                <Input defaultValue={`${booth.location}, ${booth.province}`} readOnly className="bg-card" />
               </div>
               <div className="space-y-1.5">
                 <Label>Modules</Label>
@@ -280,12 +287,9 @@ export function BoothDetail({
                   </span>
                 ))}
               </div>
-              <Button
-                className="h-9 text-[13px]"
-                onClick={() => toast.success("Booth settings saved")}
-              >
-                Save Changes
-              </Button>
+              <p className="text-[12.5px] text-muted-foreground">
+                Booth name and location come from the agent record. This screen does not save edits yet.
+              </p>
             </CardContent>
           </Card>
         </TabsContent>

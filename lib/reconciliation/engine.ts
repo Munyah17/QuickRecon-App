@@ -18,7 +18,7 @@ import type { Currency, ModuleCode } from "@/types";
 export function normalizeBankName(raw: string): string {
   const upper = raw.toUpperCase().trim();
   if (upper.includes("ECOCASH")) return "Ecocash";
-  if (upper.includes("STEWARD")) return "STEWARD";
+  if (upper.includes("STEWARD") || /\bTNC?\b/.test(upper)) return "STEWARD";
   if (upper.includes("TRANSFER")) return "Transfers";
   // Per-bank USD buckets must resolve before the plain-bank and generic-USD
   // checks — "NMB USD" is its own channel, not "NMB" and not "USD Deposits".
@@ -27,6 +27,7 @@ export function normalizeBankName(raw: string): string {
   }
   if (upper.includes("CBZ")) return upper.includes("USD") || upper.includes("US$") ? "CBZ USD" : "CBZ";
   if (upper.includes("NMB")) return upper.includes("USD") || upper.includes("US$") ? "NMB USD" : "NMB";
+  if (upper.includes("FBC")) return "FBC";
   if (upper.includes("USD") || upper.includes("US$")) return "USD Deposits";
   // Unrecognised channels aren't banks at all — the engine excludes them
   // from the bank breakdown (and reports them) rather than spawning a
@@ -314,7 +315,7 @@ export function runReconciliationEngine(input: RunEngineInput): EngineOutput {
     const channelConflicts = new Map<string, { raw: string; amount: number }>();
     // Bank named by the sheet itself (e.g. "CBZ USD") — when a row's
     // channel disagrees, the row value wins but the mismatch is flagged.
-    const sheetBank = /nmb|nbs|cbz|steward|ecocash/i;
+    const sheetBank = /nmb|nbs|cbz|steward|ecocash|fbc/i;
     const baseChannel = (ch: string) => ch.replace(/\s+USD$/, "").toUpperCase();
     for (const r of depositRecs) {
       const bank = normalizeBankName(r.bankAccount ?? "");

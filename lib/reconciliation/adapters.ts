@@ -296,6 +296,7 @@ function nmbStatementRecord(sheetName: string, i: number, row: SourceRow): Norma
   const narration = String(cell(row, "Narration", "Narrative", "Details") ?? "");
   const code = MPOS_CODE.exec(narration)?.[1]?.toUpperCase();
   const ref = cell(row, "Ref. No.", "Ref", "Reference");
+  const rrn = /RRN:\s*([\d\s]+)/i.exec(narration)?.[1]?.replace(/\s+/g, "");
   const rec = makeRecord(
     sheetName, i, row, "deposit", [],
     ["CreditAmount", "Credit Amount"], ["Ref. No.", "Ref", "Reference"]
@@ -306,7 +307,7 @@ function nmbStatementRecord(sheetName: string, i: number, row: SourceRow): Norma
       externalId: code,
       bankAccount: /usd/i.test(sheetName) ? "NMB USD" : "NMB",
       narration: narration.trim() || rec.narration,
-      reference: String(ref ?? `NMB:${i}`),
+      reference: rrn ? `${ref ?? "NMB"}:${rrn}` : String(ref ?? `NMB:${i}`),
       date: toDate(cell(row, "Transaction Date", "Date", "Value Date")) ?? rec.date,
     },
     row, sheetName
@@ -345,12 +346,17 @@ function cbzStatementRecord(sheetName: string, i: number, row: SourceRow): Norma
     ["TERMINAL ID", "Terminal ID", "TID", "AGENT NAME", "Agent Name"],
     ["AMOUNT", "Amount"], ["TERMINAL ID", "Ref", "Reference"]
   );
+  const txn = String(cell(row, "TRANSACTOR", "Transaction ID", "Txn ID") ?? "").trim();
+  const bankAccount =
+    rec.bankAccount && !/cbz/i.test(rec.bankAccount)
+      ? rec.bankAccount
+      : /usd/i.test(sheetName) ? "CBZ USD" : "CBZ";
   return applyConversion(
     {
       ...rec,
       externalId: terminal || rec.externalId,
-      bankAccount: /usd/i.test(sheetName) ? "CBZ USD" : "CBZ",
-      reference: `CBZ:${terminal || i}`,
+      bankAccount,
+      reference: txn ? `${bankAccount}:${txn}` : `CBZ:${terminal || i}`,
     },
     row, sheetName
   );

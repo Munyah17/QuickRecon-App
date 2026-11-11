@@ -74,6 +74,7 @@ export const BANK_CHANNELS = [
   "STEWARD",
   "NMB",
   "NMB USD",
+  "FBC",
   "USD Deposits",
   "Transfers",
 ] as const;

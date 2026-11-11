@@ -50,9 +50,8 @@ export function MoneyValue({
 }
 
 /**
- * Stat-card money renderer — always a single currency (the switcher
- * selection). Pass `dual` explicitly to MoneyValue only where a side-by-side
- * comparison is intentional.
+ * Stat-card money renderer. Shows the amount in the currency passed in.
+ * Pass `dual` on MoneyValue only where a side-by-side comparison is intentional.
  */
 export function StatMoney({
   amount,
