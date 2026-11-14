@@ -310,7 +310,9 @@ export async function getExceptions(batchId?: string) {
         "id, import_batch_id, batch_id, type, severity, module, agent_id, source_ref, description, status, resolution, assigned_by_engine, assignment_reason, created_at, agents(full_name), assignee_profile:profiles!reconciliation_exceptions_assignee_fkey(full_name)"
       )
       .order("created_at", { ascending: false })
-      .limit(500);
+      // 500 rows × complex client components (ExceptionActions) caused 30-50s
+      // SSR times. 100 keeps the list useful while staying fast in dev.
+      .limit(100);
     if (batchId) q = q.eq("import_batch_id", batchId);
     const { data, error } = await q;
     if (error) console.error("getExceptions query failed:", error.message);

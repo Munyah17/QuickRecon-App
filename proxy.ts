@@ -34,9 +34,14 @@ export async function proxy(request: NextRequest) {
       },
     });
 
-    // Validate/refresh authentication. A cookie alone is not proof that the
-    // user still exists or that their profile permits portal access.
-    const { data: { user } } = await supabase.auth.getUser();
+    // Fast cookie-based session check — no network call to Supabase.
+    // The page-level getSession() (lib/auth/session.ts) calls auth.getUser()
+    // which validates the token with the server, so the real auth wall is
+    // there. The proxy only needs to know "is there a session cookie?" to
+    // decide whether to redirect to /login. Using getSession() here avoids
+    // a Supabase round-trip on every request (was 0.3-21s per page load).
+    const { data: { session } } = await supabase.auth.getSession();
+    const user = session?.user ?? null;
 
     if (!user && request.nextUrl.pathname.startsWith("/app")) {
       const redirectUrl = request.nextUrl.clone();

@@ -10,10 +10,9 @@ const nextConfig: NextConfig = {
       allowedOrigins: ["127.0.0.1", "127.0.0.1:60710", "localhost:3000"],
     },
   },
-  // Disable build caching to ensure fresh deployments
-  generateBuildId: async () => {
-    return Date.now().toString();
-  },
+  // Build caching is left at Next.js defaults so .next/cache is reused
+  // between builds (local and Vercel). Overriding generateBuildId with a
+  // timestamp disabled the cache and forced every build to be fully cold.
 };
 
 export default nextConfig;
