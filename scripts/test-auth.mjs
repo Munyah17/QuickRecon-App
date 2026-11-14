@@ -97,6 +97,9 @@ test('configured backend never reports successful account creation without servi
     '@/lib/auth/session': { getSession: async () => ({ user: { role: 'super_admin' } }) },
     '@/lib/auth/permissions': { permissionsForRole: () => ['users.create'] },
     '@/lib/supabase/server': { createServiceClient: async () => null },
+    '@/lib/api/fk-conflict': { fkConflictResponse: () => null },
+    '@/lib/api/agent-ids': { claimExternalIds: async () => ({}) },
+    '@/types': { AGENT_POS_BANKS: [], posSchemeForBank: () => '' },
   });
   const response = await POST(new NextRequest('http://localhost/api/users', {
     method: 'POST', headers: { 'content-type': 'application/json' },

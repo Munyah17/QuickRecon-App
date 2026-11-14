@@ -82,7 +82,7 @@ export async function PATCH(
   // Module assignment — `modules` is the full enabled set (string[] or
   // [{module, enabled}]): listed modules are enabled, the rest disabled.
   const hasModules = Array.isArray(body.modules);
-  let enabledModules = new Set<string>();
+  const enabledModules = new Set<string>();
   if (hasModules) {
     for (const raw of body.modules as unknown[]) {
       const m = typeof raw === "string" ? raw : (raw as { module?: unknown })?.module;

@@ -83,12 +83,11 @@ export function ImportWizard({
   const [module, setModule] = React.useState<ModuleCode>(
     workspaceModule === "all" ? "enpassent" : workspaceModule
   );
-
-  // Keep the import target in sync when the module changes elsewhere
-  // (the workspace selector or the bubbles under the upload box).
-  React.useEffect(() => {
+  const [prevWorkspaceModule, setPrevWorkspaceModule] = React.useState(workspaceModule);
+  if (workspaceModule !== prevWorkspaceModule) {
+    setPrevWorkspaceModule(workspaceModule);
     if (workspaceModule !== "all") setModule(workspaceModule);
-  }, [workspaceModule]);
+  }
 
   function selectModule(m: ModuleCode) {
     setModule(m);

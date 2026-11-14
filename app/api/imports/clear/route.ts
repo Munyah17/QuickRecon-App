@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
   const scope: Scope = ["uploads", "runs", "all"].includes(body?.scope)
     ? body.scope
     : "all";
-  const module = typeof body?.module === "string" && body.module ? body.module : "all";
+  const moduleCode = typeof body?.module === "string" && body.module ? body.module : "all";
 
   const service = await createServiceClient();
   if (!service) return NextResponse.json({ error: "Database not configured" }, { status: 503 });
@@ -41,11 +41,11 @@ export async function POST(request: NextRequest) {
   let importBatchIds: string[] | null = null;
   let reconBatchIds: string[] | null = null;
   let reconAgentIds: string[] | null = null;
-  if (module !== "all") {
+  if (moduleCode !== "all") {
     const [{ data: ib }, { data: rb }, { data: rc }] = await Promise.all([
-      service.from("import_batches").select("id").eq("module", module),
-      service.from("reconciliation_batches").select("id").eq("module", module),
-      service.from("reconciliations").select("agent_id").eq("module", module),
+      service.from("import_batches").select("id").eq("module", moduleCode),
+      service.from("reconciliation_batches").select("id").eq("module", moduleCode),
+      service.from("reconciliations").select("agent_id").eq("module", moduleCode),
     ]);
     importBatchIds = (ib ?? []).map((r) => r.id);
     reconBatchIds = (rb ?? []).map((r) => r.id);
@@ -77,7 +77,7 @@ export async function POST(request: NextRequest) {
   /** eq-scope on a module column, or every row when module === "all". */
   const delModule = (table: string): PromiseLike<DelResult> =>
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    module === "all" ? del(table) : del(table, (q: any) => q.eq("module", module));
+    moduleCode === "all" ? del(table) : del(table, (q: any) => q.eq("module", moduleCode));
 
   const steps: { label: string; run: () => PromiseLike<DelResult> }[] = [];
 
@@ -122,7 +122,7 @@ export async function POST(request: NextRequest) {
     action: "imports.cleared",
     entity: "import_batch",
     entity_id: scope,
-    metadata: { scope, module, deleted, failed },
+    metadata: { scope, module: moduleCode, deleted, failed },
   });
 
   if (Object.keys(failed).length > 0) {
@@ -131,5 +131,5 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
-  return NextResponse.json({ ok: true, scope, module, deleted });
+  return NextResponse.json({ ok: true, scope, module: moduleCode, deleted });
 }

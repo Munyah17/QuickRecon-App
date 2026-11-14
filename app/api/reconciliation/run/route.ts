@@ -22,15 +22,15 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json().catch(() => ({}));
-  const module = (body?.module ?? "all") as ModuleCode | "all";
+  const moduleCode = (body?.module ?? "all") as ModuleCode | "all";
   const now = new Date();
   const period =
     typeof body?.period === "string" && /^\d{4}-\d{2}$/.test(body.period)
       ? body.period
       : `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
 
-  const modules: ModuleCode[] = module === "all" ? CYCLE_MODULES : [module];
-  if (!CYCLE_MODULES.includes(module as ModuleCode) && module !== "all") {
+  const modules: ModuleCode[] = moduleCode === "all" ? CYCLE_MODULES : [moduleCode];
+  if (!CYCLE_MODULES.includes(moduleCode as ModuleCode) && moduleCode !== "all") {
     return NextResponse.json({ error: "Invalid module" }, { status: 400 });
   }
 

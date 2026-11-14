@@ -109,8 +109,8 @@ async function replay(target: { id: string; batch_id: string }, agentIds: string
     if (data.length < 1000) break;
   }
 
-  const module = batch.module;
-  const adapter = adapterFor(module);
+  const moduleCode = batch.module;
+  const adapter = adapterFor(moduleCode);
   console.log(`\nSTAGED WORKSHEETS (adapter: ${adapter.module}):`);
   for (const [name, rows] of Object.entries(sheets)) {
     console.log(`  "${name}" rows=${rows.length} supportsSheet=${adapter.supportsSheet(name)}`);
@@ -129,12 +129,12 @@ async function replay(target: { id: string; batch_id: string }, agentIds: string
   const [{ data: agentRows }, { data: aliasRows }, { data: moduleRows }] = await Promise.all([
     sb.from("agents").select("id, full_name, opening_position"),
     sb.from("agent_external_ids").select("scheme, value, agent_id"),
-    sb.from("agent_modules").select("agent_id, module, enabled").eq("module", module),
+    sb.from("agent_modules").select("agent_id, module, enabled").eq("module", moduleCode),
   ]);
   const assigned = new Map<string, boolean>();
   for (const m of moduleRows ?? []) assigned.set(m.agent_id, m.enabled);
   const output = runReconciliationEngine({
-    module,
+    module: moduleCode,
     period: batch.period,
     sheets,
     agents: (agentRows ?? [])

@@ -25,7 +25,7 @@ test('staff migrations preserve roles and authorize only active staff', async ()
     await db.query('update profiles set role = $1', ['operations']);
     await db.exec(migration('0011_role_normalisation.sql'));
     assert.equal((await db.query('select role from profiles')).rows[0].role, 'operations', 'replaying normalization must preserve operations');
-    await db.exec(migration('0015_staff_role_helpers.sql'));
+    await db.exec(migration('0018_staff_role_helpers.sql'));
     for (const role of ['super_admin', 'admin', 'tech_support', 'finance', 'operations']) {
       await db.query('update profiles set role = $1, status = $2', [role, 'active']);
       const result = (await db.query('select public.current_role() as role, is_company_user() as allowed')).rows[0];
@@ -45,7 +45,7 @@ test('staff migrations preserve roles and authorize only active staff', async ()
     assert.equal((await db.query('select public.current_role() as role')).rows[0].role, 'super_admin');
     await db.exec("select set_config('test.user_id', '', false)");
     assert.equal((await db.query('select is_company_user() as allowed')).rows[0].allowed, false);
-    await db.exec(migration('0015_staff_role_helpers.sql'));
+    await db.exec(migration('0018_staff_role_helpers.sql'));
   } finally {
     await db.close();
   }
@@ -110,14 +110,14 @@ test('policy recovery restores authenticated profile reads while denying anonymo
     `);
     assert.equal((await db.query('select id from profiles')).rows.length, 0, 'reproduces valid auth but invisible profile');
     await db.exec('reset role');
-    await db.exec(migration('0016_restore_missing_access_policies.sql'));
+    await db.exec(migration('0019_restore_missing_access_policies.sql'));
     await db.exec('set role authenticated');
     assert.equal((await db.query('select id from profiles')).rows.length, 1);
     await db.exec("reset role; select set_config('test.user_id', '', false); set role anon;");
     assert.equal((await db.query('select id from profiles')).rows.length, 0);
     await db.exec('reset role');
     const { rows: before } = await db.query("select count(*)::int as count from pg_policies");
-    await db.exec(migration('0016_restore_missing_access_policies.sql'));
+    await db.exec(migration('0019_restore_missing_access_policies.sql'));
     assert.equal((await db.query("select count(*)::int as count from pg_policies")).rows[0].count, before[0].count);
   } finally {
     await db.close();

@@ -49,10 +49,13 @@ export function ReconRunControls() {
   const [running, setRunning] = React.useState(false);
   const [reissuing, setReissuing] = React.useState(false);
   const [runModule, setRunModule] = React.useState(module);
+  const [prevModule, setPrevModule] = React.useState(module);
   const [period, setPeriod] = React.useState(currentPeriod);
 
-  // Keep the dialog module in step with the workspace selector.
-  React.useEffect(() => setRunModule(module), [module]);
+  if (module !== prevModule) {
+    setPrevModule(module);
+    setRunModule(module);
+  }
 
   const reportResults = (results: CycleResult[]) => {
     const done = results.filter((r) => r.status === "done");

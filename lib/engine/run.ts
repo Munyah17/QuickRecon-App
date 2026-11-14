@@ -37,7 +37,7 @@ export async function runDecisionEngine(
   ctx: RunContext
 ): Promise<EngineRunSummary> {
   const { output, batchId } = ctx;
-  const module = output.module;
+  const moduleCode = output.module;
   const period = output.period;
   const summary: EngineRunSummary = {
     anomaliesInserted: 0,
@@ -111,13 +111,13 @@ export async function runDecisionEngine(
   }
 
   // --- 1. Import anomalies -------------------------------------------------
-  const anomalies = detectAnomalies(output.results, module);
+  const anomalies = detectAnomalies(output.results, moduleCode);
   if (anomalies.length) {
     const rows = anomalies.map((a) => ({
       id: newId("ANO"),
       batch_id: batchId,
       import_batch_id: ctx.importBatchId ?? null,
-      module,
+      module: moduleCode,
       agent_id: a.agentId ?? null,
       kind: a.kind,
       severity: a.severity,
@@ -139,7 +139,7 @@ export async function runDecisionEngine(
           id: newId("EXC"),
           batch_id: batchId,
           import_batch_id: ctx.importBatchId ?? null,
-          module,
+          module: moduleCode,
           agent_id: r.agent_id,
           type: "statistical_anomaly" as const,
           anomaly_kind: r.kind,
@@ -164,7 +164,7 @@ export async function runDecisionEngine(
   }
 
   // --- 2. Agent risk scores ------------------------------------------------
-  const scores = computeBatchRiskScores(output.results, historyByAgent, openExcByAgent, module, period);
+  const scores = computeBatchRiskScores(output.results, historyByAgent, openExcByAgent, moduleCode, period);
   if (scores.length) {
     const { error } = await sb.from("agent_risk_scores").upsert(
       scores.map((s) => ({
@@ -184,7 +184,7 @@ export async function runDecisionEngine(
       for (const s of scores) {
         if (s.level !== "low") {
           pushDecision("risk_score", "agents", s.agentId,
-            { score: s.score, level: s.level, period, module }, s.factors);
+            { score: s.score, level: s.level, period, module: moduleCode }, s.factors);
         }
       }
     }
@@ -243,14 +243,14 @@ export async function runDecisionEngine(
     entity: "reconciliation_batches",
     entity_id: batchId,
     next: {
-      module, period,
+      module: moduleCode, period,
       anomalies: summary.anomaliesInserted,
       riskScores: summary.riskScoresComputed,
       highRisk: summary.highRiskAgents,
       assignments: summary.exceptionsAssigned,
       errors: summary.errors.length,
     },
-    module,
+    module: moduleCode,
   });
 
   return summary;
