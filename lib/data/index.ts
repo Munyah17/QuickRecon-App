@@ -96,6 +96,39 @@ export async function getAgents() {
   return MOCK_AGENTS;
 }
 
+/** Count distinct agents assigned (enabled) per business module. */
+export async function getModuleAgentCounts(): Promise<Record<ModuleCode, number>> {
+  const counts: Record<ModuleCode, number> = { enpassent: 0, "econet-moovah": 0 };
+  const supabase = await db();
+  if (supabase) {
+    const { data, error } = await supabase
+      .from("agent_modules")
+      .select("module, agent_id")
+      .eq("enabled", true);
+    if (error) {
+      console.error("getModuleAgentCounts failed:", error.message);
+      return counts;
+    }
+    const seen = new Set<string>();
+    for (const row of data ?? []) {
+      const mod = row.module as ModuleCode;
+      if (mod !== "enpassent" && mod !== "econet-moovah") continue;
+      const key = `${mod}|${row.agent_id}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      counts[mod] += 1;
+    }
+    return counts;
+  }
+  // Preview fallback: count from mock agents.
+  for (const a of MOCK_AGENTS) {
+    for (const m of a.modules) {
+      if (m.enabled) counts[m.module] += 1;
+    }
+  }
+  return counts;
+}
+
 export async function getAgentById(agentId: string) {
   const supabase = await db();
   if (supabase) {

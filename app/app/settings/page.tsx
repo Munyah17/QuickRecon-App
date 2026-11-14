@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { Building2, Boxes, Mail, RefreshCcw, FileText, ShieldCheck, History, Save, Coins } from "lucide-react";
 import { getSession } from "@/lib/auth/session";
 import { isCompanyRole } from "@/lib/nav";
+import { getModuleAgentCounts } from "@/lib/data";
 import { PageHeader } from "@/components/layout/page-header";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -40,6 +41,8 @@ export default async function SettingsPage() {
     // Field users land on their profile/settings surface.
     redirect("/app/profile");
   }
+
+  const moduleAgentCounts = await getModuleAgentCounts();
 
   return (
     <div className="space-y-4">
@@ -126,8 +129,8 @@ export default async function SettingsPage() {
         <TabsContent value="modules" className="mt-4">
           <div className="grid gap-4 md:grid-cols-2">
             {[
-              { name: "Enpassent", desc: "Insurance + ZINARA reconciliation workbooks", agents: 176 },
-              { name: "Econet Moovah", desc: "Econet Moovah float & sales reconciliation", agents: 88 },
+              { name: "Enpassent", desc: "Insurance + ZINARA reconciliation workbooks", agents: moduleAgentCounts.enpassent },
+              { name: "Econet Moovah", desc: "Econet Moovah float & sales reconciliation", agents: moduleAgentCounts["econet-moovah"] },
             ].map((m) => (
               <Card key={m.name} className="gap-0 py-0 shadow-xs">
                 <CardContent className="flex items-start justify-between gap-3 p-5">
