@@ -162,7 +162,7 @@ export async function PATCH(
     // SMS + WhatsApp to the assignee — only for completed tasks.
     const phone = (task.assignee_phone ?? "").replace(/\s/g, "");
     if (phone) {
-      const wa = getWhatsAppProvider();
+      const wa = await getWhatsAppProvider();
       await wa.sendText(
         phone,
         `Task completed: "${task.title}". Well done — all milestones are done.`

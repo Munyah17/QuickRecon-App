@@ -339,6 +339,29 @@ export async function getExceptions(batchId?: string) {
     : MOCK_EXCEPTIONS;
 }
 
+/**
+ * Exact count of unresolved exceptions (open + investigating) across ALL
+ * rows — not just the capped page returned by getExceptions(). The workbench
+ * "Open alarms" stat must show the real total.
+ */
+export async function getOpenExceptionCount() {
+  const supabase = await db();
+  if (supabase) {
+    const { count, error } = await supabase
+      .from("reconciliation_exceptions")
+      .select("id", { count: "exact", head: true })
+      .in("status", ["open", "investigating"]);
+    if (error) {
+      console.error("getOpenExceptionCount query failed:", error.message);
+      return 0;
+    }
+    return count ?? 0;
+  }
+  return MOCK_EXCEPTIONS.filter(
+    (e) => e.status === "open" || e.status === "investigating"
+  ).length;
+}
+
 /** Latest decision-engine risk score per module for one agent. */
 export async function getAgentRiskScores(agentId: string) {
   const supabase = await db();

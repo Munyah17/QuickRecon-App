@@ -112,9 +112,14 @@ const FILTERS: { id: QueueFilter; label: string }[] = [
 export function ReconWorkbench({
   rows,
   exceptions,
+  openExceptionCount,
 }: {
   rows: Reconciliation[];
   exceptions: ReconException[];
+  /** Exact total of open+investigating exceptions across all rows. The
+   *  exceptions list is capped (getExceptions limit), so the "Open alarms"
+   *  stat can't be derived from it — it would under-report. */
+  openExceptionCount?: number;
 }) {
   const { module } = useWorkspace();
   const snapshot = React.useSyncExternalStore(subscribeStore, storeSnapshot, () => "{}");
@@ -169,7 +174,9 @@ export function ReconWorkbench({
   const selected = scoped.find((r) => r.id === selectedId) ?? filtered[0] ?? null;
 
   const stats = React.useMemo(() => {
-    const open = exceptions.filter(
+    // Prefer the exact DB count — the exceptions list is capped at 100 rows,
+    // so filtering it would under-report when more alarms exist.
+    const open = openExceptionCount ?? exceptions.filter(
       (e) => e.status === "open" || e.status === "investigating"
     ).length;
     let verified = 0, flagged = 0, published = 0;
@@ -180,7 +187,7 @@ export function ReconWorkbench({
       else if (s === "published") published++;
     }
     return { total: scoped.length, review: scoped.length - verified - flagged - published, verified, flagged, published, open };
-  }, [scoped, exceptions, queueStatus]);
+  }, [scoped, exceptions, queueStatus, openExceptionCount]);
 
   function update(id: string, patch: Partial<WorkState>) {
     persist({

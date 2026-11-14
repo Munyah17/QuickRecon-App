@@ -48,6 +48,42 @@ export interface BatchDocuments {
   documents: AgentReconDocument[];
 }
 
+// JSONB columns can come back as strings depending on how the row was written —
+// parse them so the workbook builder always gets objects/arrays.
+const asObj = (v: unknown) => (typeof v === "string" ? JSON.parse(v) : (v ?? {}));
+const asArr = (v: unknown) => (typeof v === "string" ? JSON.parse(v) : (v ?? []));
+
+/** Map a raw reconciliation_documents row to the render input shape. */
+export function reconDocFromRow(d: Record<string, unknown>): AgentReconDocument {
+  return {
+    agentId: d.agent_id,
+    agentName: d.agent_name,
+    module: d.module,
+    period: d.period,
+    currency: d.currency,
+    generatedAt: d.created_at,
+    openingVariance: Number(d.opening_variance),
+    insurance: Number(d.insurance),
+    premiumCover: Number(d.premium_cover),
+    commission: Number(d.commission),
+    netInsurance: Number(d.net_insurance),
+    zinara: Number(d.zinara),
+    pds: Number(d.pds),
+    insurancePds: Number(d.insurance_pds ?? d.pds ?? 0),
+    zinaraPds: Number(d.zinara_pds ?? 0),
+    totalExpected: Number(d.total_expected),
+    bankDeposits: asObj(d.bank_deposits),
+    deposits: Number(d.deposits),
+    adjustments: Number(d.adjustments),
+    closingVariance: Number(d.closing_variance),
+    closingPosition: Number(d.closing_position),
+    status: d.status,
+    transactions: asArr(d.transactions),
+    lines: [],
+    summaryText: d.summary_text ?? "",
+  } as unknown as AgentReconDocument;
+}
+
 /**
  * Builds one consolidated reconciliation document per agent from engine output.
  * No agent sees another agent's figures — documents are isolated by agentId.

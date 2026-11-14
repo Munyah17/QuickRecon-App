@@ -159,7 +159,7 @@ export async function deliverAgentRecon(opts: {
     if (!agentPhone) {
       skipped.push("whatsapp: agent has no phone on record");
     } else {
-      const wa = getWhatsAppProvider();
+      const wa = await getWhatsAppProvider();
       let waOk = false;
       let waErr = "provider error";
       for (const [mod, modDocs] of byModule) {

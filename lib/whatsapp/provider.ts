@@ -146,11 +146,61 @@ class MetaCloudProvider implements WhatsAppProvider {
   }
 }
 
-export function getWhatsAppProvider(): WhatsAppProvider {
-  const provider = process.env.WHATSAPP_PROVIDER;
+/**
+ * Non-secret WhatsApp config persisted via /app/communications → system_settings
+ * (key `whatsapp_config`). The API token is intentionally NOT stored here — it
+ * stays in the WHATSAPP_API_KEY env var and is set when integration keys arrive.
+ */
+interface WhatsAppSettings {
+  provider?: string;
+  phoneNumberId?: string;
+  businessId?: string;
+  tokenSet?: boolean;
+}
+
+async function readWhatsAppSettings(): Promise<WhatsAppSettings | null> {
+  try {
+    const { createServiceClient } = await import("@/lib/supabase/server");
+    const sb = await createServiceClient();
+    if (!sb) return null;
+    const { data } = await sb
+      .from("system_settings")
+      .select("value")
+      .eq("key", "whatsapp_config")
+      .maybeSingle();
+    const v = data?.value;
+    if (v && typeof v === "object") return v as WhatsAppSettings;
+    if (typeof v === "string") {
+      try { return JSON.parse(v) as WhatsAppSettings; } catch { return null; }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Returns the configured WhatsApp provider.
+ *
+ * Resolution order:
+ *  1. system_settings `whatsapp_config` (provider / phoneNumberId) + WHATSAPP_API_KEY env for the token.
+ *  2. Pure env vars (WHATSAPP_PROVIDER / WHATSAPP_API_KEY / WHATSAPP_SENDER_ID).
+ *  3. UnconfiguredProvider (no-op with a clear error).
+ *
+ * Until integration keys are supplied, every send resolves to the
+ * UnconfiguredProvider and reports "WhatsApp provider not configured".
+ */
+export async function getWhatsAppProvider(): Promise<WhatsAppProvider> {
+  const settings = await readWhatsAppSettings();
   const key = process.env.WHATSAPP_API_KEY;
-  const sender = process.env.WHATSAPP_SENDER_ID;
-  if (provider === "meta" && key && sender) {
+
+  const provider = settings?.provider ?? process.env.WHATSAPP_PROVIDER;
+  const sender = settings?.phoneNumberId ?? process.env.WHATSAPP_SENDER_ID;
+
+  // "whatsapp-cloud" is the label the Communications UI saves; "meta" is the
+  // env-var spelling. Treat both as the Meta Cloud API provider.
+  const isMeta = provider === "meta" || provider === "whatsapp-cloud";
+  if (isMeta && key && sender) {
     return new MetaCloudProvider(key, sender);
   }
   return new UnconfiguredProvider();

@@ -20,7 +20,6 @@ export function WhatsAppConfig() {
   const [provider, setProvider] = React.useState("whatsapp-cloud");
   const [phoneNumberId, setPhoneNumberId] = React.useState("");
   const [businessId, setBusinessId] = React.useState("");
-  const [token, setToken] = React.useState("");
   const [saving, setSaving] = React.useState(false);
 
   async function save() {
@@ -31,7 +30,7 @@ export function WhatsAppConfig() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           key: "whatsapp_config",
-          value: { provider, phoneNumberId, businessId, tokenSet: !!token },
+          value: { provider, phoneNumberId, businessId },
         }),
       });
       if (!res.ok) throw new Error();
@@ -74,14 +73,21 @@ export function WhatsAppConfig() {
           </div>
         </div>
         <div className="space-y-1.5">
-          <Label htmlFor="wa-token">Access Token</Label>
-          <Input id="wa-token" type="password" value={token} onChange={(e) => setToken(e.target.value)} placeholder="EAAG…" autoComplete="off" />
-          <p className="text-[11px] text-muted-foreground">Stored server-side — never exposed to the browser.</p>
+          <Label>Access Token</Label>
+          <div className="rounded-lg border border-dashed bg-muted/40 px-3 py-2.5 text-[12px] leading-relaxed text-muted-foreground">
+            The WhatsApp API token is <span className="font-medium text-foreground">not stored in the app</span>.
+            When integration keys arrive, set the <code className="rounded bg-muted px-1 py-0.5 font-mono text-[11px]">WHATSAPP_API_KEY</code> environment
+            variable on the server. The Phone Number ID above is used as the sender once the token is present.
+          </div>
         </div>
         <Button className="h-9 gap-1.5 text-[13px]" onClick={save} disabled={saving}>
           {saving ? <LoaderCircle className="size-4 animate-spin" aria-hidden /> : <Save className="size-4" aria-hidden />}
           Save configuration
         </Button>
+        <p className="text-[11px] text-muted-foreground">
+          Status: <span className="font-medium text-foreground">Ready — awaiting integration keys.</span> Sends will report
+          &ldquo;WhatsApp provider not configured&rdquo; until <code className="rounded bg-muted px-1 py-0.5 font-mono">WHATSAPP_API_KEY</code> is set.
+        </p>
       </CardContent>
     </Card>
   );

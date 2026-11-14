@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
   // WhatsApp notification to the assignee.
   let whatsappSent = false;
   if (assigneePhone) {
-    const wa = getWhatsAppProvider();
+    const wa = await getWhatsAppProvider();
     const res = await wa.sendText(
       assigneePhone.replace(/\s/g, ""),
       `New task assigned: "${task.title}"\nPriority: ${priority}\n${dueDate ? `Due: ${dueDate}\n` : ""}Open QuickRecon App → Task Management to view milestones.`

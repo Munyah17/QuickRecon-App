@@ -7,10 +7,14 @@ import {
   TriangleAlert,
   Eye,
   Download,
+  Archive,
+  LoaderCircle,
+  Mail,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import {
   Dialog,
@@ -52,12 +56,16 @@ export function ReconciliationTabs({
   rows,
   documents,
   exceptions,
+  openExceptionCount,
   canEditCells = false,
 }: {
   activeTab: string;
   rows: Reconciliation[];
   documents: ReconDocument[];
   exceptions: ReconException[];
+  /** Exact total of open+investigating exceptions — the list is capped, so
+   *  the workbench stat can't derive this from `exceptions` alone. */
+  openExceptionCount?: number;
   /** Super-admin inline cell editing on Breakdowns. */
   canEditCells?: boolean;
 }) {
@@ -92,7 +100,7 @@ export function ReconciliationTabs({
         </Link>
       </div>
 
-      {activeTab === "workbench" && <ReconWorkbench rows={rows} exceptions={exceptions} />}
+      {activeTab === "workbench" && <ReconWorkbench rows={rows} exceptions={exceptions} openExceptionCount={openExceptionCount} />}
       {activeTab === "summary" && <BatchReview rows={rows} />}
       {activeTab === "breakdowns" && <BreakdownsView rows={scoped} canEdit={canEditCells} />}
       {activeTab === "documents" && <DocumentsView documents={documents} scopedRows={scoped} />}
@@ -318,6 +326,11 @@ function DocumentsView({
   const [query, setQuery] = React.useState("");
   const [sendTarget, setSendTarget] = React.useState<ReconDocument | null>(null);
   const [sending, setSending] = React.useState(false);
+  // Bulk selection — keyed by agent+batch+period+module so USD & ZiG rows of the
+  // same logical document select together (the ZIP combines both currencies).
+  const [selected, setSelected] = React.useState<Map<string, ReconDocument>>(new Map());
+  const [exporting, setExporting] = React.useState(false);
+  const [bulkSending, setBulkSending] = React.useState(false);
 
   // If no generated documents yet, derive the list from the reconciliation rows.
   const docs: ReconDocument[] = documents.length
@@ -347,6 +360,123 @@ function DocumentsView({
       d.agentName.toLowerCase().includes(query.toLowerCase()) ||
       d.agentId.toLowerCase().includes(query.toLowerCase())
   );
+
+  // Only real generated documents (with a batchId) can be bulk-exported — the
+  // fallback rows derived from reconciliations have no stored document.
+  const exportable = filtered.filter((d) => d.batchId);
+  const selKey = (d: ReconDocument) => `${d.agentId}|${d.batchId}|${d.period}|${d.module}`;
+
+  function toggleSelect(d: ReconDocument) {
+    setSelected((prev) => {
+      const next = new Map(prev);
+      const k = selKey(d);
+      if (next.has(k)) next.delete(k);
+      else next.set(k, d);
+      return next;
+    });
+  }
+
+  function selectAllVisible() {
+    setSelected((prev) => {
+      const next = new Map(prev);
+      for (const d of exportable) next.set(selKey(d), d);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelected(new Map());
+  }
+
+  /** Download a ZIP of per-agent workbooks via /api/reconciliation/export-bulk. */
+  async function exportZip(mode: "all" | "selected") {
+    const batchIds = [...new Set(exportable.map((d) => d.batchId))];
+    if (!batchIds.length) {
+      toast.error("Nothing to export", { description: "No generated reconciliation documents in view." });
+      return;
+    }
+    setExporting(true);
+    try {
+      const body: Record<string, unknown> = { batchIds };
+      if (mode === "selected") {
+        if (selected.size === 0) {
+          toast.error("Select documents first", { description: "Tick the documents you want in the ZIP." });
+          setExporting(false);
+          return;
+        }
+        body.items = [...selected.values()].map((d) => ({
+          agentId: d.agentId,
+          batchId: d.batchId,
+          period: d.period,
+          module: d.module,
+        }));
+      }
+      const res = await fetch("/api/reconciliation/export-bulk", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as { error?: string }).error ?? `HTTP ${res.status}`);
+      }
+      const blob = await res.blob();
+      const dispo = res.headers.get("Content-Disposition") ?? "";
+      const match = dispo.match(/filename="?([^";]+)"?/);
+      const fname = match?.[1] ?? "reconciliation-documents.zip";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = fname;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      toast.success("ZIP downloaded", { description: `${fname} — ${selected.size || exportable.length} document(s).` });
+    } catch (e) {
+      toast.error("Export failed", { description: e instanceof Error ? e.message : "Unknown error" });
+    } finally {
+      setExporting(false);
+    }
+  }
+
+  /** Send each selected agent's document individually (email; WhatsApp activates once keys are set). */
+  async function sendSelected() {
+    if (selected.size === 0) {
+      toast.error("Select documents first");
+      return;
+    }
+    // One send per unique agent — USD & ZiG rows collapse to a single delivery.
+    const byAgent = new Map<string, ReconDocument>();
+    for (const d of selected.values()) if (!byAgent.has(d.agentId)) byAgent.set(d.agentId, d);
+    const targets = [...byAgent.values()];
+    setBulkSending(true);
+    let ok = 0;
+    const failures: string[] = [];
+    for (const d of targets) {
+      try {
+        const res = await fetch("/api/reconciliation/send", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ batchId: d.batchId || d.id, agentId: d.agentId, channels: ["email", "whatsapp"] }),
+        });
+        const data = await res.json();
+        if (data.success) ok++;
+        else failures.push(`${d.agentName}: ${data.error ?? "send failed"}`);
+      } catch {
+        failures.push(`${d.agentName}: network error`);
+      }
+    }
+    setBulkSending(false);
+    if (failures.length === 0) {
+      toast.success(`Sent ${ok} report${ok === 1 ? "" : "s"}`, { description: "Each agent received only their own document." });
+    } else if (ok === 0) {
+      toast.error("All sends failed", { description: failures.slice(0, 3).join(" · ") });
+    } else {
+      toast.warning(`Sent ${ok}, failed ${failures.length}`, { description: failures.slice(0, 3).join(" · ") });
+    }
+    clearSelection();
+  }
 
   // Document rows use reconciliation_documents.id. The detail page looks up
   // reconciliations.id, so View has to land on the matching recon row.
@@ -389,20 +519,65 @@ function DocumentsView({
   return (
     <div className="space-y-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <Input
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          placeholder="Search agent…"
-          className="h-9 max-w-xs bg-card text-[13px]"
-        />
-        <ExportButton
-          filename="reconciliation-documents"
-          label="Export Document List"
-          data={{
-            columns: ["Agent", "ID", "Period", "Expected", "Deposited", "Closing", "Status", "Generated"],
-            rows: filtered.map((d) => [d.agentName, d.agentId, d.period, d.totalExpected, d.deposits, d.closingPosition, d.status, d.createdAt]),
-          }}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <Input
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder="Search agent…"
+            className="h-9 max-w-xs bg-card text-[13px]"
+          />
+          {exportable.length > 0 && (
+            <>
+              <Button variant="ghost" size="sm" className="h-9 text-[12px]" onClick={selectAllVisible}>
+                Select all ({exportable.length})
+              </Button>
+              {selected.size > 0 && (
+                <Button variant="ghost" size="sm" className="h-9 text-[12px]" onClick={clearSelection}>
+                  Clear ({selected.size})
+                </Button>
+              )}
+            </>
+          )}
+        </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 gap-1.5 text-[12px]"
+            disabled={exporting || exportable.length === 0}
+            onClick={() => exportZip("all")}
+          >
+            {exporting ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden /> : <Archive className="size-3.5" aria-hidden />}
+            Export all ZIP
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 gap-1.5 text-[12px]"
+            disabled={exporting || selected.size === 0}
+            onClick={() => exportZip("selected")}
+          >
+            {exporting ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden /> : <Archive className="size-3.5" aria-hidden />}
+            Export selected ZIP
+          </Button>
+          <Button
+            size="sm"
+            className="h-9 gap-1.5 text-[12px]"
+            disabled={bulkSending || selected.size === 0}
+            onClick={sendSelected}
+          >
+            {bulkSending ? <LoaderCircle className="size-3.5 animate-spin" aria-hidden /> : <Mail className="size-3.5" aria-hidden />}
+            Send selected
+          </Button>
+          <ExportButton
+            filename="reconciliation-documents"
+            label="List"
+            data={{
+              columns: ["Agent", "ID", "Period", "Expected", "Deposited", "Closing", "Status", "Generated"],
+              rows: filtered.map((d) => [d.agentName, d.agentId, d.period, d.totalExpected, d.deposits, d.closingPosition, d.status, d.createdAt]),
+            }}
+          />
+        </div>
       </div>
 
       <div className="space-y-2.5">
@@ -411,6 +586,15 @@ function DocumentsView({
           return (
           <Card key={d.id} className="gap-0 py-0 shadow-xs">
             <CardContent className="flex flex-wrap items-center gap-3 p-3.5">
+              {d.batchId ? (
+                <Checkbox
+                  checked={selected.has(selKey(d))}
+                  onCheckedChange={() => toggleSelect(d)}
+                  aria-label={`Select ${d.agentName}`}
+                />
+              ) : (
+                <span className="size-4 shrink-0" aria-hidden />
+              )}
               <AgentAvatar name={d.agentName} size="sm" />
               <div className="min-w-[160px] flex-1">
                 <p className="text-[13.5px] font-semibold">{d.agentName}</p>
